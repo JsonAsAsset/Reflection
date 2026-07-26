@@ -6,14 +6,14 @@
   
   <a href="https://github.com/JsonAsAsset/Reflection">
     <p>
-      <img src="https://github.com/user-attachments/assets/91b216ba-7bb3-4f48-bf96-69c645451d26" alt="Logo" width="200">
+      <img src="https://github.com/user-attachments/assets/8bfa632d-876f-4165-a720-98e93563e877" alt="Logo" width="200">
     </p>
   </a>
 
   <h3 align="center">Reflection</h3>
 
   <p align="center">
-    Powerful Unreal Engine Plugin that imports assets from FModel
+    Reconstruction Toolkit for Unreal Engine
     <br />
     <a href="#table-of-contents"><strong>Explore the docs »</strong></a>
   </p>
