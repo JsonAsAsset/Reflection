@@ -20,7 +20,7 @@ Weird isn't it? I just prefer it.
 
 # Cloud ☁️
 
-Cloud Server's API is located at [Reflection/Core](https://github.com/JsonAsAsset/Core/tree/main/Source/Core.Cloud)
+Cloud Server's API is located at [JsonAsAsset/Core](https://github.com/JsonAsAsset/Core/tree/main/Source/Core.Cloud)
 
 # Settings
 Link: [`Public/Settings/ReflectionSettings.h`](https://github.com/JsonAsAsset/Reflection/blob/main/Source/Reflection/Public/Settings/ReflectionSettings.h)
