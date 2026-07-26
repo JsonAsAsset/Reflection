@@ -1,0 +1,57 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.4.2",
+	"FriendlyName": "Reflection",
+	"Description": "Reconstruction Toolkit for Unreal Engine",
+	"Category": "Tools",
+	"CreatedBy": "JsonAsAsset",
+	"CreatedByURL": "https://github.com/JsonAsAsset",
+	"DocsURL": "",
+	"MarketplaceURL": "",
+	"SupportURL": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"IsExperimentalVersion": false,
+	"Installed": false,
+	"Modules": [
+		{
+			"Name": "Reflection",
+			"Type": "Editor",
+			"LoadingPhase": "PostDefault",
+			"PlatformDenyList": [
+				"Android"
+			]
+		},
+		{
+			"Name": "Detex",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"PlatformDenyList": [
+				"Android"
+			]
+		},
+		{
+			"Name": "NVTT",
+			"Type": "Editor",
+			"LoadingPhase": "Default",
+			"PlatformDenyList": [
+				"Android"
+			]
+		}
+	],
+	"Plugins": [
+		{
+			"Name": "Niagara",
+			"Enabled": true
+		},
+		{
+			"Name": "AudioModulation",
+			"Enabled": true
+		},
+		{
+			"Name": "PluginUtils",
+			"Enabled": true
+		}
+	]
+}

@@ -4,13 +4,13 @@
   Also popularly known as "JAA", standing for Json As Asset.
   -->
   
-  <a href="https://github.com/JsonAsAsset/JsonAsAsset">
+  <a href="https://github.com/JsonAsAsset/Reflection">
     <p>
       <img src="https://github.com/user-attachments/assets/91b216ba-7bb3-4f48-bf96-69c645451d26" alt="Logo" width="200">
     </p>
   </a>
 
-  <h3 align="center">JsonAsAsset</h3>
+  <h3 align="center">Reflection</h3>
 
   <p align="center">
     Powerful Unreal Engine Plugin that imports assets from FModel
@@ -22,8 +22,8 @@
 <div align="center">
 <br/>
 
-[![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/JsonAsAsset?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
-[![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/JsonAsAsset/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
+[![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
+[![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
 
 [![Discord](https://img.shields.io/badge/Join%20Discord-Collector?color=0363ff&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/xXEw4jc2UT)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
@@ -37,7 +37,7 @@
 
 ### Description
 
-JsonAsAsset is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that reads [JSON](https://www.json.org/json-en.html) files from FModel [(UEParse)](https://github.com/FabianFG/CUE4Parse), and rebuilds assets like materials, data tables, physics assets, and more.
+Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that reads [JSON](https://www.json.org/json-en.html) files from FModel [(UEParse)](https://github.com/FabianFG/CUE4Parse), and rebuilds assets like materials, data tables, physics assets, and more.
 
 ✨ [Contributors](#contribute)
 
@@ -53,7 +53,7 @@ This project aims to streamline the porting and modding experience, making it ea
 <a name="licensing"></a>
 ### Licensing
 
-JsonAsAsset is licensed under the MIT License. Read more in the [LICENSE](https://github.com/JsonAsAsset/JsonAsAsset/blob/main/LICENSE) file. The plugin also uses [Detex](https://github.com/hglm/detex) and [NVIDIA Texture Tools](https://docs.nvidia.com/texture-tools/index.html).
+Reflection is licensed under the MIT License. Read more in the [LICENSE](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE) file. The plugin also uses [Detex](https://github.com/hglm/detex) and [NVIDIA Texture Tools](https://docs.nvidia.com/texture-tools/index.html).
 
 -----------------
 
@@ -125,7 +125,7 @@ See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/U
 > [**Material Data Prerequisites still apply.**](#material-data-prerequisites)
 >  ​
 
-We strongly recommend using the latest **commit** of JsonAsAsset to ensure compatibility with recent Unreal updates and access to the newest features.
+We strongly recommend using the latest **commit** of Reflection to ensure compatibility with recent Unreal updates and access to the newest features.
 
 <details>
   <summary>UE4</summary>
@@ -151,16 +151,16 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 4. Save the file.
 </details>
 
-Follow these steps to install **JsonAsAsset**:
+Follow these steps to install **Reflection**:
 
-1. **Downloading JsonAsAsset:**   
-   There are two ways you can download JsonAsAsset. You can either stay up-to-date with the latest development changes (recommended if you want the newest features and fixes, but may occasionally require manual fixing), or download stable releases.
+1. **Downloading Reflection:**   
+   There are two ways you can download Reflection. You can either stay up-to-date with the latest development changes (recommended if you want the newest features and fixes, but may occasionally require manual fixing), or download stable releases.
 
    1. **Up-to-date (Git Submodule)**   
       Open a terminal in your Unreal project root (where your `.uproject` file is located), then run:
 
       ```sh
-      git submodule add https://github.com/JsonAsAsset/JsonAsAsset.git Plugins/JsonAsAsset
+      git submodule add https://github.com/JsonAsAsset/Reflection.git Plugins/Reflection
       git submodule update --init --recursive
       ```
 
@@ -169,25 +169,25 @@ Follow these steps to install **JsonAsAsset**:
       Download the **Source code (zip)**, extract it into your project's `Plugins` folder (create it if it doesn't exist), so the final path looks like:
 
       ```
-      Project/Plugins/JsonAsAsset/
+      Project/Plugins/Reflection/
       ```
-3. **Compile JsonAsAsset:**   
+3. **Compile Reflection:**   
    Follow [**this tutorial**](https://dev.epicgames.com/community/learning/tutorials/qz93/unreal-engine-building-plugins) to build the plugin for your Unreal Engine version.
 4. **Launch Your Project:**   
    Open your Unreal Engine project.
 
 <a name="cloud"></a>
 ### Set up the Cloud ✨
-Make sure Cloud is enabled in Plugin Settings, and set up a Cloud Server. [Click here to get to Cloud releases.](https://github.com/JsonAsAsset/Core/releases)
+Make sure Cloud is enabled in Plugin Settings, and set up a Cloud Server. [Click here to get to Cloud releases.](https://github.com/Reflection/Core/releases)
 
-Once the Cloud is started, JsonAsAsset will fetch almost every referenced asset for you hands-free.
+Once the Cloud is started, Reflection will fetch almost every referenced asset for you hands-free.
 
 <a name="workflow"></a>
 ## Workflow
 
 1. Find an asset in [FModel](https://fmodel.app), and save it by right-clicking and pressing `Save Properties`. Locate the file on your computer and copy the location.
 
-2. Press the [JsonAsAsset](https://github.com/JsonAsAsset/JsonAsAsset) button on your tool-bar, and a file import should pop up. <img align="right" width="206" height="96" src=https://github.com/user-attachments/assets/6a9bf925-484b-4c23-b0ed-c59d58c5d07c>
+2. Press the [Reflection](https://github.com/JsonAsAsset/Reflection) button on your tool-bar, and a file import should pop up. <img align="right" width="206" height="96" src=https://github.com/user-attachments/assets/6a9bf925-484b-4c23-b0ed-c59d58c5d07c>
 
 3. Select the file and press Open.
 
@@ -202,7 +202,7 @@ Once the Cloud is started, JsonAsAsset will fetch almost every referenced asset 
   
 This is a known issue in our code that we haven't fully resolved yet. While previous attempts to fix it have been unsuccessful, here's a partial solution to reduce its occurrence:
 
-- Re-launch your Unreal Engine project, go to JsonAsAsset's plugin settings and enable ***"Disconnect Root"***. Also enable ***"Save Assets"***.
+- Re-launch your Unreal Engine project, go to Reflection's plugin settings and enable ***"Disconnect Root"***. Also enable ***"Save Assets"***.
 </details>
 
 <a name="contribute"></a>
@@ -210,8 +210,8 @@ This is a known issue in our code that we haven't fully resolved yet. While prev
 
 Thanks go to these wonderful people:
 
-<a href="https://github.com/JsonAsAsset/JsonAsAsset/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=JsonAsAsset/JsonAsAsset" />
+<a href="https://github.com/JsonAsAsset/Reflection/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
 </a>
 
 <!-- prettier-ignore-start -->

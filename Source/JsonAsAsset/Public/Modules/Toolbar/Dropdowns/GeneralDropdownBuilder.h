@@ -1,9 +1,0 @@
-﻿/* Copyright JsonAsAsset Contributors 2024-2026 */
-
-#pragma once
-
-#include "ParentDropdownBuilder.h"
-
-struct IGeneralDropdownBuilder final : IParentDropdownBuilder {
-	virtual void Build(FMenuBuilder& MenuBuilder) const override;
-};
