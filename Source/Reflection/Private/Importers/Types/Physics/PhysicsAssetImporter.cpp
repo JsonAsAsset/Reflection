@@ -86,19 +86,28 @@ bool IPhysicsAssetImporter::Import() {
 	/* If the user selected a skeletal mesh in the browser, set it in the physics asset */
 	const USkeletalMesh* SkeletalMesh = GetSelectedAsset<USkeletalMesh>(true);
 
+	/* Otherwise, fallback to any skeletal mesh sitting in the same folder as the physics asset */
 	if (!SkeletalMesh) {
-		FString CleanName = GetAssetName();
-		CleanName.RemoveFromEnd(TEXT("_PhysicsAsset"));
-		CleanName.RemoveFromEnd(TEXT("_Physics"));
-
 		const FString SearchPath = FPackageName::GetLongPackagePath(GetPackage()->GetName());
-		const FString Path1 = SearchPath / CleanName;
-		const FString Path2 = FString::Printf(TEXT("%s.%s"), *SearchPath, *CleanName);
 
-		SkeletalMesh = Cast<USkeletalMesh>(StaticLoadObject(USkeletalMesh::StaticClass(), nullptr, *Path1));
-		
-		if (!SkeletalMesh) {
-			SkeletalMesh = Cast<USkeletalMesh>(StaticLoadObject(USkeletalMesh::StaticClass(), nullptr, *Path2));
+		const FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+		AssetRegistryModule.Get().ScanPathsSynchronous({ SearchPath }, false);
+
+		TArray<FAssetData> AssetDataList;
+		AssetRegistryModule.Get().GetAssetsByPath(FName(*SearchPath), AssetDataList, false);
+
+		for (const FAssetData& AssetData : AssetDataList) {
+			const UClass* AssetClass = AssetData.GetClass();
+
+			if (!AssetClass || !AssetClass->IsChildOf(USkeletalMesh::StaticClass())) {
+				continue;
+			}
+
+			SkeletalMesh = Cast<USkeletalMesh>(AssetData.GetAsset());
+
+			if (SkeletalMesh) {
+				break;
+			}
 		}
 	}
 	
