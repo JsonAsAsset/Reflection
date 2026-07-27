@@ -178,7 +178,7 @@ Follow these steps to install **Reflection**:
 
 <a name="cloud"></a>
 ### Set up the Cloud ✨
-Make sure Cloud is enabled in Plugin Settings, and set up a Cloud Server. [Click here to get to Cloud releases.](https://github.com/Reflection/Core/releases)
+Make sure Cloud is enabled in Plugin Settings, and set up a Cloud Server. [Click here to get to Cloud releases.](https://github.com/JsonAsAsset/Core/releases)
 
 Once the Cloud is started, Reflection will fetch almost every referenced asset for you hands-free.
 
