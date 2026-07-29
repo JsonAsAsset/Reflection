@@ -145,6 +145,41 @@ void Cloud::Get(const FString& RequestURL,
 	});
 }
 
+void Cloud::Post(const FString& RequestURL,
+	const FString& Body,
+	const TMap<FString, FString>& Headers,
+	TFunction<void(TSharedPtr<FJsonObject>, int32)> OnComplete)
+{
+	auto Request = SendRequest(RequestURL, {}, Headers);
+	Request->SetVerb(TEXT("POST"));
+	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+	Request->SetContentAsString(Body);
+
+	FRemoteUtilities::ExecuteRequestAsync(Request, [OnComplete](auto Response) {
+		if (!Response.IsValid()) {
+			OnComplete(nullptr, 0);
+			return;
+		}
+
+		const int32 ResponseCode = Response->GetResponseCode();
+
+		if (ResponseCode != 200 || !Response->GetHeader("Content-Type").Contains(TEXT("json"))) {
+			OnComplete(nullptr, ResponseCode);
+			return;
+		}
+
+		TSharedPtr<FJsonObject> JsonObject;
+		const TSharedRef<TJsonReader<>> JsonReader = TJsonReaderFactory<>::Create(Response->GetContentAsString());
+
+		if (!FJsonSerializer::Deserialize(JsonReader, JsonObject)) {
+			OnComplete(nullptr, ResponseCode);
+			return;
+		}
+
+		OnComplete(JsonObject, ResponseCode);
+	});
+}
+
 TArray<uint8> Cloud::GetRaw(const FString& RequestURL, const TMap<FString, FString>& Parameters,
 	const TMap<FString, FString>& Headers) {
 	const auto Request = SendRequest(RequestURL, Parameters, Headers);

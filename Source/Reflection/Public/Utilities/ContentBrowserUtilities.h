@@ -67,34 +67,44 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 	return CastedAsset;
 }
 
-/* Gets all assets in selected folder */
-inline TArray<FAssetData> GetAssetsInSelectedFolder() {
-	TArray<FAssetData> AssetDataList;
-
-	/* Get the Content Browser Module */
+/* Package path of the folder selected in the Content Browser, empty when nothing is selected.
+ * Ex: "/Game/Characters/Items" */
+inline FString GetSelectedContentBrowserFolder() {
 	const FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 
 	TArray<FString> SelectedFolders;
 	ContentBrowserModule.Get().GetSelectedPathViewFolders(SelectedFolders);
 
 	if (SelectedFolders.Num() == 0) {
-		UE_LOG(LogReflection, Warning, TEXT("No folder selected in the Content Browser."));
-		return AssetDataList;
+		return FString();
 	}
 
-	FString CurrentFolder = SelectedFolders[0];
-	
 #if ENGINE_UE5
 	/* Convert virtual paths to internal package paths */
 	const UContentBrowserDataSubsystem* ContentBrowserData = GEditor->GetEditorSubsystem<UContentBrowserDataSubsystem>();
 
 	if (!ContentBrowserData) {
+		return FString();
+	}
+
+	const TArray<FString> InternalPaths = ContentBrowserData->TryConvertVirtualPathsToInternal(SelectedFolders);
+
+	return InternalPaths.Num() > 0 ? InternalPaths[0] : FString();
+#else
+	return SelectedFolders[0];
+#endif
+}
+
+/* Gets all assets in selected folder */
+inline TArray<FAssetData> GetAssetsInSelectedFolder() {
+	TArray<FAssetData> AssetDataList;
+
+	const FString CurrentFolder = GetSelectedContentBrowserFolder();
+
+	if (CurrentFolder.IsEmpty()) {
+		UE_LOG(LogReflection, Warning, TEXT("No folder selected in the Content Browser."));
 		return AssetDataList;
 	}
-	
-	TArray<FString> InternalPaths = ContentBrowserData->TryConvertVirtualPathsToInternal(SelectedFolders);
-	CurrentFolder = InternalPaths[0];
-#endif
 
 	/* Check if the folder is the root folder, and show a prompt if */
 	if (CurrentFolder == "/All/Game") {

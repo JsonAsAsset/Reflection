@@ -64,7 +64,16 @@ public:
 		const TMap<FString, FString>& Headers,
 		TFunction<void(TSharedPtr<FJsonObject>)> OnComplete
 	);
-	
+
+	/* Sends a JSON body, and hands back the parsed response along with the HTTP status code.
+	 * A code of 0 means the request never made it to the Cloud. */
+	static void Post(
+		const FString& RequestURL,
+		const FString& Body,
+		const TMap<FString, FString>& Headers,
+		TFunction<void(TSharedPtr<FJsonObject>, int32)> OnComplete
+	);
+
 	static TArray<uint8> GetRaw(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
 	static TArray<TSharedPtr<FJsonValue>> GetExports(const FString& RequestURL, const TMap<FString, FString>& Parameters = {});
 };

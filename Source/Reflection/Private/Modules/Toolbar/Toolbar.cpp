@@ -9,6 +9,9 @@
 #include "Importers/Constructor/ImportReader.h"
 #include "Modules/Metadata.h"
 #include "Modules/Cloud/Cloud.h"
+#if ENGINE_UE5
+#include "Modules/Toolbar/Dropdowns/ValidationDropdownBuilder.h"
+#endif
 #include "Modules/Toolbar/Dropdowns/CloudToolsDropdownBuilder.h"
 #include "Settings/Runtime.h"
 #include "Modules/Toolbar/Dropdowns/GeneralDropdownBuilder.h"
@@ -19,6 +22,13 @@
 #include "Utilities/DialogUtilities.h"
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;
+
+#if ENGINE_UE5
+/* Reflection ships no validation artwork, so the editor's own stands in */
+static FSlateIcon GetValidationIcon() {
+	return FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Validate");
+}
+#endif
 
 void UReflectionToolbar::Register() {
 #if ENGINE_UE5
@@ -79,8 +89,50 @@ void UReflectionToolbar::Register() {
 	));
 
 	AddCloudButtons(Section);
+
+	/* Validation lives on the main menu bar, not in here */
+	RegisterMainMenu();
 #endif
 }
+
+#if ENGINE_UE5
+void UReflectionToolbar::RegisterMainMenu() {
+	UToolMenus* ToolMenus = UToolMenus::Get();
+	if (ToolMenus == nullptr) {
+		return;
+	}
+
+	UToolMenu* MenuBar = ToolMenus->ExtendMenu("LevelEditor.MainMenu");
+	if (MenuBar == nullptr) {
+		return;
+	}
+
+	/* Scoped so ShutdownModule can tear the menu back down */
+	FToolMenuOwnerScoped OwnerScoped(this);
+
+	/* Sits after Window, which is where this project puts its other tool menus */
+	FToolMenuSection& Section = MenuBar->AddSection(
+		"ReflectionValidationSection",
+		FText::GetEmpty(),
+		FToolMenuInsert("WindowLayout", EToolMenuInsertType::After)
+	);
+
+	/* FNewToolMenuChoice takes an FMenuBuilder delegate as its legacy form, which lets the
+	 * dropdown builder stay the single implementation of the menu's contents */
+	Section.AddSubMenu(
+		"Validation",
+		FText::FromString("Validation"),
+		FText::FromString("Validate this project's content against the real game files"),
+		FNewToolMenuChoice(FNewMenuDelegate::CreateStatic(&UReflectionToolbar::PopulateValidationMenu)),
+		false,
+		GetValidationIcon()
+	);
+}
+
+void UReflectionToolbar::PopulateValidationMenu(FMenuBuilder& MenuBuilder) {
+	IValidationDropdownBuilder().Build(MenuBuilder);
+}
+#endif
 
 void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 #if ENGINE_UE5
@@ -376,6 +428,7 @@ TSharedRef<SWidget> UReflectionToolbar::CreateCloudMenuDropdown() {
 	for (const TSharedRef<IParentDropdownBuilder>& Dropdown : Dropdowns) {
 		Dropdown->Build(MenuBuilder);
 	}
-	
+
 	return MenuBuilder.MakeWidget();
 }
+

@@ -13,6 +13,7 @@
 #include "Modules/Versioning.h"
 
 #include "Modules/UI/StyleModule.h"
+#include "Modules/UI/Validation/ValidationTab.h"
 #include "Modules/Toolbar/Toolbar.h"
 #include "Engine/EngineUtilities.h"
 
@@ -32,6 +33,11 @@ void FReflectionModule::StartupModule() {
     /* Initialize plugin style, reload textures */
     FReflectionStyle::Initialize();
     FReflectionStyle::ReloadTextures();
+
+	/* Register tabs, the style has to exist first for their icons */
+#if ENGINE_UE5
+	FValidationTab::Register();
+#endif
 
     /* Register Toolbar */
 	Toolbar = NewObject<UReflectionToolbar>();
@@ -69,6 +75,15 @@ void FReflectionModule::ShutdownModule() {
 	/* Unregister startup callback and tool menus */
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
+
+#if ENGINE_UE5
+	/* The main menu bar entry is owned by the toolbar, not the module */
+	if (Toolbar) {
+		UToolMenus::UnregisterOwner(Toolbar);
+	}
+
+	FValidationTab::Unregister();
+#endif
 
 	/* Shutdown the plugin style */
 	FReflectionStyle::Shutdown();
