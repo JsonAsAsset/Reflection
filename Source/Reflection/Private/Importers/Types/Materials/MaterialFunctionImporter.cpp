@@ -43,7 +43,15 @@ bool IMaterialFunctionImporter::Import() {
 
 	/* Deserialize any properties */
 	GetObjectSerializer()->DeserializeObjectProperties(GetAssetData(), MaterialFunction);
-	
+
+	/* Expressions built by hand leave these two caches stale, and the engine only refills them in
+	 * PostLoad or ForceRecompileForRendering. DependentFunctionExpressionCandidates is the one that
+	 * matters: FMaterialCachedExpressionData reaches functions nested below this one only through
+	 * IterateDependentFunctions, which iterates nothing else. Left empty, a parent material misses
+	 * every texture one level deep, then fails to compile on Compiler->Texture(). */
+	MaterialFunction->UpdateInputOutputTypes();
+	MaterialFunction->UpdateDependentFunctionCandidates();
+
 	MaterialFunction->PreEditChange(nullptr);
 	MaterialFunction->PostEditChange();
 
