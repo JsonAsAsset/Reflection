@@ -15,7 +15,7 @@
 
 #include "Registry/RegistrationInfo.h"
 #include "Styling/SlateIconFinder.h"
-#include "Utilities/AssetUtilities.h"
+#include "Importers/Constructor/Asset.h"
 
 /* Base handler for converting JSON to assets */
 class REFLECTION_API IImporter : public USerializerContainer {

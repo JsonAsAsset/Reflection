@@ -6,7 +6,7 @@
 #include "Materials/MaterialExpressionComment.h"
 #include "Materials/MaterialExpressionReroute.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 #if ENGINE_UE5
 #include "Materials/MaterialExpressionTextureBase.h"

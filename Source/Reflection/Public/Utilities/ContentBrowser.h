@@ -2,10 +2,10 @@
 
 #pragma once
 
-#include "ApplicationUtilities.h"
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
-#include "RemoteUtilities.h"
+#include "Modules/Cloud/Remote.h"
+#include "Utilities/Dialog.h"
 #include "AssetRegistry/AssetRegistryModule.h"
 #include "Modules/Log.h"
 

@@ -20,7 +20,7 @@
 #include "Modules/Toolbar/Dropdowns/ParentDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
-#include "Utilities/DialogUtilities.h"
+#include "Utilities/Dialog.h"
 #include "Widgets/Layout/SBox.h"
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;

@@ -6,7 +6,7 @@
 #include "Animation/AnimMontage.h"
 #include "Importers/Constructor/Importer.h"
 #include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSelectedAsset, const IImporter* Importer = nullptr) {
 	/* Animation Sequence Base reference, either by using the selected asset in the browser, or through an importer */

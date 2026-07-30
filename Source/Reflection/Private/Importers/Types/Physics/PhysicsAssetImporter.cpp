@@ -5,7 +5,7 @@
 
 #include "PhysicsEngine/PhysicsConstraintTemplate.h"
 #include "Settings/Runtime.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 UObject* IPhysicsAssetImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UPhysicsAsset>(GetPackage(), UPhysicsAsset::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));

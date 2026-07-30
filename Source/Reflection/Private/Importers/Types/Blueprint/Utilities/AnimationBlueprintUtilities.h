@@ -7,7 +7,7 @@
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
 #include "Serializers/ObjectSerializer.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 inline FStructProperty* GetNodeStructProperty(const UAnimGraphNode_Base* Node) {
 	if (!Node) return nullptr;

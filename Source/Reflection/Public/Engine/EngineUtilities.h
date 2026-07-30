@@ -12,7 +12,7 @@
 #include "Windows/WindowsHWrapper.h"
 #endif
 
-#include "Utilities/ContentBrowserUtilities.h"
+#include "Utilities/ContentBrowser.h"
 #include "Editor.h"
 #include "TimerManager.h"
 #include "PluginUtils.h"

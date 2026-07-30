@@ -3,7 +3,7 @@
 #include "Modules/Cloud/Tools/CurveLinearColorData.h"
 #include "Curves/CurveLinearColor.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 void TCurveLinearColorData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
 	UCurveLinearColor* CurveLinearColor = Cast<UCurveLinearColor>(Object);

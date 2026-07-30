@@ -8,10 +8,10 @@
 #include "Importers/Types/Texture/TextureImporter.h"
 #include "Settings/Runtime.h"
 #include "Styling/SlateIconFinder.h"
-#include "Utilities/AssetUtilities.h"
+#include "Importers/Constructor/Asset.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
-#include "Utilities/RemoteUtilities.h"
+#include "Utilities/JsonHelpers.h"
+#include "Modules/Cloud/Remote.h"
 
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications) {
 	/* Importers resolve references through the Cloud while they deserialize, and those requests

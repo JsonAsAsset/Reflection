@@ -23,7 +23,7 @@
 
 #include "EditorFramework/AssetImportData.h"
 #include "Importers/Constructor/Importer.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 #if ENGINE_UE5
 #include "Animation/AnimData/IAnimationDataController.h"

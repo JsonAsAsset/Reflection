@@ -10,8 +10,8 @@
 #include "Modules/Log.h"
 #include "Modules/UI/StyleModule.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
-#include "Utilities/RemoteUtilities.h"
+#include "Utilities/JsonHelpers.h"
+#include "Modules/Cloud/Remote.h"
 
 namespace {
 	/* How long one tick may spend importing. Plenty of single exports run well past this and

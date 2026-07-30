@@ -3,7 +3,7 @@
 #include "Importers/Types/Curves/CurveVectorImporter.h"
 #include "Factories/CurveFactory.h"
 #include "Curves/CurveVector.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 UObject* ICurveVectorImporter::CreateAsset(UObject* CreatedAsset) {
 	UCurveVectorFactory* CurveVectorFactory = NewObject<UCurveVectorFactory>();

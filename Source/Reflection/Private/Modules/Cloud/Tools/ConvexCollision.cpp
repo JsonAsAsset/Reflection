@@ -6,7 +6,7 @@
 #include "Engine/EngineUtilities.h"
 
 #include "PhysicsEngine/BodySetup.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 void TToolConvexCollision::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
 	UStaticMesh* StaticMesh = Cast<UStaticMesh>(Object);

@@ -5,6 +5,7 @@
 #include "Modules/Versioning.h"
 #include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
+#include "Utilities/Process.h"
 
 void IVersioningDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	if (!GReflectionVersioning.IsValid) {

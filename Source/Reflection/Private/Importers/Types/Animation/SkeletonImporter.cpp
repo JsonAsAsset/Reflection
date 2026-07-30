@@ -3,7 +3,7 @@
 #include "Importers/Types/Animation/SkeletonImporter.h"
 
 #if ENGINE_UE4
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 #endif
 
 UObject* ISkeletonImporter::CreateAsset(UObject* CreatedAsset) {

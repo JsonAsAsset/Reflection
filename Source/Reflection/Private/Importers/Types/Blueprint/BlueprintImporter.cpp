@@ -18,7 +18,7 @@
 #endif
 
 #include "Engine/SCS_Node.h"
-#include "Utilities/BlueprintUtilities.h"
+#include "Importers/Types/Blueprint/BlueprintUtilities.h"
 
 UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 	UClass* Class = GetAssetClass();

@@ -9,7 +9,7 @@
 #include "Settings/ReflectionSettings.h"
 #include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/RemoteUtilities.h"
+#include "Modules/Cloud/Remote.h"
 
 /* Requests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 FReflectionHttpRequest Cloud::BuildRequest(const FString& RequestURL, const TMap<FString, FString>& Parameters, const TMap<FString, FString>& Headers) {

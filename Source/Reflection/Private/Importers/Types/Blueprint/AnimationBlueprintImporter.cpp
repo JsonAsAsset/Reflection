@@ -16,8 +16,8 @@
 #include "Importers/Types/Blueprint/Utilities/AnimNodeLayoutUtillties.h"
 #include "Importers/Types/Blueprint/Utilities/StateMachineUtilities.h"
 #include "Kismet2/KismetEditorUtilities.h"
-#include "Utilities/BlueprintUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Importers/Types/Blueprint/BlueprintUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 #if ENGINE_UE5
 #include "UObject/UnrealTypePrivate.h"

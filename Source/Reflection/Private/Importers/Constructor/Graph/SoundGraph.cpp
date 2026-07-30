@@ -8,7 +8,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Sound/SoundCue.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 void ISoundGraph::ConstructNodes(USoundCue* SoundCue, TMap<FString, USoundNode*>& OutNodes) {
 	for (const FUObjectExport* Export : GetContainer()->Exports) {

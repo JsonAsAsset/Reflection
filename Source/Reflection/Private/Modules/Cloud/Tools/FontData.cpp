@@ -4,7 +4,7 @@
 
 #include "Engine/FontFace.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 void TToolFontData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
 	const FString TargetType = "FontFace";

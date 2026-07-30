@@ -14,7 +14,7 @@
 
 #include "Modules/Toolbar/Tools/ClearImportData.h"
 #include "Modules/Toolbar/Tools/FixUpAssetData.h"
-#include "Utilities/DialogUtilities.h"
+#include "Utilities/Dialog.h"
 
 void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	MenuBuilder.AddSubMenu(

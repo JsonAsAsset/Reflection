@@ -5,10 +5,11 @@
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Modules/Log.h"
+#include "Utilities/Process.h"
 #include "Modules/Metadata.h"
 #include "Modules/UI/StyleModule.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 FReflectionVersioning GReflectionVersioning;
 

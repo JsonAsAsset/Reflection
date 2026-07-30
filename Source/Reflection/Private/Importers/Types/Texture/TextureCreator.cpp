@@ -1,6 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-#include "Utilities/Textures/TextureCreatorUtilities.h"
+#include "Importers/Types/Texture/TextureCreator.h"
 
 #include "detex.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -13,7 +13,7 @@
 #include "Settings/Runtime.h"
 #include "ThirdParty/NVTT/ThirdParty/NVTTStream.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 template bool FTextureCreatorUtilities::CreateTexture<UTexture2D>(UTexture*&, TArray<uint8>&, const TSharedPtr<FJsonObject>&);
 template bool FTextureCreatorUtilities::CreateTexture<UTextureLightProfile>(UTexture*&, TArray<uint8>&, const TSharedPtr<FJsonObject>&);

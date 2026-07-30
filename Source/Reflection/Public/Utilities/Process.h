@@ -7,26 +7,6 @@
 #include "TlHelp32.h"
 #endif
 
-inline void SpawnPrompt(const FString& Title, const FString& Text) {
-	FText DialogTitle = FText::FromString(Title);
-	const FText DialogMessage = FText::FromString(Text);
-
-	FMessageDialog::Open(EAppMsgType::Ok, DialogMessage);
-}
-
-inline auto SpawnYesNoPrompt = [](const FString& Title, const FString& Text, const TFunction<void(bool)>& OnResponse) {
-	const FText DialogTitle = FText::FromString(Title);
-	const FText DialogMessage = FText::FromString(Text);
-
-#if UE5_3_BEYOND
-	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, DialogMessage, DialogTitle);
-#else
-	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, DialogMessage, &DialogTitle);
-#endif
-	
-	OnResponse(Response == EAppReturnType::Yes);
-};
-
 inline void CloseApplicationByProcessName(const FString& ProcessName) {
 #ifndef __linux__
 	DWORD ProcessID = 0;
@@ -45,13 +25,13 @@ inline void CloseApplicationByProcessName(const FString& ProcessName) {
 				}
 			} while (Process32Next(Snapshot, &ProcessEntry));
 		}
-		
+
 		CloseHandle(Snapshot);
 	}
 
 	if (ProcessID != 0) {
 		const HANDLE Process = OpenProcess(PROCESS_TERMINATE, false, ProcessID);
-		
+
 		if (Process != nullptr) {
 			TerminateProcess(Process, 0);
 			CloseHandle(Process);

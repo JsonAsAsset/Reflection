@@ -8,7 +8,8 @@
 
 #include "Serializers/PropertySerializer.h"
 #include "UObject/Package.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
+#include "Utilities/Containers.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
 #include "Particles/ParticleEmitter.h"

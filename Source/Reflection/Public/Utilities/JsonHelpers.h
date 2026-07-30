@@ -176,52 +176,6 @@ inline FJsonObject* EnsureObjectField(const TSharedPtr<FJsonObject>& Parent, con
 	return Parent->GetObjectField(FieldName).Get();
 }
 
-static void CollectObjectPackagesRecursively(const TSharedPtr<FJsonValue>& Value, FUObjectExportContainer* Container, TArray<FUObjectExport*>& Exports) {
-	if (!Value.IsValid()) {
-		return;
-	}
-
-	if (Value->Type == EJson::Object) {
-		const TSharedPtr<FJsonObject>& Object = Value->AsObject();
-		if (!Object.IsValid()) {
-			return;
-		}
-
-		/* If it has ObjectName + ObjectPath, then resolve */
-		if (Object->HasField(TEXT("ObjectName")) && Object->HasField(TEXT("ObjectPath"))) {
-			FUObjectExport* Resolved = Container->GetExportByObjectPath(Object);
-			
-			Exports.Add(Resolved);
-		}
-
-		/* Recurse through fields */
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values) {
-			CollectObjectPackagesRecursively(Pair.Value, Container, Exports);
-		}
-	}
-	else if (Value->Type == EJson::Array) {
-		for (const TSharedPtr<FJsonValue>& ArrayValue : Value->AsArray()) {
-			CollectObjectPackagesRecursively(ArrayValue, Container, Exports);
-		}
-	}
-}
-
-inline TArray<FUObjectExport*> CollectObjectPackages(FUObjectExport* Export, FUObjectExportContainer* Container) {
-	TArray<FUObjectExport*> Exports;
-
-	if (!Export->IsJsonValid()) {
-		return Exports;
-	}
-
-	CollectObjectPackagesRecursively(
-		MakeShared<FJsonValueObject>(Export->JsonObject),
-		Container,
-		Exports
-	);
-
-	return Exports;
-}
-
 inline bool IsProperExportData(const TSharedPtr<FJsonObject>& JsonObject) {
 	/* Property checks */
 	if (!JsonObject.IsValid() ||
@@ -329,9 +283,4 @@ inline FName GetExportNameOfSubobject(const FString& PackageIndex) {
 	}
 	
 	return FName(Name);
-}
-
-template<typename K, typename V>
-FORCEINLINE bool IsEmpty(const TMap<K, V>& Map) {
-	return Map.Num() == 0;
 }

@@ -3,7 +3,7 @@
 #include "Importers/Types/Curves/CurveLinearColorImporter.h"
 #include "Curves/CurveLinearColor.h"
 #include "Factories/CurveFactory.h"
-#include "Utilities/JsonUtilities.h"
+#include "Utilities/JsonHelpers.h"
 
 UObject* ICurveLinearColorImporter::CreateAsset(UObject* CreatedAsset) {
 	UCurveLinearColorFactory* CurveFactory = NewObject<UCurveLinearColorFactory>();

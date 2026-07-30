@@ -3,7 +3,7 @@
 #include "Containers/Export.h"
 #include "Engine/EngineUtilities.h"
 #include "Settings/ReflectionSettings.h"
-#include "Utilities/BlueprintUtilities.h"
+#include "Importers/Types/Blueprint/BlueprintUtilities.h"
 
 FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex) {
 	FString ObjectType, ObjectName, ObjectPath, Outer;

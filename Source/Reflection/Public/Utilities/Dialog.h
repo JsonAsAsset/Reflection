@@ -10,6 +10,28 @@
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
 
+/* Prompts ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+inline void SpawnPrompt(const FString& Title, const FString& Text) {
+	FText DialogTitle = FText::FromString(Title);
+	const FText DialogMessage = FText::FromString(Text);
+
+	FMessageDialog::Open(EAppMsgType::Ok, DialogMessage);
+}
+
+inline auto SpawnYesNoPrompt = [](const FString& Title, const FString& Text, const TFunction<void(bool)>& OnResponse) {
+	const FText DialogTitle = FText::FromString(Title);
+	const FText DialogMessage = FText::FromString(Text);
+
+#if UE5_3_BEYOND
+	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, DialogMessage, DialogTitle);
+#else
+	const EAppReturnType::Type Response = FMessageDialog::Open(EAppMsgType::YesNo, DialogMessage, &DialogTitle);
+#endif
+
+	OnResponse(Response == EAppReturnType::Yes);
+};
+
+/* Clipboard and file pickers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 inline FString GetClipboard() {
 	FString ClipboardContent;
 #ifndef __linux__
