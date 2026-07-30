@@ -63,10 +63,6 @@ Reflection is licensed under the MIT License. Read more in the [LICENSE](https:/
 > 2. [Installation](#installation)  
 > 3. [→ Workflow](#workflow)
 
-**Extras**:
-<br>
-> - [Common Errors 🐛](#common-errors)
-
 -----------------
 
 > [!CAUTION]
@@ -192,18 +188,6 @@ Once the Cloud is started, Reflection will fetch almost every referenced asset f
 3. Select the file and press Open.
 
 4. The asset will import, and bring you to the created asset in the content browser.
-
-<a name="common-errors"></a>
-### Common Errors 🐛
-<details>
-  <summary>Assertion failed: TextureReferenceIndex != INDEX_NONE</summary>
-
-------------
-  
-This is a known issue in our code that we haven't fully resolved yet. While previous attempts to fix it have been unsuccessful, here's a partial solution to reduce its occurrence:
-
-- Re-launch your Unreal Engine project, go to Reflection's plugin settings and enable ***"Disconnect Root"***. Also enable ***"Save Assets"***.
-</details>
 
 <a name="contribute"></a>
 ## ✨ Contributors
