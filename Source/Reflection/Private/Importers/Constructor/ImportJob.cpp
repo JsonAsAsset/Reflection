@@ -161,8 +161,7 @@ namespace {
 
 		/* Dependency fetches inside these exports still block, and this keeps them painted and
 		 * cancellable while they do. Scoped to the slice, so no progress dialog is ever held
-		 * across frames -- that would put the editor in a permanent slow task and defeat the
-		 * whole point of slicing. */
+		 * across frames. */
 		const FBlockingRequestScope BlockingScope(FText::FromString(TEXT("Reflecting from the Cloud")));
 
 		do {

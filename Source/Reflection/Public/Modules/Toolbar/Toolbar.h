@@ -13,6 +13,7 @@ class REFLECTION_API UReflectionToolbar : public UObject {
 	GENERATED_BODY()
 public:
 	void Register();
+	void AddReflectionButtons(FToolMenuSection& Section);
 	void AddCloudButtons(FToolMenuSection& Section);
 
 	/* Validation is UE5 only, it has no place to live on UE4's menu bar ~~~~~~~~~~~~~~~~~~~ */

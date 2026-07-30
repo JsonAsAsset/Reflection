@@ -53,9 +53,6 @@ FBlockingRequestScope::~FBlockingRequestScope() {
 	}
 
 	GBlockingScopeDepth--;
-
-	/* Scopes are stack objects, so destruction is strictly LIFO with construction -- the entry
-	 * this pops is always the one this same scope pushed */
 	GDescriptionStack.Pop();
 
 	if (bOwnsProgress) {
@@ -75,7 +72,7 @@ bool FBlockingRequestScope::Pump() {
 	}
 
 	/* The innermost open scope is whatever is actually happening right now, so its description
-	 * is what the dialog shows -- the FrameMessage this sets overrides the outer scope's
+	 * is what the dialog shows. The FrameMessage this sets overrides the outer scope's
 	 * DefaultMessage until the next call retargets it or the nested scope closes */
 	const FText& CurrentDescription = GDescriptionStack.Num() > 0 ? GDescriptionStack.Top() : FText::GetEmpty();
 

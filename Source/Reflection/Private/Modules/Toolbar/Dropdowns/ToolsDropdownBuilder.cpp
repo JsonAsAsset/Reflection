@@ -17,12 +17,10 @@
 #include "Utilities/DialogUtilities.h"
 
 void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
-	UReflectionSettings* Settings = GetSettings();
-	
 	MenuBuilder.AddSubMenu(
 		FText::FromString("Asset Tools"),
 		FText::FromString("Tools bundled"),
-		FNewMenuDelegate::CreateLambda([this, Settings](FMenuBuilder& InnerMenuBuilder) {
+		FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InnerMenuBuilder) {
 			InnerMenuBuilder.BeginSection("ReflectionToolsSection", FText::FromString("Tools"));
 			{
 				InnerMenuBuilder.AddMenuEntry(

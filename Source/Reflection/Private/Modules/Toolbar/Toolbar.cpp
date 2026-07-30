@@ -35,7 +35,7 @@ void UReflectionToolbar::Register() {
 #if ENGINE_UE5
 	/* false: uses top toolbar. true: uses content browser toolbar */
 	static bool UseToolbar = false;
-	
+
 	UToolMenu* Menu;
 
 	if (UseToolbar) {
@@ -44,52 +44,39 @@ void UReflectionToolbar::Register() {
 		Menu = UToolMenus::Get()->ExtendMenu("ContentBrowser.Toolbar");
 	}
 
-	FToolMenuSection& Section =
-		UseToolbar
-		? Menu->FindOrAddSection(GReflectionName)
-		: Menu->FindOrAddSection("New");
+	if (UseToolbar) {
+		FToolMenuSection& Section = Menu->FindOrAddSection(GReflectionName);
 
-	/* Displays Reflection's icon along with the Version */
-	FToolMenuEntry& ActionButton = Section.AddEntry(FToolMenuEntry::InitToolBarButton(
-		GReflectionName,
-		
-		FToolUIActionChoice(
-			FUIAction(
-				FExecuteAction::CreateUObject(this, &UReflectionToolbar::ImportAction),
-				FCanExecuteAction(),
-				FGetActionCheckState(),
-				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
-			)
-		),
-		
-		FText::FromString(""),
-		
-		FText::FromString(""),
-		
-		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon")),
-		
-		EUserInterfaceActionType::Button
-	));
-	
-	ActionButton.StyleNameOverride = "CalloutToolbar";
+		AddReflectionButtons(Section);
+		AddCloudButtons(Section);
+	} else {
+		static const FName EmbeddedToolbarName("Reflection.EmbeddedToolbar");
 
-	/* Menu dropdown */
-	const FToolMenuEntry MenuButton = Section.AddEntry(FToolMenuEntry::InitComboButton(
-		"ReflectionMenu",
-		FUIAction(
-			FExecuteAction(),
-			FCanExecuteAction(),
-			FGetActionCheckState(),
-			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
-		),
-		FOnGetContent::CreateStatic(&CreateMenuDropdown),
-		FText::FromString(GReflectionName.ToString()),
-		FText::FromString(""),
-		FSlateIcon(),
-		true
-	));
+		/* Registering this here, rather than at Reflection's own module startup, is what keeps
+		 * it from borrowing the engine's toolbar style before that style exists */
+		FReflectionStyle::EnsureEmbeddedToolbarStyleRegistered();
 
-	AddCloudButtons(Section);
+		UToolMenu* EmbeddedToolbar = UToolMenus::Get()->RegisterMenu(EmbeddedToolbarName, NAME_None, EMultiBoxType::SlimHorizontalToolBar);
+		EmbeddedToolbar->SetStyleSet(&FReflectionStyle::Get());
+		EmbeddedToolbar->StyleName = FReflectionStyle::GetEmbeddedToolbarStyleName();
+
+		FToolMenuSection& EmbeddedSection = EmbeddedToolbar->FindOrAddSection("ReflectionEmbeddedSection");
+
+		AddReflectionButtons(EmbeddedSection);
+		AddCloudButtons(EmbeddedSection);
+
+		FToolMenuSection& Section = Menu->FindOrAddSection("New");
+
+		Section.AddDynamicEntry("ReflectionEmbeddedToolbar", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection) {
+			InSection.AddEntry(FToolMenuEntry::InitWidget(
+				"ReflectionEmbeddedToolbar",
+				UToolMenus::Get()->GenerateWidget(EmbeddedToolbarName, FToolMenuContext()),
+				FText::GetEmpty(),
+				true,
+				false
+			));
+		}));
+	}
 
 	/* Validation lives on the main menu bar, not in here */
 	RegisterMainMenu();
@@ -134,6 +121,50 @@ void UReflectionToolbar::PopulateValidationMenu(FMenuBuilder& MenuBuilder) {
 	IValidationDropdownBuilder().Build(MenuBuilder);
 }
 #endif
+
+void UReflectionToolbar::AddReflectionButtons(FToolMenuSection& Section) {
+#if ENGINE_UE5
+	/* Displays Reflection's icon along with the Version */
+	FToolMenuEntry& ActionButton = Section.AddEntry(FToolMenuEntry::InitToolBarButton(
+		GReflectionName,
+
+		FToolUIActionChoice(
+			FUIAction(
+				FExecuteAction::CreateUObject(this, &UReflectionToolbar::ImportAction),
+				FCanExecuteAction(),
+				FGetActionCheckState(),
+				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
+			)
+		),
+
+		FText::FromString(""),
+
+		FText::FromString(""),
+
+		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon")),
+
+		EUserInterfaceActionType::Button
+	));
+
+	ActionButton.StyleNameOverride = "CalloutToolbar";
+
+	/* Menu dropdown */
+	const FToolMenuEntry MenuButton = Section.AddEntry(FToolMenuEntry::InitComboButton(
+		"ReflectionMenu",
+		FUIAction(
+			FExecuteAction(),
+			FCanExecuteAction(),
+			FGetActionCheckState(),
+			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
+		),
+		FOnGetContent::CreateStatic(&CreateMenuDropdown),
+		FText::FromString(GReflectionName.ToString()),
+		FText::FromString(""),
+		FSlateIcon(),
+		true
+	));
+#endif
+}
 
 void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 #if ENGINE_UE5
@@ -419,7 +450,7 @@ TSharedRef<SWidget> UReflectionToolbar::CreateMenuDropdown() {
 	for (const TSharedRef<IParentDropdownBuilder>& Dropdown : Dropdowns) {
 		Dropdown->Build(MenuBuilder);
 	}
-	
+
 	return MenuBuilder.MakeWidget();
 }
 

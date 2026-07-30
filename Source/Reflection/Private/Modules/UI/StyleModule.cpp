@@ -5,6 +5,13 @@
 #include "Interfaces/IPluginManager.h"
 #include "Modules/Metadata.h"
 #include "Engine/EngineUtilities.h"
+#include "Engine/Compatibility.h"
+
+#if ENGINE_UE5
+#include "Styling/ToolBarStyle.h"
+#include "Styling/StyleColors.h"
+#include "Brushes/SlateRoundedBoxBrush.h"
+#endif
 
 #define IMAGE_BRUSH(RelativePath, ...) FSlateImageBrush(Style->RootToContentDir(RelativePath, TEXT(".png")), __VA_ARGS__)
 
@@ -40,6 +47,31 @@ FName FReflectionStyle::GetStyleSetName() {
 	static FName StyleSetName(TEXT("ReflectionStyle"));
 	return StyleSetName;
 }
+
+FName FReflectionStyle::GetEmbeddedToolbarStyleName() {
+	static FName EmbeddedToolbarStyleName(TEXT("Reflection.EmbeddedToolbar"));
+	return EmbeddedToolbarStyleName;
+}
+
+#if ENGINE_UE5
+void FReflectionStyle::EnsureEmbeddedToolbarStyleRegistered() {
+	static bool bRegistered = false;
+
+	if (bRegistered) {
+		return;
+	}
+
+	bRegistered = true;
+
+	FToolBarStyle EmbeddedToolbarStyle = FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("AssetEditorToolbar");
+
+	EmbeddedToolbarStyle.SetBackground(FSlateRoundedBoxBrush(FStyleColors::Recessed, 8.0f));
+	EmbeddedToolbarStyle.SetBackgroundPadding(FMargin(6.f, 3.f, 6.f, 3.f));
+
+	StyleInstance->Set(GetEmbeddedToolbarStyleName(), EmbeddedToolbarStyle);
+	StyleInstance->Set(TEXT("CalloutToolbar"), FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("CalloutToolbar"));
+}
+#endif
 
 const ISlateStyle& FReflectionStyle::Get() {
 	return *StyleInstance;
