@@ -3,14 +3,23 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "HttpModule.h"
 #include "Serialization/JsonSerializer.h"
 #include "Settings/ReflectionSettings.h"
+#include "Utilities/RemoteUtilities.h"
 
+/*
+ * Talks to the local Cloud instance.
+ *
+ * Everything here is asynchronous unless its name says Blocking. The blocking calls exist for
+ * one reason: the serializer discovers asset references while it is deserializing properties and
+ * has no continuation to hand a callback to, so it has to wait. They park the game thread, and
+ * are only safe inside an FBlockingRequestScope, which keeps the editor drawn while they do.
+ *
+ * Anything driven by a button, a menu entry or a panel takes a callback instead.
+ */
 class REFLECTION_API Cloud {
 public:
 	static inline FString URL = TEXT("http://localhost:1500");
-	static inline FHttpModule* HttpModule = &FHttpModule::Get();
 
 	/* Status ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
@@ -31,33 +40,26 @@ public:
 
 public:
 	static void Update(TFunction<void(bool)> OnResponse);
-	
+
 	/* Export Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
 	static inline FString ExportURL = TEXT("/api/export");
 
 	class REFLECTION_API Export {
 	public:
-		class REFLECTION_API Array {
-		public:
-			static TArray<TSharedPtr<FJsonValue>> Get(const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-			static TArray<TSharedPtr<FJsonValue>> Get(const FString& Path, const bool Raw, TMap<FString, FString> Parameters = {}, const TMap<FString, FString>& Headers = {});
-			static TArray<TSharedPtr<FJsonValue>> GetRaw(const FString& Path, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-		};
-		
-		static TSharedPtr<FJsonObject> Get(const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-		static TSharedPtr<FJsonObject> Get(const FString& Path, const bool Raw, TMap<FString, FString> Parameters = {}, const TMap<FString, FString>& Headers = {});
-		static TSharedPtr<FJsonObject> GetRaw(const FString& Path, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
+		static void GetAsync(const FString& Path, bool Raw, TMap<FString, FString> Parameters, const TMap<FString, FString>& Headers, TFunction<void(TSharedPtr<FJsonObject>)> OnResponse);
+		static void GetRawAsync(const FString& Path, TFunction<void(TSharedPtr<FJsonObject>)> OnResponse);
 
-		static void GetRaw(const FString& Path, const TMap<FString, FString>& Parameters, const TMap<FString, FString>& Headers, TFunction<void(TSharedPtr<FJsonObject>)> OnResponse);
+		/* Hands back the export list for Path, empty if the Cloud has nothing for it. What
+		 * every Cloud tool actually wants out of a raw export request. */
+		static void GetRawExportsAsync(const FString& Path, TFunction<void(const TArray<TSharedPtr<FJsonValue>>&)> OnResponse);
 
-		static void GetAsync(const FString& Path, const bool Raw, TMap<FString, FString> Parameters, const TMap<FString, FString>& Headers, const TFunction<void(TSharedPtr<FJsonObject>)>& OnResponse);
+		static TSharedPtr<FJsonObject> GetBlocking(const FString& Path, bool Raw, TMap<FString, FString> Parameters = {}, const TMap<FString, FString>& Headers = {});
+		static TSharedPtr<FJsonObject> GetRawBlocking(const FString& Path, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
 	};
 
+	/* Requests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
-	static auto SendRequest(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-	static TSharedPtr<FJsonObject> Get(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-
 	static void Get(
 		const FString& RequestURL,
 		const TMap<FString, FString>& Parameters,
@@ -74,6 +76,20 @@ public:
 		TFunction<void(TSharedPtr<FJsonObject>, int32)> OnComplete
 	);
 
-	static TArray<uint8> GetRaw(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
-	static TArray<TSharedPtr<FJsonValue>> GetExports(const FString& RequestURL, const TMap<FString, FString>& Parameters = {});
+	static TSharedPtr<FJsonObject> GetBlocking(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
+
+	/* Runs Work now, or on a later editor tick if the game thread is currently parked on a
+	 * blocking Cloud wait.
+	 *
+	 * Responses are delivered from the HTTP manager's tick, and a blocking wait drives that
+	 * tick itself, so a callback can land in the middle of an unrelated import. Anything that
+	 * creates or edits assets goes through here to make sure it gets a call stack of its own. */
+	static void RunWhenSafe(TFunction<void()> Work);
+
+private:
+	static FReflectionHttpRequest BuildRequest(const FString& RequestURL, const TMap<FString, FString>& Parameters, const TMap<FString, FString>& Headers);
+
+	/* Shared response handling for both Get flavours: a response is only usable if it arrived,
+	 * came back 200, says it is JSON, and parses. */
+	static TSharedPtr<FJsonObject> ParseResponse(const FReflectionHttpResponse& Response);
 };

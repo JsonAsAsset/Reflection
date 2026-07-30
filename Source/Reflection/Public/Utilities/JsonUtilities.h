@@ -321,23 +321,6 @@ inline TSharedPtr<FJsonObject> GetExportMatchingWith(const FString& Match, const
 	return TSharedPtr<FJsonObject>();
 }
 
-inline TSharedPtr<FJsonObject> RequestObjectURL(const FString& URL) {
-	FHttpModule* HttpModule = &FHttpModule::Get();
-
-	const auto Request = HttpModule->CreateRequest();
-			
-	Request->SetURL(URL);
-	Request->SetVerb(TEXT("GET"));
-
-	const auto Response = FRemoteUtilities::ExecuteRequestSync(Request);
-	if (!Response.IsValid()) return TSharedPtr<FJsonObject>();
-
-	TSharedPtr<FJsonObject> DeserializedJSON;
-
-	if (!DeserializeJSONObject(Response->GetContentAsString(), DeserializedJSON)) return TSharedPtr<FJsonObject>();
-	return DeserializedJSON;
-};
-
 inline FName GetExportNameOfSubobject(const FString& PackageIndex) {
 	FString Name; {
 		PackageIndex.Split("'", nullptr, &Name);

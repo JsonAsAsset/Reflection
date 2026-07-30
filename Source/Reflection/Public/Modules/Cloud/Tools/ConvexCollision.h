@@ -3,9 +3,11 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Modules/Toolbar/Tools/ToolBase.h"
+#include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
 
-class TToolConvexCollision : public TToolBase {
+class REFLECTION_API TToolConvexCollision : public TSelectedAssetsBase {
 public:
-	void Execute();
+	virtual void Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) override;
+
+	virtual FName GetSupportedClass() const override { return FName("StaticMesh"); }
 };

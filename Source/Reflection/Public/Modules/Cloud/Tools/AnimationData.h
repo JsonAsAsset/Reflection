@@ -5,7 +5,7 @@
 #include "CoreMinimal.h"
 #include "Animation/AnimMontage.h"
 #include "Importers/Constructor/Importer.h"
-#include "Modules/Toolbar/Tools/ToolBase.h"
+#include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
 #include "Utilities/JsonUtilities.h"
 
 inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSelectedAsset, const IImporter* Importer = nullptr) {
@@ -237,7 +237,9 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 	return true;
 }
 
-class TToolAnimationData : public TToolBase {
+class REFLECTION_API TToolAnimationData : public TSelectedAssetsBase {
 public:
-	void Execute();
+	virtual void Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) override;
+
+	virtual FName GetSupportedClass() const override { return FName("AnimSequence"); }
 };

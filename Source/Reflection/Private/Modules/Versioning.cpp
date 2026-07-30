@@ -95,9 +95,8 @@ void FReflectionVersioning::Update() {
 		}
 	});
 	
-	const auto Response = FRemoteUtilities::ExecuteRequestSync(Request);
-
-    Request->ProcessRequest();
+	/* Nothing waits on the release check, so it never has a reason to hold up the editor */
+	Request->ProcessRequest();
 }
 
 bool FReflectionVersioning::IsNewVersionAvailable() const {

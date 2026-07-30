@@ -123,7 +123,7 @@ void ISoundGraph::SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoun
 				if (SoundWave != nullptr) {
 					WavePlayerNode->SetSoundWave(SoundWave);
 				} else {
-					const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRaw(AssetPtr, {
+					const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRawBlocking(AssetPtr, {
 						{
 							"save",
 							"true"
