@@ -45,7 +45,7 @@ public:
 };
 
 USTRUCT()
-struct FJVersioningSettings
+struct FRVersioningSettings
 {
 	GENERATED_BODY()
 public:
@@ -66,7 +66,7 @@ public:
 	
 public:
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FJVersioningSettings Versioning;
+	FRVersioningSettings Versioning;
 	
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRSettings AssetSettings;
