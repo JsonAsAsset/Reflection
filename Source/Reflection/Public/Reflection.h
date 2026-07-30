@@ -21,7 +21,7 @@ struct GitHub {
 };
 
 struct Donation {
-    static inline FString KO_FI = "https://ko-fi.com/t4ctor";
+    static inline FString KO_FI = "https://ko-fi.com/tectory";
 };
 
 class FReflectionModule : public IModuleInterface {

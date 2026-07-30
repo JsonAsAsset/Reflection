@@ -62,7 +62,7 @@ void UReflectionToolbar::Register() {
 			)
 		),
 		
-		FText::FromString(FRMetadata::Version),
+		FText::FromString(""),
 		
 		FText::FromString("Execute Reflection"),
 		

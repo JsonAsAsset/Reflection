@@ -24,10 +24,11 @@ public:
 	static void Register();
 	static void Unregister();
 
-	/* Brings the tab up, creating it if it isn't open */
+	/* Brings the tab up, creating it if it isn't open, scoped to the folder selected in the
+	 * Content Browser. Leaves the panel's existing folder alone when nothing is selected. */
 	static void Open();
 
-	/* Brings the tab up scoped to a content folder, ex: "/Game/Characters".
+	/* Brings the tab up scoped to a content folder.
 	 * An empty RootPath leaves whatever folder the panel already had.
 	 * Takes RootPath by value so it can be bound as a delegate payload. */
 	static void OpenAt(FString RootPath, bool bRunImmediately);

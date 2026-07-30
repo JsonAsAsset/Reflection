@@ -34,34 +34,6 @@ void FValidationTab::Register() {
 		Validator.Description = LOCTEXT("ValidationDescription", "Find assets that don't exist in the game, or that sit in the wrong folder.");
 		Validator.Icon = FSlateIcon(FReflectionStyle::GetStyleSetName(), "Toolbar.Icon");
 		Validator.OnOpen = FExecuteAction::CreateStatic(&FValidationTab::Open);
-
-		Validator.BuildMenu = FNewMenuDelegate::CreateLambda([](FMenuBuilder& MenuBuilder) {
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ValidationOpen", "Open"),
-				LOCTEXT("ValidationOpenTooltip", "Open the Validation tab without running anything."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateStatic(&FValidationTab::Open))
-			);
-
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ValidateProject", "Validate Project Content"),
-				LOCTEXT("ValidateProjectTooltip", "Check every asset under /Game against the game files."),
-				FSlateIcon(),
-				FUIAction(FExecuteAction::CreateStatic(&FValidationTab::OpenAt, FString(TEXT("/Game")), true))
-			);
-
-			MenuBuilder.AddMenuEntry(
-				LOCTEXT("ValidateSelectedFolder", "Validate Selected Folder"),
-				LOCTEXT("ValidateSelectedFolderTooltip", "Check the folder selected in the Content Browser."),
-				FSlateIcon(),
-				FUIAction(
-					FExecuteAction::CreateStatic(&FValidationTab::OpenAtSelectedFolder),
-					FCanExecuteAction::CreateLambda([] {
-						return !GetSelectedContentBrowserFolder().IsEmpty();
-					})
-				)
-			);
-		});
 	}
 
 	FReflectionValidatorRegistry::Register(Validator);
@@ -74,7 +46,7 @@ void FValidationTab::Unregister() {
 }
 
 void FValidationTab::Open() {
-	OpenAt(FString(), false);
+	OpenAt(GetSelectedContentBrowserFolder(), false);
 }
 
 void FValidationTab::OpenAt(const FString RootPath, const bool bRunImmediately) {
