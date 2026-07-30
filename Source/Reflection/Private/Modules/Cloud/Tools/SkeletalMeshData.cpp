@@ -141,8 +141,12 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 				"ShadowPhysicsAsset",
 				"PositiveBoundsExtension",
 				"NegativeBoundsExtension",
+				"MorphTargets",
 
-				"Sockets"
+				"Sockets",
+				"SamplingInfo",
+				"LODModels",
+				"NaniteResources",
 			}), SkeletalMesh);
 			
 			SkeletalMesh->Modify();
@@ -172,7 +176,7 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 #endif
 			}
 
-			BrowseToAsset(SkeletalMesh);
+			BrowseToWhenFinished(SkeletalMesh);
 
 			/* Notification */
 			AppendNotification(

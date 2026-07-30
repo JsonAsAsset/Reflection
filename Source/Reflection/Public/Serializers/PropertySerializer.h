@@ -46,7 +46,7 @@ public:
 
 	bool FallbackToParentTrace = true;
 
-	FUObjectExportContainer* ExportsContainer;
+	FUObjectExportContainer* ExportsContainer = nullptr;
 	TArray<FString> BlacklistedPropertyNames;
 };
 

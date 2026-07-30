@@ -2,7 +2,12 @@
 
 #include "Modules/Toolbar/Dropdowns/CloudToolsDropdownBuilder.h"
 
+#include "Algo/Sort.h"
+
 #include "Modules/Cloud/Cloud.h"
+#include "Modules/Toolbar/Tools/ToolRegistry.h"
+
+/* Every tool registers from its own header, so including them is what puts them in the menu */
 #include "Modules/Cloud/Tools/AnimationData.h"
 #include "Modules/Cloud/Tools/ConvexCollision.h"
 #include "Modules/Cloud/Tools/CurveLinearColorData.h"
@@ -10,85 +15,45 @@
 #include "Modules/Cloud/Tools/SkeletalMeshData.h"
 #include "Modules/Cloud/Tools/WidgetAnimations.h"
 
-namespace {
-	/* A run outlives the click that started it, so a tool has to outlive its own requests. One
-	 * instance per tool for the editor's lifetime is also what stops a second click from
-	 * starting a second run on top of the first. */
-	template <typename ToolType>
-	TSelectedAssetsBase& GetTool() {
-		static ToolType Tool;
-
-		return Tool;
-	}
-
-	/* Menu entries are only useful with something on the other end, and a tool that is still
-	 * working would refuse a second run anyway */
-	template <typename ToolType>
-	bool CanRunTool() {
-		return Cloud::Status::IsOpened() && !GetTool<ToolType>().IsRunning();
-	}
-
-	template <typename ToolType>
-	FUIAction MakeToolAction() {
-		return FUIAction(
-			FExecuteAction::CreateLambda([] {
-				GetTool<ToolType>().Execute();
-			}),
-			FCanExecuteAction::CreateStatic(&CanRunTool<ToolType>)
-		);
-	}
-}
-
 void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	MenuBuilder.BeginSection("ReflectionCloudSection", FText::FromString("Cloud"));
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Static Meshes"),
-		FText::FromString("Reflects collision and other properties"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.StaticMeshActor"),
-		MakeToolAction<TToolConvexCollision>(),
-		NAME_None
-	);
+	TArray<TSelectedAssetsBase*> Tools;
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Animations"),
-		FText::FromString("Reflects curve data, notifies and other properties"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "GraphEditor.Animation_24x"),
-		MakeToolAction<TToolAnimationData>(),
-		NAME_None
-	);
+	for (const TPair<FName, FToolInstanceDelegate>& Registration : GetToolRegistry()) {
+		TSelectedAssetsBase* Tool = Registration.Value();
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Skeletal Meshes"),
-		FText::FromString("Reflects sockets and other properties"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.SkeletalMeshComponent"),
-		MakeToolAction<TSkeletalMeshData>(),
-		NAME_None
-	);
+		/* A tool with no name isn't meant to be reachable from the menu */
+		if (Tool == nullptr || Tool->GetDisplayName().IsEmpty()) continue;
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Fonts"),
-		FText::FromString("Reflects font properties (not vectorized data)"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.FontFace"),
-		MakeToolAction<TToolFontData>(),
-		NAME_None
-	);
+		Tools.Add(Tool);
+	}
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Widget Animations"),
-		FText::FromString("Reflects widget animations"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.WidgetBlueprint"),
-		MakeToolAction<TWidgetAnimations>(),
-		NAME_None
-	);
+	/* Registration order is the linker's business, so the menu sorts itself */
+	Algo::Sort(Tools, [](const TSelectedAssetsBase* A, const TSelectedAssetsBase* B) {
+		return A->GetDisplayName().CompareTo(B->GetDisplayName()) < 0;
+	});
 
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Linear Colors"),
-		FText::FromString("Reflects colors if any changes were made"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.CurveBase"),
-		MakeToolAction<TCurveLinearColorData>(),
-		NAME_None
-	);
+	for (TSelectedAssetsBase* Tool : Tools) {
+		MenuBuilder.AddMenuEntry(
+			Tool->GetDisplayName(),
+			Tool->GetTooltip(),
+			Tool->GetIcon(),
+
+			FUIAction(
+				FExecuteAction::CreateLambda([Tool] {
+					Tool->Execute();
+				}),
+
+				/* Menu entries are only useful with something on the other end, and a tool that is
+				 * still working would refuse a second run anyway */
+				FCanExecuteAction::CreateLambda([Tool] {
+					return Cloud::Status::IsOpened() && !Tool->IsRunning();
+				})
+			),
+			NAME_None
+		);
+	}
 
 	MenuBuilder.EndSection();
 }

@@ -26,6 +26,11 @@ namespace {
 	 * tracks whatever the innermost scope is doing right now rather than freezing on the
 	 * outermost scope's generic description for the length of the whole operation. */
 	TArray<FText> GDescriptionStack;
+
+	/* Entering a progress frame ticks Slate, and that tick can reach code that starts a blocking
+	 * request of its own. Ticking Slate from inside a Slate tick tears widgets down underneath
+	 * the tick that is still walking them, so the inner pump gives up its repaint instead. */
+	bool GPumping = false;
 }
 
 FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
@@ -67,19 +72,25 @@ bool FBlockingRequestScope::IsActive() {
 bool FBlockingRequestScope::Pump() {
 	/* The progress task belongs to the game thread, and a wait on a worker thread is not what
 	 * this is here to keep alive anyway */
-	if (!GBlockingProgress.IsValid() || !IsInGameThread()) {
+	if (!GBlockingProgress.IsValid() || !IsInGameThread() || GPumping) {
 		return false;
 	}
 
 	/* The innermost open scope is whatever is actually happening right now, so its description
 	 * is what the dialog shows. The FrameMessage this sets overrides the outer scope's
 	 * DefaultMessage until the next call retargets it or the nested scope closes */
-	const FText& CurrentDescription = GDescriptionStack.Num() > 0 ? GDescriptionStack.Top() : FText::GetEmpty();
+	const FText CurrentDescription = GDescriptionStack.Num() > 0 ? GDescriptionStack.Top() : FText::GetEmpty();
+
+	GPumping = true;
 
 	/* Entering a frame is what gets the editor repainted and the dialog's input read */
 	GBlockingProgress->EnterProgressFrame(0.0f, CurrentDescription);
 
-	return GBlockingProgress->ShouldCancel();
+	GPumping = false;
+
+	/* The repaint runs arbitrary editor code, and a scope closing in there takes the task with
+	 * it */
+	return GBlockingProgress.IsValid() && GBlockingProgress->ShouldCancel();
 }
 
 void FRemoteUtilities::ExecuteRequestAsync(FReflectionHttpRequest HttpRequest, TFunction<void(FReflectionHttpResponse)> OnComplete) {

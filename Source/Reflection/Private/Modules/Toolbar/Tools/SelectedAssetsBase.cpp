@@ -94,9 +94,24 @@ void TSelectedAssetsBase::HandleExports(const TArray<TSharedPtr<FJsonValue>>& Ex
 	RequestNext();
 }
 
+void TSelectedAssetsBase::BrowseToWhenFinished(const UObject* Object) {
+	if (Object == nullptr) return;
+
+	PendingBrowseTo = Object->GetPathName();
+}
+
 void TSelectedAssetsBase::Finish() {
 	Queue.Reset();
 
 	QueueIndex = 0;
 	bRunning = false;
+
+	if (!PendingBrowseTo.IsEmpty()) {
+		/* Looked up now rather than held from Process: the asset could have been unloaded since */
+		if (UObject* Object = StaticLoadObject(UObject::StaticClass(), nullptr, *PendingBrowseTo)) {
+			BrowseToAsset(Object);
+		}
+
+		PendingBrowseTo.Empty();
+	}
 }

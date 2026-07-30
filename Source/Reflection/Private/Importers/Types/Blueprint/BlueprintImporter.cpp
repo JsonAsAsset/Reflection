@@ -82,6 +82,11 @@ bool IBlueprintImporter::Import() {
 	/* Deserialize Generated Class (blueprint defaults) */
 	UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
 	FUObjectExport* ClassDefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+
+	/* A blueprint with no class default object export has nothing to deserialize defaults from,
+	 * and writing to what the lookup handed back would land on the shared empty export */
+	if (ClassDefaultObjectExport->IsJsonInvalid()) return false;
+
 	ClassDefaultObjectExport->Object = GeneratedClass;
 
 	GetObjectSerializer()->DeserializeObjectProperties(ClassDefaultObjectExport->GetProperties(), GeneratedClass->GetDefaultObject());
@@ -159,7 +164,12 @@ void IBlueprintImporter::ConstructWidgetTree() {
 	WidgetBlueprint->Animations.Empty();
 	
 	FUObjectExport* ClassDefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
-	ClassDefaultObjectExport->Object = WidgetBlueprint;
+
+	/* Same as above: the empty export is shared, so a miss here must not be written to */
+	if (ClassDefaultObjectExport->IsJsonValid()) {
+		ClassDefaultObjectExport->Object = WidgetBlueprint;
+	}
+
 	SetAsset(WidgetBlueprint);
 
 	MoveToTransientPackageAndRename(WidgetBlueprint->WidgetTree->RootWidget);

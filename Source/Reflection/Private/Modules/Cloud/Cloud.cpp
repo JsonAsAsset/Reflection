@@ -97,15 +97,15 @@ TSharedPtr<FJsonObject> Cloud::GetBlocking(const FString& RequestURL, const TMap
 }
 
 void Cloud::RunWhenSafe(TFunction<void()> Work) {
-	/* Nothing is parked, or there is no editor loop to defer onto in the first place */
-	if (!FBlockingRequestScope::IsActive() || GEditor == nullptr) {
+	/* No editor loop to defer onto in the first place */
+	if (GEditor == nullptr) {
 		Work();
 
 		return;
 	}
 
-	/* Timers tick from the editor loop, which cannot advance until the wait pumping this call
-	 * stack has returned, so next tick is reliably after it */
+	/* Timers tick from the editor loop, so next tick is after the HTTP manager tick the response
+	 * was delivered from, and after any blocking wait pumping that tick */
 	GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateLambda([Work]() {
 		Work();
 	}));

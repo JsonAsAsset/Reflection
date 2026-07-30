@@ -238,7 +238,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 
 			if (ExportsContainer) {
-				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName); Export->Object != nullptr) {
+				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
 						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
 					}
@@ -261,7 +261,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 					ObjectOuter.Split(":", nullptr, &ObjectOuter);
 				}
 				
-				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, ObjectOuter); Export->Object != nullptr) {
+				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, ObjectOuter); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
 						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
 					}
@@ -272,7 +272,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 				if (UObject* Parent = ObjectSerializer->Parent) {
 					FString Name = Parent->GetName();
 
-					if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, Name); Export->Object != nullptr) {
+					if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, Name); Export->IsJsonValid() && Export->Object != nullptr) {
 						if (UObject* FoundObject = Export->Object) {
 							ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
 						}
@@ -281,7 +281,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 
 			if (ObjectIndex != -1 && ExportsContainer) {
-				if (FUObjectExport* Export = ExportsContainer->FindByPositionAndName(ObjectIndex, ObjectName); Export->Object != nullptr) {
+				if (FUObjectExport* Export = ExportsContainer->FindByPositionAndName(ObjectIndex, ObjectName); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
 						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
 					}

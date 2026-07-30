@@ -242,4 +242,10 @@ public:
 	virtual void Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) override;
 
 	virtual FName GetSupportedClass() const override { return FName("AnimSequence"); }
+
+	virtual FText GetDisplayName() const override { return FText::FromString("Animations"); }
+	virtual FText GetTooltip() const override { return FText::FromString("Reflects curve data, notifies and other properties"); }
+	virtual FSlateIcon GetIcon() const override { return FSlateIcon(FAppStyle::GetAppStyleSetName(), "GraphEditor.Animation_24x"); }
 };
+
+REGISTER_TOOL(TToolAnimationData)

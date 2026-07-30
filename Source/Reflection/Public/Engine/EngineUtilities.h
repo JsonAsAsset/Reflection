@@ -13,6 +13,8 @@
 #endif
 
 #include "Utilities/ContentBrowserUtilities.h"
+#include "Editor.h"
+#include "TimerManager.h"
 #include "PluginUtils.h"
 #include "ISettingsModule.h"
 #include "AssetRegistry/AssetRegistryModule.h"
@@ -62,6 +64,32 @@ inline void SetNotificationSubText(FNotificationInfo& Notification, const FText&
 #endif
 }
 
+/* Hands a notification to the manager on a call stack that owns itself.
+ *
+ * A notification is a Slate window, and a blocking Cloud wait keeps the editor painting by
+ * ticking Slate from inside whatever call stack it is parked on. One added from there gets built
+ * by that nested tick and torn down by the outer one, and the double free lands seconds later
+ * when the notification expires, nowhere near the code that caused it. */
+inline TSharedPtr<SNotificationItem> AddNotificationWhenSafe(const FNotificationInfo& Info, const SNotificationItem::ECompletionState CompletionState) {
+	if (FBlockingRequestScope::IsActive() && GEditor != nullptr) {
+		GEditor->GetTimerManager()->SetTimerForNextTick(FTimerDelegate::CreateLambda([Info, CompletionState] {
+			if (const TSharedPtr<SNotificationItem> DeferredItem = FSlateNotificationManager::Get().AddNotification(Info)) {
+				DeferredItem->SetCompletionState(CompletionState);
+			}
+		}));
+
+		return nullptr;
+	}
+
+	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
+
+	if (NotificationPtr.IsValid()) {
+		NotificationPtr->SetCompletionState(CompletionState);
+	}
+
+	return NotificationPtr;
+}
+
 /* Show the user a Notification */
 inline auto AppendNotification(const FText& Text, const FText& SubText, const float ExpireDuration,
                                const SNotificationItem::ECompletionState CompletionState, const bool UseSuccessFailIcons,
@@ -72,11 +100,10 @@ inline auto AppendNotification(const FText& Text, const FText& SubText, const fl
 	Info.bUseLargeFont = true;
 	Info.bUseSuccessFailIcons = UseSuccessFailIcons;
 	Info.WidthOverride = FOptionalSize(WidthOverride);
-	
+
 	SetNotificationSubText(Info, SubText);
 
-	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
-	NotificationPtr->SetCompletionState(CompletionState);
+	AddNotificationWhenSafe(Info, CompletionState);
 }
 
 /* Show the user a Notification with Subtext */
@@ -93,8 +120,7 @@ inline auto AppendNotification(const FText& Text, const FText& SubText, float Ex
 
 	SetNotificationSubText(Info, SubText);
 
-	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
-	NotificationPtr->SetCompletionState(CompletionState);
+	AddNotificationWhenSafe(Info, CompletionState);
 }
 
 inline TSharedPtr<SNotificationItem> AppendNotificationWithHandler(const FText& Text, const FText& SubText, const float ExpireDuration,
@@ -119,13 +145,9 @@ inline TSharedPtr<SNotificationItem> AppendNotificationWithHandler(const FText& 
 		PreAddHandler(Info);
 	}
 
-	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
-
-	if (NotificationPtr.IsValid()) {
-		NotificationPtr->SetCompletionState(CompletionState);
-	}
-
-	return NotificationPtr;
+	/* Callers here want the item back to drive it later, so this one is added on the spot and
+	 * hands back nothing when a blocking wait made that unsafe */
+	return AddNotificationWhenSafe(Info, CompletionState);
 }
 
 /* Creates a plugin in the name (may result in bugs if inputted wrong) */

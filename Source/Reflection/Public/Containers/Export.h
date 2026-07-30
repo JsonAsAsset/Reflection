@@ -225,16 +225,36 @@ struct REFLECTION_API FUObjectExport : FUObjectJsonValueExport {
 	}
 
 	bool IsJsonValid() const {
-		return JsonObject != nullptr && this != EmptyExport();
+		return JsonObject != nullptr && !bEmpty;
 	}
 
 	bool IsJsonInvalid() const {
 		return !IsJsonValid();
 	}
 
+	/* Handed back by every container lookup that finds nothing, so a caller can chain off the
+	 * result without checking for null first.
+	 *
+	 * There is one of these for the whole process, and callers that write to what a lookup gave
+	 * them without testing it first end up writing here. Object is cleared on the way out so a
+	 * stale one can never be read back by the next miss, which would hand out a pointer to an
+	 * object from an unrelated import that may no longer exist. */
 	static FUObjectExport* EmptyExport() {
-		static FUObjectExport* Empty = new FUObjectExport();
+		static FUObjectExport* Empty = []() {
+			FUObjectExport* Export = new FUObjectExport();
+			Export->bEmpty = true;
+
+			return Export;
+		}();
+
+		Empty->Object = nullptr;
+		Empty->Parent = nullptr;
+
 		return Empty;
+	}
+
+	bool IsEmptyExport() const {
+		return bEmpty;
 	}
 
 	explicit operator bool() const {
@@ -247,4 +267,7 @@ struct REFLECTION_API FUObjectExport : FUObjectJsonValueExport {
 	
 protected:
 	UClass* Class = nullptr;
+
+	/* Only ever true for the one EmptyExport */
+	bool bEmpty = false;
 };

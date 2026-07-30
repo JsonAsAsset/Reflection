@@ -39,7 +39,7 @@ void TToolFontData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 
 		FontFace->Modify();
 
-		BrowseToAsset(FontFace);
+		BrowseToWhenFinished(FontFace);
 
 		/* Notification */
 		AppendNotification(

@@ -78,12 +78,12 @@ public:
 
 	static TSharedPtr<FJsonObject> GetBlocking(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
 
-	/* Runs Work now, or on a later editor tick if the game thread is currently parked on a
-	 * blocking Cloud wait.
+	/* Runs Work on the next editor tick, off whatever call stack the response arrived on.
 	 *
-	 * Responses are delivered from the HTTP manager's tick, and a blocking wait drives that
-	 * tick itself, so a callback can land in the middle of an unrelated import. Anything that
-	 * creates or edits assets goes through here to make sure it gets a call stack of its own. */
+	 * Responses are delivered from the HTTP manager's tick, so a callback runs inside HTTP
+	 * request finalization, and a blocking wait drives that tick itself, so it can also land in
+	 * the middle of an unrelated import. Anything that creates or edits assets, or drives the
+	 * Content Browser, goes through here to get a call stack of its own. */
 	static void RunWhenSafe(TFunction<void()> Work);
 
 private:
