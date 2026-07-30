@@ -21,6 +21,7 @@
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
 #include "Utilities/DialogUtilities.h"
+#include "Widgets/Layout/SBox.h"
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;
 
@@ -70,7 +71,13 @@ void UReflectionToolbar::Register() {
 		Section.AddDynamicEntry("ReflectionEmbeddedToolbar", FNewToolMenuSectionDelegate::CreateLambda([](FToolMenuSection& InSection) {
 			InSection.AddEntry(FToolMenuEntry::InitWidget(
 				"ReflectionEmbeddedToolbar",
-				UToolMenus::Get()->GenerateWidget(EmbeddedToolbarName, FToolMenuContext()),
+				SNew(SBox)
+				.Visibility_Static([]() {
+					return UReflectionToolbar::IsToolBarVisible() ? EVisibility::Visible : EVisibility::Collapsed;
+				})
+				[
+					UToolMenus::Get()->GenerateWidget(EmbeddedToolbarName, FToolMenuContext())
+				],
 				FText::GetEmpty(),
 				true,
 				false
