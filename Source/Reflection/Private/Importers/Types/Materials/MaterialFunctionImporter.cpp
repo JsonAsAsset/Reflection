@@ -4,11 +4,15 @@
 #include "Factories/MaterialFunctionFactoryNew.h"
 
 UObject* IMaterialFunctionImporter::CreateAsset(UObject* CreatedAsset) {
-	/* Create Material Function Factory (factory automatically creates the Material Function) */
-	UMaterialFunctionFactoryNew* MaterialFunctionFactory = NewObject<UMaterialFunctionFactoryNew>();
-	UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(MaterialFunctionFactory->FactoryCreateNew(UMaterialFunction::StaticClass(), GetPackage(), *GetAssetName(), RF_Standalone | RF_Public, nullptr, GWarn));
-
-	return IImporter::CreateAsset(MaterialFunction);
+	return IImporter::CreateAsset(Cast<UMaterialFunction>(
+		NewObject<UMaterialFunctionFactoryNew>()->FactoryCreateNew(
+			UMaterialFunction::StaticClass(),
+			GetPackage(),
+			*GetAssetName(),
+			RF_Standalone | RF_Public,
+			nullptr,
+			GWarn)
+	));
 }
 
 bool IMaterialFunctionImporter::Import() {
