@@ -6,6 +6,7 @@
 #include "Engine/EngineUtilities.h"
 
 #include "Modules/UI/StyleModule.h"
+#include "Importers/Constructor/ImportJob.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Modules/Metadata.h"
 #include "Modules/Cloud/Cloud.h"
@@ -365,19 +366,23 @@ void UReflectionToolbar::ImportAction() {
 void UReflectionToolbar::Import() {
 	/* Update Runtime */
 	GReflectionRuntime.Update();
-	FRRedirects::Clear();
+
+	/* Redirect history is what lets a path be turned back into the one the Cloud knows, so
+	 * clearing it under a job that is still running would strand its remaining references */
+	if (!FImportJob::IsRunning()) {
+		FRRedirects::Clear();
+	}
 
 	CancelWaitForCloudTimer();
 
 	/* Dialog for a JSON File */
-	TArray<FString> OutFileNames = OpenFileDialog("Select a JSON File", "JSON Files|*.json");
+	const TArray<FString> OutFileNames = OpenFileDialog("Select a JSON File", "JSON Files|*.json");
 	if (OutFileNames.Num() == 0) {
 		return;
 	}
 
-	for (FString& File : OutFileNames) {
-		IImportReader::ImportReference(File);
-	}
+	/* Imported a slice at a time, so the editor keeps drawing for however long it takes */
+	FImportJob::Enqueue(OutFileNames);
 }
 
 void UReflectionToolbar::HandleCloudWaiting() {

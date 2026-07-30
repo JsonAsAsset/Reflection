@@ -3,6 +3,7 @@
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 
 #include "Importers/Constructor/Importer.h"
+#include "Importers/Constructor/ImportJob.h"
 #include "Importers/Constructor/ImportReader.h"
 
 #if ENGINE_UE4
@@ -59,21 +60,22 @@ void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 					FUIAction(
 						FExecuteAction::CreateLambda([] {
-							for (FString Folder : OpenFolderDialog("Folder of JSON files")) {
-								TArray<FString> JsonFiles;
+							TArray<FString> JsonFiles;
+
+							for (const FString& Folder : OpenFolderDialog("Folder of JSON files")) {
 								IFileManager::Get().FindFilesRecursive(
 									JsonFiles,
 									*Folder,
 									TEXT("*.json"),
 									true,
 									true,
-									false
+									/* bClearFileNames */ false
 								);
-
-								for (FString& JsonPath : JsonFiles) {
-									IImportReader::ImportReference(JsonPath);
-								}
 							}
+
+							/* A folder of JSON is exactly the case that used to lock the editor up
+							 * for minutes, so it goes through the sliced job */
+							FImportJob::Enqueue(JsonFiles);
 						})
 					),
 					NAME_None
