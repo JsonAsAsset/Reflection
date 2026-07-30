@@ -15,7 +15,7 @@
 #include "HAL/PlatformApplicationMisc.h"
 
 #include "Modules/Cloud/Cloud.h"
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"

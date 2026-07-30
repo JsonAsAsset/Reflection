@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "Json.h"
+#include "Containers/JsonValueExport.h"
 #include "Dom/JsonObject.h"
 #include "UObject/Object.h"
 

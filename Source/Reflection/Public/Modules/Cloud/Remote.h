@@ -2,13 +2,11 @@
 
 #pragma once
 
-#include "HttpModule.h"
 #include "Engine/Compatibility.h"
 #include "Interfaces/IHttpRequest.h"
 #include "Interfaces/IHttpResponse.h"
-#include "Modules/Log.h"
 
-/* HTTP hands out threadsafe shared pointers on both engines, but UE4 defaults TSharedRef/
+/* HTTP hands out thread-safe shared pointers on both engines, but UE4 defaults TSharedRef/
  * TSharedPtr to ESPMode::Fast and UE5 defaults them to ESPMode::ThreadSafe, so the mode has to
  * be spelled out for UE4 to end up with the same type */
 #if ENGINE_UE5

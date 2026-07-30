@@ -10,10 +10,8 @@
 /* Struct Serializers */
 #include "Distributions.h"
 #include "MovieSceneSection.h"
-#include "Components/BrushComponent.h"
-#include "Components/PostProcessComponent.h"
 #include "Engine/FontFace.h"
-#include "Decooking/ParticleSystemDecooking.h"
+#include "Importers/Types/Cascade/ParticleSystemDecooking.h"
 #include "Serializers/Structs/DateTimeSerializer.h"
 #include "Serializers/Structs/FallbackStructSerializer.h"
 #include "Serializers/Structs/TimeSpanSerializer.h"

@@ -7,7 +7,7 @@
 #include "Misc/MessageDialog.h"
 
 /* ~~~~~~~~~~~~~ Templated Engine Classes ~~~~~~~~~~~~~ */
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 #include "Engine/EngineUtilities.h"
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 

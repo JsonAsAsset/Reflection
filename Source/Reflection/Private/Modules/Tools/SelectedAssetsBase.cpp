@@ -1,6 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-#include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
+#include "Modules/Tools/SelectedAssetsBase.h"
 
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/UI/StyleModule.h"

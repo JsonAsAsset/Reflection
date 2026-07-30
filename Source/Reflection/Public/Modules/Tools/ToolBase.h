@@ -3,6 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Containers/Serializer.h"
+#include "Serializers/SerializerContainer.h"
 
 class TToolBase : public USerializerContainer { };

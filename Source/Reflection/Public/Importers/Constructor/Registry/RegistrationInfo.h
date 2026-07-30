@@ -8,6 +8,17 @@
 
 class IImporter;
 
+/* The registry keys on TArray<FString>, which TMap cannot hash on its own */
+FORCEINLINE uint32 GetTypeHash(const TArray<FString>& Array) {
+	uint32 Hash = 0;
+
+	for (const FString& Str : Array) {
+		Hash = HashCombine(Hash, GetTypeHash(Str));
+	}
+
+	return Hash;
+}
+
 /* Easy way to find importers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 using FImporterFactoryDelegate = TFunction<IImporter*()>;
 

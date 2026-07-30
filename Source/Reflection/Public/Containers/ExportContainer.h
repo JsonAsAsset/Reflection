@@ -3,7 +3,7 @@
 #pragma once
 
 #include "Export.h"
-#include "Json.h"
+#include "Containers/JsonValueExport.h"
 #include "Dom/JsonObject.h"
 #include "UObject/Object.h"
 
@@ -320,50 +320,3 @@ public:
 	}
 };
 
-/* Walks a json value and resolves every ObjectName/ObjectPath pair it finds against Container */
-inline void CollectObjectPackagesRecursively(const TSharedPtr<FJsonValue>& Value, FUObjectExportContainer* Container, TArray<FUObjectExport*>& Exports) {
-	if (!Value.IsValid()) {
-		return;
-	}
-
-	if (Value->Type == EJson::Object) {
-		const TSharedPtr<FJsonObject>& Object = Value->AsObject();
-		if (!Object.IsValid()) {
-			return;
-		}
-
-		/* If it has ObjectName + ObjectPath, then resolve */
-		if (Object->HasField(TEXT("ObjectName")) && Object->HasField(TEXT("ObjectPath"))) {
-			FUObjectExport* Resolved = Container->GetExportByObjectPath(Object);
-
-			Exports.Add(Resolved);
-		}
-
-		/* Recurse through fields */
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values) {
-			CollectObjectPackagesRecursively(Pair.Value, Container, Exports);
-		}
-	}
-	else if (Value->Type == EJson::Array) {
-		for (const TSharedPtr<FJsonValue>& ArrayValue : Value->AsArray()) {
-			CollectObjectPackagesRecursively(ArrayValue, Container, Exports);
-		}
-	}
-}
-
-/* Every export referenced anywhere inside Export's json, however deeply nested */
-inline TArray<FUObjectExport*> CollectObjectPackages(FUObjectExport* Export, FUObjectExportContainer* Container) {
-	TArray<FUObjectExport*> Exports;
-
-	if (!Export->IsJsonValid()) {
-		return Exports;
-	}
-
-	CollectObjectPackagesRecursively(
-		MakeShared<FJsonValueObject>(Export->JsonObject),
-		Container,
-		Exports
-	);
-
-	return Exports;
-}

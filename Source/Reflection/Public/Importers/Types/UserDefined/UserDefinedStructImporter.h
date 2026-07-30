@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Importers/Constructor/Importer.h"
+
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 5
 #include "StructUtils/UserDefinedStruct.h"
 #else

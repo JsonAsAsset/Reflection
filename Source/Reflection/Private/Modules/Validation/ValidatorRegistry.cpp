@@ -5,7 +5,7 @@
 /* Validation is UE5 only */
 #if ENGINE_UE5
 
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 
 /* Registration order is the order the dropdown lists them in, and the first one is what the
  * toolbar button runs, so this stays an array rather than a map */

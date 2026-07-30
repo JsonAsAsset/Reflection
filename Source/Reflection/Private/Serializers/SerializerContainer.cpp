@@ -1,6 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-#include "Containers/Serializer.h"
+#include "Serializers/SerializerContainer.h"
 
 USerializerContainer::USerializerContainer() {
 	CreateSerializer();

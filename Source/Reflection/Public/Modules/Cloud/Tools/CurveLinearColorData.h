@@ -3,7 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
+#include "Modules/Tools/SelectedAssetsBase.h"
 
 class REFLECTION_API TCurveLinearColorData : public TSelectedAssetsBase {
 public:

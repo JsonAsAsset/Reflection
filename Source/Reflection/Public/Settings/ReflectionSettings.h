@@ -78,7 +78,7 @@ public:
 	UPROPERTY(Config)
 	bool EnableCloudServer = true;
 
-	/* Enables experimental/developing features of Reflection. Features may not work as intended. */
-	UPROPERTY(EditAnywhere, Config, Category = Settings, AdvancedDisplay)
+	/* Enables experimental/developing features. Features may not work as intended. */
+	UPROPERTY(EditAnywhere, Config, DisplayName = "Experiments", Category = Settings, AdvancedDisplay)
 	bool EnableExperiments = false;
 };

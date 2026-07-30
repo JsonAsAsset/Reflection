@@ -5,12 +5,10 @@
 #include "CoreMinimal.h"
 #include "Textures/SlateIcon.h"
 
-#include "Engine/Compatibility.h"
-#include "Modules/Toolbar/Tools/ToolBase.h"
-#include "Modules/Toolbar/Tools/ToolRegistry.h"
+#include "Modules/Tools/ToolBase.h"
+#include "Modules/Tools/ToolRegistry.h"
 
-/*
- * Base for the Cloud tools, which all do the same thing: take what the user selected in the
+/* Base for the Cloud tools, which all do the same thing: take what the user selected in the
  * Content Browser, ask the Cloud for each asset's exports, and apply them.
  *
  * Execute returns as soon as it has read the selection. The run then walks the selection one

@@ -5,7 +5,7 @@
 #include "Algo/Sort.h"
 
 #include "Modules/Cloud/Cloud.h"
-#include "Modules/Toolbar/Tools/ToolRegistry.h"
+#include "Modules/Tools/ToolRegistry.h"
 
 /* Every tool registers from its own header, so including them is what puts them in the menu */
 #include "Modules/Cloud/Tools/AnimationData.h"

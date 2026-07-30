@@ -5,7 +5,7 @@
 #include "Engine/Compatibility.h"
 #include "Dom/JsonObject.h"
 #include "CoreMinimal.h"
-#include "Containers/Serializer.h"
+#include "Serializers/SerializerContainer.h"
 
 /* ReSharper disable once CppUnusedIncludeDirective */
 #include "Macros.h"

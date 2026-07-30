@@ -7,7 +7,7 @@
 #include "UObject/StrongObjectPtr.h"
 
 #include "Importers/Constructor/ImportReader.h"
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 #include "Modules/UI/StyleModule.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"

@@ -50,15 +50,4 @@ public:
 
     UPROPERTY()
     TArray<FString> WhitelistedTypes;
-    
-    UPROPERTY()
-    TArray<FString> WhitelistedTypesStartingWith;
-
-    UPROPERTY()
-    TArray<FName> WhitelistedTreeSegments;
-
-    UPROPERTY()
-    TArray<FString> BlacklistedTypes;
-
-    TArray<FString> PathsToNotDeserialize;
 };

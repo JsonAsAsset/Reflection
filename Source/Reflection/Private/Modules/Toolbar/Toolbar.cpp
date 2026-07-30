@@ -346,9 +346,28 @@ void UReflectionToolbar::WaitForCloudTimerCallback() {
 		);
 	}
 	
-	if (!GetSettings()->EnableCloudServer || !Cloud::Status::IsOpened()) {
+	if (!GetSettings()->EnableCloudServer) {
 		CancelWaitForCloudTimer();
-		
+
+		return;
+	}
+
+	/* The Cloud was running when the wait started, so it going away now means it stopped or
+	 * restarted underneath us. Dropping the wait without saying so looks exactly like the reflect
+	 * button doing nothing at all. */
+	if (!Cloud::Status::IsOpened()) {
+		CancelWaitForCloudTimer();
+
+		AppendNotification(
+			FText::FromString("Cloud Stopped"),
+			FText::FromString("It went away while starting up. Reflect again once it is running."),
+			4.0f,
+			FReflectionStyle::Get().GetBrush("Toolbar.Icon"),
+			SNotificationItem::CS_Fail,
+			false,
+			310.0f
+		);
+
 		return;
 	}
 

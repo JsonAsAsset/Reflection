@@ -4,10 +4,9 @@
 
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
-#include "Modules/Cloud/Remote.h"
 #include "Utilities/Dialog.h"
 #include "AssetRegistry/AssetRegistryModule.h"
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 
 inline void BrowseToAsset(UObject* Asset) {
 	/* Browse to newly added Asset in the Content Browser */

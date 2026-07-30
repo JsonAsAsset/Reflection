@@ -5,7 +5,7 @@
 #include "HttpManager.h"
 #include "HttpModule.h"
 #include "Misc/ScopedSlowTask.h"
-#include "Modules/Log.h"
+#include "Engine/Log.h"
 
 namespace {
 	/* How long a blocking wait sits between HTTP ticks: short enough that a quick reply isn't

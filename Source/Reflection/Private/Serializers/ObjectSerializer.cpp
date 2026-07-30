@@ -12,6 +12,7 @@
 #include "Utilities/Containers.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
+#include "Engine/Properties.h"
 #include "Particles/ParticleEmitter.h"
 #include "Particles/ParticleLODLevel.h"
 #include "Particles/ParticleSystem.h"
@@ -186,35 +187,6 @@ void UObjectSerializer::DeserializeExports(FUObjectExportContainer* Container, c
 				}
 
 				if (!bMatchFound) {
-					continue;
-				}
-			}
-
-			if (WhitelistedTypesStartingWith.Num() > 0) {
-				bool bMatchFound = false;
-
-				for (const FString& Whitelisted : WhitelistedTypesStartingWith) {
-					if (Type.StartsWith(Whitelisted)) {
-						bMatchFound = true;
-						break;
-					}
-				}
-
-				if (!bMatchFound) {
-					continue;
-				}
-			}
-
-			if (WhitelistedTreeSegments.Num() > 0) {
-				auto TreeSegments = Export->GetOuterTreeSegments(true);
-			
-				if (TreeSegments.Num() > 0 && WhitelistedTreeSegments != TreeSegments) {
-					continue;
-				}
-			}
-			
-			if (BlacklistedTypes.Num() > 0) {
-				if (BlacklistedTypes.Contains(Type)) {
 					continue;
 				}
 			}

@@ -7,8 +7,8 @@
 
 void IGeneralDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	MenuBuilder.AddMenuEntry(
-		FText::FromString("Open Plugin Settings"),
-		FText::FromString("Navigate to plugin settings"),
+		FText::FromString("Plugin Settings"),
+		FText::FromString("Navigate to Plugin Settings"),
 #if ENGINE_UE5
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Settings"),
 #else
