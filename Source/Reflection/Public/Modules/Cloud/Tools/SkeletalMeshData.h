@@ -3,11 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Modules/Toolbar/Tools/ToolBase.h"
+#include "Modules/Toolbar/Tools/SelectedAssetsBase.h"
 
-class REFLECTION_API TSkeletalMeshData : public TToolBase {
+class REFLECTION_API TSkeletalMeshData : public TSelectedAssetsBase {
 public:
-	virtual void Execute();
+	virtual void Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) override;
+
+	virtual FName GetSupportedClass() const override { return FName("SkeletalMesh"); }
 
 protected:
 	static TArray<FSkeletalMaterial> GetMaterials(USkeletalMesh* Mesh);

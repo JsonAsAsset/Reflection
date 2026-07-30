@@ -5,15 +5,19 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonUtilities.h"
 
-void TCurveLinearColorData::Process(UObject* Object) {
+void TCurveLinearColorData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
 	UCurveLinearColor* CurveLinearColor = Cast<UCurveLinearColor>(Object);
 	if (!CurveLinearColor) return;
 
-	FUObjectExportContainer* Exports = new FUObjectExportContainer(SendToCloudForExports(GetAssetPath(Object)));
-	auto Export = Exports->FindByType(FString("CurveLinearColor"));
+	FUObjectExportContainer* Container = new FUObjectExportContainer(Exports);
+	FUObjectExport* Export = Container->FindByType(FString("CurveLinearColor"));
 
-	Initialize(Export, Exports);
-	
+	/* FindByType hands back an empty export rather than null when there is no match, and
+	 * Initialize reads straight through its JSON */
+	if (!Export->IsJsonValid()) return;
+
+	Initialize(Export, Container);
+
 	/* Array of containers */
 	TArray<TSharedPtr<FJsonValue>> FloatCurves = GetAssetData()->GetArrayField(TEXT("FloatCurves"));
 
@@ -27,6 +31,6 @@ void TCurveLinearColorData::Process(UObject* Object) {
 			CurveLinearColor->FloatCurves[i].Keys.Add(ObjectToRichCurveKey(Keys[j]->AsObject()));
 		}
 	}
-	
+
 	HandleAssetCreation(CurveLinearColor, CurveLinearColor->GetPackage());
 }

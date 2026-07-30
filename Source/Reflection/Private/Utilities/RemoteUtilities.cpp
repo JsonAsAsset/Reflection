@@ -4,67 +4,90 @@
 
 #include "HttpManager.h"
 #include "HttpModule.h"
+#include "Misc/ScopedSlowTask.h"
 #include "Modules/Log.h"
 
-#if ENGINE_UE5
-TSharedPtr<IHttpResponse>
-#else
-TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>
-#endif
-	FRemoteUtilities::ExecuteRequestSync(
+namespace {
+	/* How long a blocking wait sits between HTTP ticks: short enough that a quick reply isn't
+	 * held up, long enough not to spin a core for the duration */
+	constexpr float BlockingPollInterval = 0.01f;
 
-	/* Different type declarations for HttpRequest on UE5 */
-#if ENGINE_UE5
-	TSharedRef<IHttpRequest> HttpRequest
-#else
-	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& HttpRequest
-#endif
-	/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-	
-	, const float LoopDelay)
-{
-	const bool StartedRequest = HttpRequest->ProcessRequest();
-	if (!StartedRequest) {
-		UE_LOG(LogReflection, Error, TEXT("Failed to start HTTP Request."));
-		return nullptr;
-	}
+	/* Progress only appears once a wait has lasted long enough for the user to notice it, so
+	 * operations the Cloud answers immediately never flash a dialog */
+	constexpr float BlockingProgressDelay = 0.4f;
 
-	double LastTime = FPlatformTime::Seconds();
-	while (EHttpRequestStatus::Processing == HttpRequest->GetStatus()) {
-		const double AppTime = FPlatformTime::Seconds();
-		FHttpModule::Get().GetHttpManager().Tick(AppTime - LastTime);
-		
-		LastTime = AppTime;
-		FPlatformProcess::Sleep(LoopDelay);
-	}
+	int32 GBlockingScopeDepth = 0;
 
-	return HttpRequest->GetResponse();
+	/* Scoped rather than bare FSlowTask: the scoped form is the one that registers itself with
+	 * the feedback context on construction and unregisters on destruction */
+	TUniquePtr<FScopedSlowTask> GBlockingProgress;
 }
 
-void FRemoteUtilities::ExecuteRequestAsync(
-#if ENGINE_UE5
-	TSharedRef<IHttpRequest> HttpRequest,
-#else
-	const TSharedRef<IHttpRequest, ESPMode::ThreadSafe>& HttpRequest,
-#endif
+FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
+	bTracked = IsInGameThread();
 
-	TFunction<void(
-#if ENGINE_UE5
-		TSharedPtr<IHttpResponse>
-#else
-		TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>
-#endif
-	)> OnComplete)
-{
+	if (!bTracked) {
+		return;
+	}
+
+	bOwnsProgress = GBlockingScopeDepth++ == 0;
+
+	if (bOwnsProgress) {
+		/* Zero total work: a wait has no measurable length to report, the task exists to keep
+		 * the editor drawn and to carry the Cancel button */
+		GBlockingProgress = MakeUnique<FScopedSlowTask>(0.0f, Description);
+		GBlockingProgress->MakeDialogDelayed(BlockingProgressDelay, true);
+	}
+}
+
+FBlockingRequestScope::~FBlockingRequestScope() {
+	if (!bTracked) {
+		return;
+	}
+
+	GBlockingScopeDepth--;
+
+	if (bOwnsProgress) {
+		GBlockingProgress.Reset();
+	}
+}
+
+bool FBlockingRequestScope::IsActive() {
+	return GBlockingScopeDepth > 0;
+}
+
+bool FBlockingRequestScope::Pump() {
+	/* The progress task belongs to the game thread, and a wait on a worker thread is not what
+	 * this is here to keep alive anyway */
+	if (!GBlockingProgress.IsValid() || !IsInGameThread()) {
+		return false;
+	}
+
+	/* Entering a frame is what gets the editor repainted and the dialog's input read */
+	GBlockingProgress->EnterProgressFrame(0.0f);
+
+	return GBlockingProgress->ShouldCancel();
+}
+
+void FRemoteUtilities::ExecuteRequestAsync(FReflectionHttpRequest HttpRequest, TFunction<void(FReflectionHttpResponse)> OnComplete) {
+	/* A failed ProcessRequest may or may not have already reported through the delegate, and
+	 * OnComplete has to run exactly once either way */
+	const TSharedRef<bool, ESPMode::ThreadSafe> Reported = MakeShared<bool, ESPMode::ThreadSafe>(false);
+
 	HttpRequest->OnProcessRequestComplete().BindLambda(
-		[OnComplete](
-			FHttpRequestPtr Request,
-			const FHttpResponsePtr& Response,
-			const bool bSuccess) {
+		[OnComplete, Reported](FHttpRequestPtr Request, FHttpResponsePtr Response, const bool bSuccess) {
+			if (*Reported) {
+				return;
+			}
+
+			*Reported = true;
+
 			if (!bSuccess || !Response.IsValid()) {
-				UE_LOG(LogReflection, Error, TEXT("HTTP Request failed."));
+				const FString RequestURL = Request.IsValid() ? Request->GetURL() : TEXT("<unknown>");
+
+				UE_LOG(LogReflection, Warning, TEXT("HTTP request failed: \"%s\""), *RequestURL);
 				OnComplete(nullptr);
-				
+
 				return;
 			}
 
@@ -72,8 +95,49 @@ void FRemoteUtilities::ExecuteRequestAsync(
 		}
 	);
 
-	if (!HttpRequest->ProcessRequest()) {
-		UE_LOG(LogReflection, Error, TEXT("Failed to start HTTP Request."));
+	if (!HttpRequest->ProcessRequest() && !*Reported) {
+		*Reported = true;
+
+		UE_LOG(LogReflection, Error, TEXT("Failed to start HTTP request: \"%s\""), *HttpRequest->GetURL());
 		OnComplete(nullptr);
 	}
+}
+
+FReflectionHttpResponse FRemoteUtilities::ExecuteRequestBlocking(FReflectionHttpRequest HttpRequest, const float TimeoutSeconds) {
+	const FString RequestURL = HttpRequest->GetURL();
+
+	if (!HttpRequest->ProcessRequest()) {
+		UE_LOG(LogReflection, Error, TEXT("Failed to start HTTP request: \"%s\""), *RequestURL);
+
+		return nullptr;
+	}
+
+	double LastTime = FPlatformTime::Seconds();
+	const double Deadline = LastTime + TimeoutSeconds;
+
+	while (EHttpRequestStatus::Processing == HttpRequest->GetStatus()) {
+		const double CurrentTime = FPlatformTime::Seconds();
+
+		/* Nothing else is driving the manager while this thread is parked here */
+		FHttpModule::Get().GetHttpManager().Tick(static_cast<float>(CurrentTime - LastTime));
+		LastTime = CurrentTime;
+
+		if (FBlockingRequestScope::Pump()) {
+			UE_LOG(LogReflection, Log, TEXT("HTTP request cancelled: \"%s\""), *RequestURL);
+			HttpRequest->CancelRequest();
+
+			return nullptr;
+		}
+
+		if (CurrentTime >= Deadline) {
+			UE_LOG(LogReflection, Error, TEXT("HTTP request timed out after %.0f seconds: \"%s\""), TimeoutSeconds, *RequestURL);
+			HttpRequest->CancelRequest();
+
+			return nullptr;
+		}
+
+		FPlatformProcess::Sleep(BlockingPollInterval);
+	}
+
+	return HttpRequest->GetResponse();
 }

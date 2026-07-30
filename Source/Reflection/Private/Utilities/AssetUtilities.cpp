@@ -160,6 +160,14 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 		return false;
 	}
 
+	/* Reached from the middle of property deserialization, which has nowhere to put a callback,
+	 * so the requests below have to be waited on. The scope is what keeps the editor drawn and
+	 * cancellable while that happens. */
+	const FBlockingRequestScope BlockingScope(FText::Format(
+		NSLOCTEXT("Reflection", "CloudDownloading", "Downloading {0} from the Cloud"),
+		FText::FromString(Path)
+	));
+
 	/* Supported Texture Classes */
 	const bool IsTexture = Type ==
 		"Texture2D" ||
@@ -192,7 +200,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 			return true;
 		}
 		
-		const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRaw(Path);
+		const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRawBlocking(Path);
 		if (Response == nullptr || Path.IsEmpty()) return true;
 
 		if (Response->HasField(TEXT("errored"))) {
@@ -201,7 +209,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 		}
 
 		if (Type == "SoundWave") {
-			const TSharedPtr<FJsonObject> ObjectResponse = Cloud::Export::GetRaw(Path, {
+			const TSharedPtr<FJsonObject> ObjectResponse = Cloud::Export::GetRawBlocking(Path, {
 				{
 					"save",
 					"true"
@@ -253,7 +261,7 @@ bool FAssetUtilities::Construct_TypeTexture(const FString& Path, const FString& 
 		return false;
 	}
 
-	const TSharedPtr<FJsonObject> JsonObject = Cloud::Export::GetRaw(FetchPath);
+	const TSharedPtr<FJsonObject> JsonObject = Cloud::Export::GetRawBlocking(FetchPath);
 	if (JsonObject == nullptr) {
 		return false;
 	}
@@ -281,14 +289,13 @@ bool FAssetUtilities::Construct_TypeTexture(const FString& Path, const FString& 
 
 	/* ~~~~~~~~~~~~~~~ Download Texture Data ~~~~~~~~~~~~ */
 	if (Type != "TextureRenderTarget2D") {
-		FHttpModule* HttpModule = &FHttpModule::Get();
-		const auto HttpRequest = HttpModule->CreateRequest();
+		const FReflectionHttpRequest HttpRequest = FHttpModule::Get().CreateRequest();
 
 		HttpRequest->SetURL(Cloud::URL + "/api/export?path=" + FetchPath);
 		HttpRequest->SetHeader("content-type", UseOctetStream ? "application/octet-stream" : "image/png");
 		HttpRequest->SetVerb(TEXT("GET"));
-		
-		const auto HttpResponse = FRemoteUtilities::ExecuteRequestSync(HttpRequest);
+
+		const FReflectionHttpResponse HttpResponse = FRemoteUtilities::ExecuteRequestBlocking(HttpRequest);
 
 		if (!HttpResponse.IsValid() || HttpResponse->GetResponseCode() != 200)
 			return false;

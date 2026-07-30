@@ -11,8 +11,17 @@
 #include "Utilities/AssetUtilities.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonUtilities.h"
+#include "Utilities/RemoteUtilities.h"
 
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications) {
+	/* Importers resolve references through the Cloud while they deserialize, and those requests
+	 * have nowhere to put a callback, so they get waited on. The scope is what keeps the editor
+	 * drawn and cancellable for as long as this import needs the Cloud. */
+	const FBlockingRequestScope BlockingScope(FText::Format(
+		NSLOCTEXT("Reflection", "CloudImporting", "Importing {0}"),
+		FText::FromString(FPaths::GetCleanFilename(File))
+	));
+
 	FUObjectExportContainer* Container = new FUObjectExportContainer(Exports);
 
 	const bool IsBlueprint = Container->FindByType(FString("BlueprintGeneratedClass"))->IsJsonValid();
