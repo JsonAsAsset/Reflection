@@ -49,6 +49,7 @@ void UReflectionToolbar::Register() {
 		FToolMenuSection& Section = Menu->FindOrAddSection(GReflectionName);
 
 		AddReflectionButtons(Section);
+		Section.AddSeparator(NAME_None);
 		AddCloudButtons(Section);
 	} else {
 		static const FName EmbeddedToolbarName("Reflection.EmbeddedToolbar");
@@ -64,6 +65,7 @@ void UReflectionToolbar::Register() {
 		FToolMenuSection& EmbeddedSection = EmbeddedToolbar->FindOrAddSection("ReflectionEmbeddedSection");
 
 		AddReflectionButtons(EmbeddedSection);
+		EmbeddedSection.AddSeparator(NAME_None);
 		AddCloudButtons(EmbeddedSection);
 
 		FToolMenuSection& Section = Menu->FindOrAddSection("New");
