@@ -75,7 +75,7 @@ public:
 	TArray<FRRedirector> Redirectors;
 
 	/* Retrieves assets from an API and imports references directly into your project. */
-	UPROPERTY(EditAnywhere, Config, Category = Cloud, DisplayName = "Enable Cloud")
+	UPROPERTY(Config)
 	bool EnableCloudServer = true;
 
 	/* Enables experimental/developing features of Reflection. Features may not work as intended. */

@@ -11,8 +11,9 @@ USTRUCT()
 struct FRTextureSettings {
 	GENERATED_BODY()
 public:
-	/* Re-downloads textures *that already exist*. Significantly worse for import time.
+	/* Reflects textures that already exist.
+	 * Significantly worse for import time.
 	 * Do not use this unless you are intentionally reimporting textures that were updated since last updated. */
 	UPROPERTY(EditAnywhere, Config, AdvancedDisplay, Category = TextureSettings)
-	bool UpdateExisingTextures = false;
+	bool ReflectExistingTextures = false;
 };

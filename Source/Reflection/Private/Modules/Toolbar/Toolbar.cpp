@@ -64,7 +64,7 @@ void UReflectionToolbar::Register() {
 		
 		FText::FromString(""),
 		
-		FText::FromString("Execute Reflection"),
+		FText::FromString(""),
 		
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon")),
 		
@@ -196,7 +196,7 @@ void UReflectionToolbar::UE4Register(FToolBarBuilder& Builder) {
 		),
 		NAME_None,
 		FText::FromString(FRMetadata::Version),
-		FText::FromString("Execute Reflection"),
+		FText::FromString(""),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon"))
 	);
 

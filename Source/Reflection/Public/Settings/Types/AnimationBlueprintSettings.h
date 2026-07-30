@@ -12,6 +12,6 @@ struct FRAnimationBlueprintSettings {
 	GENERATED_BODY()
 public:
 	/* Saves IDs in Node's comment. */
-	UPROPERTY(EditAnywhere, Config, AdvancedDisplay, Category = AnimationBlueprintSettings)
+	UPROPERTY(EditAnywhere, DisplayName = "ID in Comments", Config, AdvancedDisplay, Category = AnimationBlueprintSettings)
 	bool NodeIDComments = false;
 };

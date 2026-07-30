@@ -75,38 +75,36 @@ bool IMaterialImporter::Import() {
 	UMaterial* EditorOnlyData = Material;
 #endif
 	
-	if (!Settings->AssetSettings.Material.DisconnectRoot) {
-		TArray<FString> IgnoredProperties = TArray<FString> {
-			"ParameterGroupData",
-			"ExpressionCollection",
-			"CustomizedUVs"
-		};
+	TArray<FString> IgnoredProperties = TArray<FString> {
+		"ParameterGroupData",
+		"ExpressionCollection",
+		"CustomizedUVs"
+	};
 
-		const TSharedPtr<FJsonObject> RawConnectionData = TSharedPtr<FJsonObject>(Props);
-		for (FString Property : IgnoredProperties) {
-			if (RawConnectionData->HasField(Property)) {
-				RawConnectionData->RemoveField(Property);
-			}
+	const TSharedPtr<FJsonObject> RawConnectionData = TSharedPtr<FJsonObject>(Props);
+	for (FString Property : IgnoredProperties) {
+		if (RawConnectionData->HasField(Property)) {
+			RawConnectionData->RemoveField(Property);
 		}
-		
-		/* Connect all pins using deserializer */
-		GetObjectSerializer()->DeserializeObjectProperties(RawConnectionData, EditorOnlyData);
+	}
+	
+	/* Connect all pins using deserializer */
+	GetObjectSerializer()->DeserializeObjectProperties(RawConnectionData, EditorOnlyData);
 
-		/* CustomizedUVs defined here */
-		const TArray<TSharedPtr<FJsonValue>>* InputsPtr;
-		
-		if (Props->TryGetArrayField(TEXT("CustomizedUVs"), InputsPtr)) {
-			int i = 0;
-			for (const auto& InputValue : *InputsPtr) {
-				FJsonObject* InputObject = InputValue->AsObject().Get();
-				FName InputExpressionName = GetExpressionName(InputObject);
+	/* CustomizedUVs defined here */
+	const TArray<TSharedPtr<FJsonValue>>* InputsPtr;
+	
+	if (Props->TryGetArrayField(TEXT("CustomizedUVs"), InputsPtr)) {
+		int i = 0;
+		for (const auto& InputValue : *InputsPtr) {
+			FJsonObject* InputObject = InputValue->AsObject().Get();
+			FName InputExpressionName = GetExpressionName(InputObject);
 
-				if (ExpressionContainer->Contains(InputExpressionName)) {
-					FExpressionInput Input = PopulateExpressionInput(InputObject, ExpressionContainer->Find<UMaterialExpression>(InputExpressionName));
-					EditorOnlyData->CustomizedUVs[i] = *reinterpret_cast<FVector2MaterialInput*>(&Input);
-				}
-				i++;
+			if (ExpressionContainer->Contains(InputExpressionName)) {
+				FExpressionInput Input = PopulateExpressionInput(InputObject, ExpressionContainer->Find<UMaterialExpression>(InputExpressionName));
+				EditorOnlyData->CustomizedUVs[i] = *reinterpret_cast<FVector2MaterialInput*>(&Input);
 			}
+			i++;
 		}
 	}
 

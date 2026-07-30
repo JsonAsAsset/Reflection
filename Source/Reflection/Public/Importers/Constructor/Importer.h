@@ -72,7 +72,7 @@ TObjectPtr<T> IImporter::DownloadWrapper(TObjectPtr<T> InObject, FString Type, c
 
     if (Settings->EnableCloudServer && (
         InObject == nullptr ||
-            (Settings->AssetSettings.Texture.UpdateExisingTextures && Type == "Texture2D")
+            (Settings->AssetSettings.Texture.ReflectExistingTextures && Type == "Texture2D")
         )
         && !Path.StartsWith("Engine/") && !Path.StartsWith("/Engine/")
     ) {
