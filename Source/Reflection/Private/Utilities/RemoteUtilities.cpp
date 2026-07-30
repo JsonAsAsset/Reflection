@@ -21,6 +21,11 @@ namespace {
 	/* Scoped rather than bare FSlowTask: the scoped form is the one that registers itself with
 	 * the feedback context on construction and unregisters on destruction */
 	TUniquePtr<FScopedSlowTask> GBlockingProgress;
+
+	/* One entry per open scope, in nesting order. Pump() always shows the top, so the dialog
+	 * tracks whatever the innermost scope is doing right now rather than freezing on the
+	 * outermost scope's generic description for the length of the whole operation. */
+	TArray<FText> GDescriptionStack;
 }
 
 FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
@@ -29,6 +34,8 @@ FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
 	if (!bTracked) {
 		return;
 	}
+
+	GDescriptionStack.Push(Description);
 
 	bOwnsProgress = GBlockingScopeDepth++ == 0;
 
@@ -47,6 +54,10 @@ FBlockingRequestScope::~FBlockingRequestScope() {
 
 	GBlockingScopeDepth--;
 
+	/* Scopes are stack objects, so destruction is strictly LIFO with construction -- the entry
+	 * this pops is always the one this same scope pushed */
+	GDescriptionStack.Pop();
+
 	if (bOwnsProgress) {
 		GBlockingProgress.Reset();
 	}
@@ -63,8 +74,13 @@ bool FBlockingRequestScope::Pump() {
 		return false;
 	}
 
+	/* The innermost open scope is whatever is actually happening right now, so its description
+	 * is what the dialog shows -- the FrameMessage this sets overrides the outer scope's
+	 * DefaultMessage until the next call retargets it or the nested scope closes */
+	const FText& CurrentDescription = GDescriptionStack.Num() > 0 ? GDescriptionStack.Top() : FText::GetEmpty();
+
 	/* Entering a frame is what gets the editor repainted and the dialog's input read */
-	GBlockingProgress->EnterProgressFrame(0.0f);
+	GBlockingProgress->EnterProgressFrame(0.0f, CurrentDescription);
 
 	return GBlockingProgress->ShouldCancel();
 }

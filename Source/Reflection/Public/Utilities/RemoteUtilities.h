@@ -25,9 +25,6 @@ using FReflectionHttpResponse = TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>;
  * requests have no continuation to hand a callback to and have to be waited on. A scope keeps
  * the editor painting and gives the user a way out for as long as that lasts; a wait outside a
  * scope still works, it just looks like a hung editor.
- *
- * Scopes nest and only the outermost owns the progress UI. Build one on the stack in the
- * operation that owns the work, and never store one.
  */
 class REFLECTION_API FBlockingRequestScope {
 public:

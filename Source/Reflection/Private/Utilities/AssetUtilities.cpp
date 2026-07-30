@@ -164,7 +164,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 	 * so the requests below have to be waited on. The scope is what keeps the editor drawn and
 	 * cancellable while that happens. */
 	const FBlockingRequestScope BlockingScope(FText::Format(
-		NSLOCTEXT("Reflection", "CloudDownloading", "Downloading {0} from the Cloud"),
+		NSLOCTEXT("Reflection", "CloudReflecting", "Reflecting {0}"),
 		FText::FromString(Path)
 	));
 
