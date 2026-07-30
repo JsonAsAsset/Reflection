@@ -176,7 +176,7 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 
 			/* Notification */
 			AppendNotification(
-				FText::FromString("Imported Skeletal Mesh Data: " + SkeletalMesh->GetName()),
+				FText::FromString("Reflected Skeletal Mesh Data: " + SkeletalMesh->GetName()),
 				FText::FromString(SkeletalMesh->GetName()),
 				3.5f,
 				FAppStyle::GetBrush("PhysicsAssetEditor.EnableCollision.Small"),

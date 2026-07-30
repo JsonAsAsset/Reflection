@@ -43,7 +43,7 @@ void TToolFontData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 
 		/* Notification */
 		AppendNotification(
-			FText::FromString("Imported Data: " + FontFace->GetName()),
+			FText::FromString("Reflected Data: " + FontFace->GetName()),
 			FText::FromString(FontFace->GetName()),
 			3.5f,
 			FAppStyle::GetBrush("ClassIcon.FontFace"),

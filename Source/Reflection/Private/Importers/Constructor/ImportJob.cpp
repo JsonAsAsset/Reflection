@@ -71,7 +71,7 @@ namespace {
 		}
 
 		Item->SetText(FText::FromString(FString::Printf(
-			TEXT("Importing %d/%d: %s"),
+			TEXT("Reflecting %d/%d: %s"),
 			GJob->ImportedFiles + 1,
 			GJob->Files.Num(),
 			*FPaths::GetCleanFilename(GJob->CurrentFile)
@@ -123,7 +123,7 @@ namespace {
 			}
 
 			if (DataObjects.Num() == 0) {
-				UE_LOG(LogReflection, Warning, TEXT("Nothing to import from \"%s\"."), *FilePath);
+				UE_LOG(LogReflection, Warning, TEXT("Nothing to reflect from \"%s\"."), *FilePath);
 				GJob->ImportedFiles++;
 
 				continue;
@@ -163,7 +163,7 @@ namespace {
 		 * cancellable while they do. Scoped to the slice, so no progress dialog is ever held
 		 * across frames -- that would put the editor in a permanent slow task and defeat the
 		 * whole point of slicing. */
-		const FBlockingRequestScope BlockingScope(FText::FromString(TEXT("Importing from the Cloud")));
+		const FBlockingRequestScope BlockingScope(FText::FromString(TEXT("Reflecting from the Cloud")));
 
 		do {
 			if (!OpenPendingFile()) {
@@ -196,10 +196,10 @@ namespace {
 		 * find this one still standing */
 		GJob.Reset();
 
-		UE_LOG(LogReflection, Log, TEXT("Import finished: %d file(s)."), Count);
+		UE_LOG(LogReflection, Log, TEXT("Reflection finished: %d file(s)."), Count);
 
 		AppendNotification(
-			FText::FromString(FString::Printf(TEXT("Imported %d file(s)"), Count)),
+			FText::FromString(FString::Printf(TEXT("Reflected %d file(s)"), Count)),
 			FText::FromString(TEXT("")),
 			4.0f,
 			FReflectionStyle::Get().GetBrush("Toolbar.Icon"),
@@ -219,7 +219,7 @@ namespace {
 		 * stops moving on its own reads exactly like the hang this is meant to avoid. */
 		if (IsPlayingInEditor()) {
 			if (const TSharedPtr<SNotificationItem> Item = GJob->Notification.Pin()) {
-				Item->SetText(FText::FromString(TEXT("Import paused while in Play In Editor")));
+				Item->SetText(FText::FromString(TEXT("Reflection paused while in Play In Editor")));
 			}
 
 			return;
@@ -260,7 +260,7 @@ void FImportJob::Enqueue(const TArray<FString>& Files) {
 	GJob->Files = Files;
 
 	GJob->Notification = AppendNotificationWithHandler(
-		FText::FromString(TEXT("Importing")),
+		FText::FromString(TEXT("Reflecting")),
 		FText::FromString(TEXT("")),
 		999.0f,
 		FReflectionStyle::Get().GetBrush("Toolbar.Icon"),

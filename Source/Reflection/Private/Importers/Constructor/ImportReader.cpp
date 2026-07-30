@@ -18,7 +18,7 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 	 * have nowhere to put a callback, so they get waited on. The scope is what keeps the editor
 	 * drawn and cancellable for as long as this import needs the Cloud. */
 	const FBlockingRequestScope BlockingScope(FText::Format(
-		NSLOCTEXT("Reflection", "CloudImporting", "Importing {0}"),
+		NSLOCTEXT("Reflection", "CloudImporting", "Reflecting {0}"),
 		FText::FromString(FPaths::GetCleanFilename(File))
 	));
 
@@ -151,11 +151,11 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 
 	if (Successful) {
-		UE_LOG(LogReflection, Log, TEXT("Successfully imported \"%s\" as \"%s\""), *Name, *Type);
+		UE_LOG(LogReflection, Log, TEXT("Successfully reflected \"%s\" as \"%s\""), *Name, *Type);
 
 		/* Successful Notification */
 		AppendNotification(
-			FText::FromString("Imported: " + Name),
+			FText::FromString("Reflected: " + Name),
 			FText::FromString(Type),
 			2.0f,
 			FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + ClassIconType)), TEXT("ClassThumbnail")),

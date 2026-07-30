@@ -31,7 +31,7 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 		GLog->Log("Reflection: [GetSelectedAsset] None selected, returning nullptr.");
 
 		const FText DialogText = FText::Format(
-			FText::FromString(TEXT("Importing an asset of type '{0}' requires a base asset selected to modify. Select one in your content browser.")),
+			FText::FromString(TEXT("Reflecting an asset of type '{0}' requires a base asset selected to modify. Select one in your content browser.")),
 			FText::FromString(T::StaticClass()->GetName())
 		);
 

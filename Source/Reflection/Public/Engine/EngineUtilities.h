@@ -286,7 +286,7 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
 
 		const FString Path = FPackageName::GetLongPackagePath(PackageName);
 		if (!Path.StartsWith(TEXT("/")) || Path.Len() < 2) {
-			SpawnPrompt("Failsafe", "Here's some reasons why:\n\n- You didn't export it from FModel\n- Imported it from a random path, not in Exports/.../\n\nPlease reimport next time at the proper location.");
+			SpawnPrompt("Failsafe", "Here's some reasons why:\n\n- You didn't export it from FModel\n- Reflected it from a random path, not in Exports/.../\n\nPlease reflect it again next time at the proper location.");
 			
 			return false;
 		}

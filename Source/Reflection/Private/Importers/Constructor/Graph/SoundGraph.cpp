@@ -186,7 +186,7 @@ void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr,
 	if (!ImportedWave) {
 		AppendNotification(
 			FText::FromString("Failed: " + AssetPtr),
-			FText::FromString("Failed to import sound wave"),
+			FText::FromString("Failed to reflect sound wave"),
 			8.0f,
 			SNotificationItem::ECompletionState::CS_Fail,
 			true,

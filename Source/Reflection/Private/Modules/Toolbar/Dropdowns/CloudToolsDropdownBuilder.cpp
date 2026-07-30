@@ -44,7 +44,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Static Meshes"),
-		FText::FromString("Imports collision and other properties"),
+		FText::FromString("Reflects collision and other properties"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.StaticMeshActor"),
 		MakeToolAction<TToolConvexCollision>(),
 		NAME_None
@@ -52,7 +52,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Animations"),
-		FText::FromString("Imports curve data, notifies and other properties"),
+		FText::FromString("Reflects curve data, notifies and other properties"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "GraphEditor.Animation_24x"),
 		MakeToolAction<TToolAnimationData>(),
 		NAME_None
@@ -60,7 +60,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Skeletal Meshes"),
-		FText::FromString("Imports sockets and other properties"),
+		FText::FromString("Reflects sockets and other properties"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.SkeletalMeshComponent"),
 		MakeToolAction<TSkeletalMeshData>(),
 		NAME_None
@@ -68,7 +68,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Fonts"),
-		FText::FromString("Imports font properties (not vectorized data)"),
+		FText::FromString("Reflects font properties (not vectorized data)"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.FontFace"),
 		MakeToolAction<TToolFontData>(),
 		NAME_None
@@ -76,7 +76,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Widget Animations"),
-		FText::FromString("Imports widget animations"),
+		FText::FromString("Reflects widget animations"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.WidgetBlueprint"),
 		MakeToolAction<TWidgetAnimations>(),
 		NAME_None
@@ -84,7 +84,7 @@ void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Linear Colors"),
-		FText::FromString("Imports colors if any changes were made"),
+		FText::FromString("Reflects colors if any changes were made"),
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.CurveBase"),
 		MakeToolAction<TCurveLinearColorData>(),
 		NAME_None

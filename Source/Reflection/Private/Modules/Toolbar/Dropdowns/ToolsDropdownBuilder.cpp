@@ -54,7 +54,7 @@ void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 				);
 
 				InnerMenuBuilder.AddMenuEntry(
-					FText::FromString("Import Folder of JSON Files"),
+					FText::FromString("Reflect Folder of JSON Files"),
 					FText::FromString(""),
 					FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
 
