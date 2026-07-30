@@ -14,6 +14,12 @@ public:
 	virtual bool Import() override;
 	
 protected:
+	/* Hands subobjects that only survive cooking on the CDO back to the blueprint that owns them */
+	void PropagateDefaultsToBlueprint() const;
+
+	/* Gives assets that ask for a preview mesh one from their own folder */
+	void AssignPreviewMesh() const;
+
 	/* Handles SimpleConstructionScript, the component layout for Actor blueprints */
 	void ConstructScript() const;
 

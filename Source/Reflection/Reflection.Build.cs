@@ -27,7 +27,8 @@ public class Reflection : ModuleRules {
 			"HTTP",
 			"DeveloperSettings",
 			"Niagara",
-			"UnrealEd", 
+			"UnrealEd",
+			"KismetCompiler",
 			"MainFrame",
 			"GameplayTags",
 			"ApplicationCore",
@@ -63,6 +64,9 @@ public class Reflection : ModuleRules {
 			"RenderCore",
 			"AnimGraphRuntime",
 			"AnimGraph",
+			"RigVM",
+			"RigVMDeveloper",
+			"ControlRig",
 
 #if UE_5_0_OR_LATER
 			/* Only Unreal Engine 5 */

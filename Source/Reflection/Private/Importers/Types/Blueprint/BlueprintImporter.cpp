@@ -9,7 +9,9 @@
 #include "Animation/MovieSceneWidgetMaterialTrack.h"
 #include "Animation/WidgetAnimation.h"
 #include "Blueprint/WidgetTree.h"
+#include "Engine/SkeletalMesh.h"
 #include "Engine/SimpleConstructionScript.h"
+#include "Interfaces/Interface_PreviewMeshProvider.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 
@@ -18,6 +20,8 @@
 #endif
 
 #include "Engine/SCS_Node.h"
+#include "Importers/Constructor/Graph/RigHierarchyBuilder.h"
+#include "Importers/Constructor/Graph/RigVMGraphBuilder.h"
 #include "Utilities/BlueprintUtilities.h"
 
 UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
@@ -38,14 +42,8 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 	
 	/* Find the blueprint class and generated class */
 	UClass* BlueprintClass = nullptr, *GeneratedClass = nullptr;
-	
-	FModuleManager::LoadModuleChecked<IKismetCompilerInterface>
-		("KismetCompiler")
-			.GetBlueprintTypesForClass(
-				Class,
-				BlueprintClass,
-				GeneratedClass
-			);
+
+	GetBlueprintTypesForExport(GetAssetType(), Class, BlueprintClass, GeneratedClass);
 
 	/* Propagate blueprint defaults if it already exists */
 	if (const UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName())) {
@@ -89,10 +87,102 @@ bool IBlueprintImporter::Import() {
 	/* Experimental (for now) spawning */
 	GetObjectSerializer()->bUseExperimentalSpawning = true;
 
+	PropagateDefaultsToBlueprint();
+	AssignPreviewMesh();
+
+	/* Neither a rig's hierarchy nor its graph survives cooking as reflected data, so both are replayed through
+	 * the engine's own editing APIs. The hierarchy goes first, since the graph addresses its elements by name. */
+	FRigHierarchyBuilder(Blueprint, GetContainer(), GetPropertySerializer()).Build();
+	FRigVMGraphBuilder(Blueprint, GetContainer(), GetPropertySerializer()).Build();
+
 	ConstructScript();
 	ConstructWidgetTree();
 
 	return OnAssetCreation(Blueprint);
+}
+
+/*
+ * Editor-only blueprint data doesn't survive cooking, so for families that keep their authoring data in
+ * subobjects (a Control Rig's hierarchy, for instance) the only copy left is the one hanging off the generated
+ * CDO. Those blueprints compile their own copy back down into the CDO, so the trip is made in reverse here:
+ * every subobject the blueprint owns is filled from the CDO subobject of the same class. Matching on class
+ * instead of property name keeps this free of any per-asset-type knowledge.
+ */
+void IBlueprintImporter::PropagateDefaultsToBlueprint() const {
+	UObject* DefaultObject = Blueprint->GeneratedClass ? Blueprint->GeneratedClass->GetDefaultObject() : nullptr;
+	if (DefaultObject == nullptr) return;
+
+	for (TFieldIterator<FObjectProperty> PropertyIterator(Blueprint->GetClass()); PropertyIterator; ++PropertyIterator) {
+		FObjectProperty* Property = *PropertyIterator;
+
+		/* UBlueprint's own fields are the importer's business, only what a subclass added is in scope */
+		if (UBlueprint::StaticClass()->IsChildOf(Property->GetOwnerClass())) continue;
+
+		UObject* Existing = Property->GetObjectPropertyValue_InContainer(Blueprint);
+
+		/* Anything outered elsewhere is a reference to another asset, not authoring data */
+		if (Existing == nullptr || Existing->GetOuter() != Blueprint) continue;
+
+		UObject* Source = nullptr;
+		bool Ambiguous = false;
+
+		for (TFieldIterator<FObjectProperty> SourceIterator(DefaultObject->GetClass()); SourceIterator; ++SourceIterator) {
+			UObject* Value = SourceIterator->GetObjectPropertyValue_InContainer(DefaultObject);
+
+			if (Value == nullptr || Value->GetClass() != Existing->GetClass()) continue;
+
+			/* More than one candidate means the class alone doesn't identify it, so leave it alone */
+			if (Source != nullptr) {
+				Ambiguous = true;
+				break;
+			}
+
+			Source = Value;
+		}
+
+		if (Source == nullptr || Ambiguous) continue;
+
+		const FName SubobjectName = Existing->GetFName();
+		MoveToTransientPackageAndRename(Existing);
+
+		Property->SetObjectPropertyValue_InContainer(Blueprint, DuplicateObject(Source, Blueprint, SubobjectName));
+	}
+
+	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(Blueprint);
+}
+
+/*
+ * A preview mesh is editor-only, so a cooked rig or anim blueprint arrives with nothing to pose. Assets that
+ * take one advertise it through IInterface_PreviewMeshProvider, which is all the type information needed here:
+ * the mesh an asset was authored against sits next to it far more often than not, so the first skeletal mesh in
+ * the same folder is used.
+ */
+void IBlueprintImporter::AssignPreviewMesh() const {
+	IInterface_PreviewMeshProvider* PreviewMeshProvider = Cast<IInterface_PreviewMeshProvider>(Blueprint);
+
+	if (PreviewMeshProvider == nullptr || PreviewMeshProvider->GetPreviewMesh() != nullptr) return;
+
+	const FAssetRegistryModule& AssetRegistryModule = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry");
+
+	FARFilter Filter;
+	Filter.bRecursiveClasses = true;
+	Filter.PackagePaths.Add(FName(*FPackageName::GetLongPackagePath(Blueprint->GetOutermost()->GetName())));
+
+#if UE5_1_BEYOND
+	Filter.ClassPaths.Add(USkeletalMesh::StaticClass()->GetClassPathName());
+#else
+	Filter.ClassNames.Add(USkeletalMesh::StaticClass()->GetFName());
+#endif
+
+	TArray<FAssetData> Assets;
+	AssetRegistryModule.Get().GetAssets(Filter, Assets);
+
+	for (const FAssetData& Asset : Assets) {
+		if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Asset.GetAsset())) {
+			PreviewMeshProvider->SetPreviewMesh(SkeletalMesh);
+			return;
+		}
+	}
 }
 
 void IBlueprintImporter::ConstructScript() const {

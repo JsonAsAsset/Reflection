@@ -3,6 +3,7 @@
 #include "Importers/Constructor/Types.h"
 
 #include "Settings/ReflectionSettings.h"
+#include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
 
 /* Define supported template asset class here */
@@ -100,7 +101,7 @@ TMap<FString, TArray<FString>> ImportTypes::Templated = {
 };
 
 bool ImportTypes::Cloud::Allowed(const FString& Type) {
-	if (Blacklisted.Contains(Type)) {
+	if (Blacklisted.Contains(Type) || IsGeneratedClassType(Type)) {
 		return false;
 	}
 
@@ -112,7 +113,8 @@ bool ImportTypes::Cloud::Allowed(const FString& Type) {
 }
 
 bool ImportTypes::Allowed(const FString& ImporterType) {
-	if (Experimental.Contains(ImporterType)) {
+	/* Blueprints are reconstructed rather than deserialized, so the whole family sits behind the experiments switch */
+	if (Experimental.Contains(ImporterType) || IsGeneratedClassType(ImporterType)) {
 		const UReflectionSettings* Settings = GetSettings();
 
 		if (!Settings->EnableExperiments) return false;

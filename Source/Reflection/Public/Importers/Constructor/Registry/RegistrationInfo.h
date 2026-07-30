@@ -32,13 +32,9 @@ inline TMap<TArray<FString>, FImporterRegistrationInfo>& GetFactoryRegistry() {
 }
 
 inline FImporterFactoryDelegate* FindFactoryForAssetType(const FString& AssetType) {
-	const UReflectionSettings* Settings = GetSettings();
+	if (!ImportTypes::Allowed(AssetType)) return nullptr;
 
 	for (auto& Pair : GetFactoryRegistry()) {
-		if (!Settings->EnableExperiments) {
-			if (ImportTypes::Experimental.Contains(AssetType)) return nullptr;
-		}
-            
 		if (Pair.Key.Contains(AssetType)) {
 			return &Pair.Value.Factory;
 		}

@@ -40,7 +40,12 @@ bool CanImport(const FString& Type, const bool IsCloud, const UClass* Class) {
 	}
 
 	if (!ImportTypes::Allowed(Type)) return false;
-	
+
+	/* Cooked blueprints of any family; the blueprint importer resolves which kind through reflection */
+	if (IsGeneratedClassType(Type)) {
+		return true;
+	}
+
 	if (Class->IsChildOf(UDataAsset::StaticClass())) {
 		return true;
 	}

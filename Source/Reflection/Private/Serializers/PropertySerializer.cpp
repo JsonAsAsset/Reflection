@@ -535,17 +535,28 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		*static_cast<FString*>(OutValue) = StringValue;
 	}
 	else if (const FEnumProperty* EnumProperty = CastField<const FEnumProperty>(Property)) {
-		FString EnumAsString = NewJsonValue->AsString();
-
-		if (EnumAsString.Contains("::")) {
-			EnumAsString.Split("::", nullptr, &EnumAsString);
+		/* Enums usually arrive by name, but plenty of exports write the raw value instead. Reading a number off
+		 * as a string gives back its digits, which no enum answers to, so the two cases are told apart up front
+		 * rather than leaving the property silently at zero. */
+		if (NewJsonValue->Type == EJson::Number) {
+			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(OutValue, static_cast<int64>(NewJsonValue->AsNumber()));
 		}
-		
-		/* Prefer readable enum names in result json to raw numbers */
-		int64 EnumerationValue = EnumProperty->GetEnum()->GetValueByNameString(EnumAsString);
+		else {
+			FString EnumAsString = NewJsonValue->AsString();
 
-		if (EnumerationValue != INDEX_NONE) {
-			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(OutValue, EnumerationValue);
+			if (EnumAsString.Contains("::")) {
+				EnumAsString.Split("::", nullptr, &EnumAsString);
+			}
+
+			/* Prefer readable enum names in result json to raw numbers */
+			int64 EnumerationValue = EnumProperty->GetEnum()->GetValueByNameString(EnumAsString);
+
+			if (EnumerationValue != INDEX_NONE) {
+				EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(OutValue, EnumerationValue);
+			}
+			else {
+				UE_LOG(LogReflection, Warning, TEXT("Invalid enum value '%s' for property '%s'!"), *EnumAsString, *Property->GetName());
+			}
 		}
 	}
 	else if (Property->IsA<FNameProperty>()) {

@@ -231,6 +231,13 @@ inline UClass* FindClassByType(const FString& Type) {
 	return Class;
 }
 
+/* Every cooked blueprint, of any family, is exported as a "<BlueprintClass>GeneratedClass" */
+inline const FString GeneratedClassSuffix = TEXT("GeneratedClass");
+
+inline bool IsGeneratedClassType(const FString& Type) {
+	return Type.Len() > GeneratedClassSuffix.Len() && Type.EndsWith(GeneratedClassSuffix);
+}
+
 inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 	if (UTexture2D* Texture2D = Cast<UTexture2D>(Texture)) {
 #if ENGINE_UE5

@@ -4,6 +4,7 @@
 
 #include "Importers/Constructor/Importer.h"
 #include "Importers/Constructor/TemplatedImporter.h"
+#include "Importers/Types/Blueprint/BlueprintImporter.h"
 #include "Importers/Types/DataAssetImporter.h"
 #include "Importers/Types/Texture/TextureImporter.h"
 #include "Settings/Runtime.h"
@@ -111,6 +112,11 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	/* Try to find the importer using a factory delegate */
 	if (const FImporterFactoryDelegate* Factory = FindFactoryForAssetType(Type)) {
 		Importer = (*Factory)();
+	}
+
+	/* Any cooked blueprint lands here as a "<X>GeneratedClass"; the blueprint importer resolves which kind it is */
+	if (Importer == nullptr && IsGeneratedClassType(Type)) {
+		Importer = new IBlueprintImporter();
 	}
 
 	/* If it inherits DataAsset, use the data asset importer */

@@ -157,6 +157,14 @@ void UObjectSerializer::SetExportForDeserialization(const TSharedPtr<FJsonObject
 }
 
 void UObjectSerializer::DeserializeExports(FUObjectExportContainer* Container, const bool CreateObjects) {
+	if (Container == nullptr) return;
+
+	/* Callers that build their own container never go through USerializerContainer::Initialize,
+	 * so this is the only place the property serializer learns about it. */
+	if (PropertySerializer != nullptr) {
+		PropertySerializer->ExportsContainer = Container;
+	}
+
 	if (CreateObjects) {
 		TMap<TSharedPtr<FJsonObject>, UObject*> ExportsMap;
 		
@@ -210,7 +218,7 @@ void UObjectSerializer::DeserializeExports(FUObjectExportContainer* Container, c
 				}
 			}
 		
-			if (Type == "NavCollision") continue;
+			if (Type == "NavCollision" || Type == "MorphTarget") continue;
 			
 			DeserializeExport(Export, ExportsMap);
 		}
