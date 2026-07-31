@@ -48,7 +48,7 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 	UObject* ObjectOuter = nullptr;
 
 	/* Find the outer */
-	if (FUObjectExport* OuterExport = PropertySerializer->ExportsContainer->Find(Outer); OuterExport->JsonObject.IsValid()) {
+	if (FUObjectExport* OuterExport = PropertySerializer->ExportsContainer->Find(Outer); !Outer.IsEmpty() && OuterExport->JsonObject.IsValid()) {
 		if (OuterExport->Object == nullptr) {
 			SpawnExport(OuterExport);
 		}
