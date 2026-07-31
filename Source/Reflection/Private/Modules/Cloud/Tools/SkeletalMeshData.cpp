@@ -4,10 +4,10 @@
 
 #include "Engine/EngineUtilities.h"
 
-/* The cloth runtime was a single ClothingSystemRuntime module until 4.26 broke it apart, and
+/* The cloth runtime was a single ClothingSystemRuntime module until 4.25 broke it apart, and
  * neither of these headers exists before that. Everything below that touches clothing is
  * already 4.27 and up only, so there is nothing to include in their place. */
-#if !UE4_25_BELOW
+#if !UE4_24_BELOW
 #include "ClothingAssetBase.h"
 #endif
 
@@ -17,7 +17,7 @@
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 3
 #include "ClothingAsset.h"
 #include "ClothLODData.h"
-#elif !UE4_25_BELOW
+#elif !UE4_24_BELOW
 #include "ClothingSystemRuntimeCommon/Public/ClothingAsset.h"
 #endif
 

@@ -174,7 +174,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 		
 			for (UActorComponent* Component : Components) {
 				/* TIsDerivedFrom only spelled its result IsDerived before Value was added */
-#if UE4_22_BELOW
+#if UE4_24_BELOW
 				if constexpr (TIsDerivedFrom<T, UActorComponent>::IsDerived) {
 #else
 				if constexpr (TIsDerivedFrom<T, UActorComponent>::Value) {

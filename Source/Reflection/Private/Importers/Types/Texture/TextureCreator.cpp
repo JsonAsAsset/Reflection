@@ -197,8 +197,8 @@ bool FTextureCreatorUtilities::CreateRenderTarget2D(UTexture*& OutRenderTarget2D
 
 	bool bAutoGenerateMips;
 	if (Properties->TryGetBoolField(TEXT("bAutoGenerateMips"), bAutoGenerateMips)) RenderTarget2D->bAutoGenerateMips = bAutoGenerateMips;
-	/* Render targets only gained a mip sampler filter alongside auto generated mips in 4.26 */
-#if !UE4_25_BELOW
+	/* Render targets only gained a mip sampler filter alongside auto generated mips in 4.23 */
+#if !UE4_22_BELOW
 	if (bAutoGenerateMips) {
 		FString MipsSamplerFilter;
 
@@ -233,15 +233,16 @@ bool FTextureCreatorUtilities::DeserializeTexture2D(UTexture2D* InTexture2D, con
 	
 	int SizeX;
 	int SizeY;
-#if !UE4_25_BELOW
+#if !UE4_24_BELOW
 	uint32 PackedData;
 #endif
 	FString PixelFormat;
 
 	if (Properties->TryGetNumberField(TEXT("SizeX"), SizeX)) PlatformData->SizeX = SizeX;
 	if (Properties->TryGetNumberField(TEXT("SizeY"), SizeY)) PlatformData->SizeY = SizeY;
-	/* 4.26 packed the slice count together with the cube map and opt data bits into PackedData. */
-#if UE4_25_BELOW
+	/* 4.25 packed the slice count together with the cube map and opt data bits into PackedData.
+	 * Before that the slice count stood on its own, and the dump names it accordingly. */
+#if UE4_24_BELOW
 	int NumSlices;
 	if (Properties->TryGetNumberField(TEXT("NumSlices"), NumSlices)) PlatformData->NumSlices = NumSlices;
 #else
@@ -293,9 +294,9 @@ bool FTextureCreatorUtilities::DeserializeTexturePlatformData(UTexture* Texture,
 
 	ETextureSourceFormat Format = TSF_BGRA8;
 	if (Texture->CompressionSettings == TC_HDR) Format = TSF_RGBA16F;
-	/* TSF_G16 arrived in 4.26; before that a 16 bit grey source has no matching source format,
+	/* TSF_G16 arrived in 4.25; before that a 16 bit grey source has no matching source format,
 	 * so it stays on the BGRA8 path the rest of this function already handles */
-#if !UE4_25_BELOW
+#if !UE4_24_BELOW
 	if (TexturePlatformData.PixelFormat == PF_G16) Format = TSF_G16;
 #endif
 	Texture->Source.Init(SizeX, SizeY, 1, 1, Format);

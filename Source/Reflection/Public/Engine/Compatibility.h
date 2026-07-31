@@ -260,7 +260,7 @@ FORCEINLINE bool operator!=(TYPE_OF_NULLPTR, const TSharedPtr<ObjectType, Mode>&
 #include "UObject/NameTypes.h"
 
 inline FName StringToName(const FString& String) {
-#if UE4_22_BELOW
+#if UE4_24_BELOW
 	return FName(*String);
 #else
 	return FName(String);
@@ -271,7 +271,7 @@ inline FName StringToName(const FString& String) {
  * NewObject only started taking a const UClass* later on, and the class Reflection has in hand is
  * almost always const. Returns whatever the current engine's overload wants.
  */
-#if UE4_22_BELOW
+#if UE4_24_BELOW
 inline UClass* ToNewObjectClass(const UClass* Class) {
 	return const_cast<UClass*>(Class);
 }
@@ -282,7 +282,7 @@ inline const UClass* ToNewObjectClass(const UClass* Class) {
 #endif
 
 inline FGuid StringToGuid(const FString& GuidString) {
-#if UE4_22_BELOW
+#if UE4_25_BELOW
 	/* What the constructor added later does: parse, and leave the guid invalid when the
 	 * string is not one */
 	FGuid Guid;
@@ -302,7 +302,7 @@ inline FGuid StringToGuid(const FString& GuidString) {
 #endif
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
-#if UE4_22_BELOW
+#if UE4_25_BELOW
 #include "AssetRegistryModule.h"
 #endif
 

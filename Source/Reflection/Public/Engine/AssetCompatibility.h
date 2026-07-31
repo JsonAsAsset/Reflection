@@ -11,7 +11,7 @@
 
 #include "Animation/AnimSequence.h"
 /* AssetData.h only moved under an AssetRegistry/ folder later on */
-#if UE4_22_BELOW
+#if UE4_25_BELOW
 #include "AssetData.h"
 #else
 #include "AssetRegistry/AssetData.h"

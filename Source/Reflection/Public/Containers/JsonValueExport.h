@@ -86,7 +86,7 @@ struct REFLECTION_API FUObjectJsonValueExport {
 		}
 
 		/* TMap::FindByHash, which saves rehashing the key HasField already hashed, came later */
-#if UE4_22_BELOW
+#if UE4_24_BELOW
 		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.Find(FieldName);
 #else
 		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.FindByHash(GetTypeHash(FieldName), FieldName);

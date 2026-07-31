@@ -47,8 +47,8 @@ void TToolConvexCollision::Process(UObject* Object, const TArray<TSharedPtr<FJso
 				for (const FUObjectExport* UObjectExport : GetObjectSerializer()->GetPropertySerializer()->ExportsContainer->Exports) {
 					if (UStaticMeshSocket* Socket = Cast<UStaticMeshSocket>(UObjectExport->Object)) {
 						/* AddSocket, which is this plus a broadcast the editor listens to for
-						 * live socket updates, only exists from 4.26 on */
-#if UE4_25_BELOW
+						 * live socket updates, only arrived in 4.23 */
+#if UE4_22_BELOW
 						StaticMesh->Sockets.Add(Socket);
 #else
 						StaticMesh->AddSocket(Socket);

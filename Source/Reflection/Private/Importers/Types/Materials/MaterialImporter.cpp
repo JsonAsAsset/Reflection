@@ -10,8 +10,8 @@
 #include "MaterialDomain.h"
 #endif
 
-/* Cached expression data, and the header holding it, only exist from 4.26 on */
-#if !UE4_25_BELOW
+/* Cached expression data, and the header holding it, only exist from 4.25 on */
+#if !UE4_24_BELOW
 #include "MaterialCachedData.h"
 #endif
 #include "Factories/MaterialFactoryNew.h"
@@ -180,9 +180,9 @@ bool IMaterialImporter::Import() {
 	}
 	/* Move Material Result Node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
-	/* Cached expression data arrived in 4.26; before that ForceRecompileForRendering below is
+	/* Cached expression data arrived in 4.25; before that ForceRecompileForRendering below is
 	 * what walks the expressions the importer just built */
-#if !UE4_25_BELOW
+#if !UE4_24_BELOW
 	Material->UpdateCachedExpressionData();
 #endif
 

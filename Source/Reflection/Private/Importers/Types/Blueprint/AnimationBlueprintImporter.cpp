@@ -41,7 +41,7 @@ bool IAnimationBlueprintImporter::Import() {
 	if (!RootAnimNodeProperties.IsValid()) return false;
 
 	/* UClass::GetDefaultObject only became const later on */
-#if UE4_22_BELOW
+#if UE4_24_BELOW
 	UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(AnimBlueprint->GeneratedClass);
 #else
 	const UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(AnimBlueprint->GeneratedClass);

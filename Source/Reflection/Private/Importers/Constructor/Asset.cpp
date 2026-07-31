@@ -16,7 +16,7 @@
 #include "HttpModule.h"
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
-#if UE4_22_BELOW
+#if UE4_25_BELOW
 #include "AssetRegistryModule.h"
 #else
 #include "AssetRegistry/AssetRegistryModule.h"

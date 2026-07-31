@@ -60,9 +60,9 @@ bool IMaterialFunctionImporter::Import() {
 	 * IterateDependentFunctions, which iterates nothing else. Left empty, a parent material misses
 	 * every texture one level deep, then fails to compile on Compiler->Texture(). */
 	MaterialFunction->UpdateInputOutputTypes();
-	/* Neither the candidate list nor the cached expression data it feeds exist before 4.26,
+	/* Neither the candidate list nor the cached expression data it feeds exist before 4.25,
 	 * where a parent material walks the function's expressions directly instead */
-#if !UE4_25_BELOW
+#if !UE4_24_BELOW
 	MaterialFunction->UpdateDependentFunctionCandidates();
 #endif
 

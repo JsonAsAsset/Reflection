@@ -42,13 +42,15 @@ public class Reflection : ModuleRules {
 			"MovieScene",
 
 #if UE_4_26_OR_LATER
-			/* Unreal Engine 4.26 and later.
-			 * DeveloperSettings lived inside Engine before it was split out, and the cloth
-			 * runtime was a single ClothingSystemRuntime module until it was broken apart. */
+			/* UDeveloperSettings lived inside Engine, at the same header path, until 4.26 gave
+			 * it a module of its own */
 			"DeveloperSettings",
+#endif
+
+#if UE_4_25_OR_LATER
+			/* The cloth runtime was a single ClothingSystemRuntime module until it was split */
 			"ClothingSystemRuntimeCommon",
 #else
-			/* Unreal Engine 4.25 and below */
 			"ClothingSystemRuntime",
 #endif
 
@@ -76,19 +78,22 @@ public class Reflection : ModuleRules {
 			"AnimGraphRuntime",
 			"AnimGraph",
 
+#if UE_4_23_OR_LATER
+			/* PhysicsCore was carved out of Engine in 4.23 */
+			"PhysicsCore",
+#endif
+
 #if UE_4_24_OR_LATER
-			/* Unreal Engine 4.24 and later.
-			 * ToolMenus is what replaced the level editor's FExtender based toolbar */
+			/* ToolMenus is what replaced the level editor's FExtender based toolbar */
 			"ToolMenus",
 #endif
 
-#if UE_4_26_OR_LATER
-			/* Unreal Engine 4.26 and later.
-			 * PhysicsCore was carved out of Engine, PluginUtils and AudioModulation
-			 * did not ship before this point */
-			"PhysicsCore",
-			"PluginUtils",
+#if UE_4_25_OR_LATER
 			"AudioModulation",
+#endif
+
+#if UE_4_26_OR_LATER
+			"PluginUtils",
 #endif
 
 #if UE_5_0_OR_LATER
