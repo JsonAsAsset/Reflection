@@ -243,7 +243,7 @@ void UReflectionToolbar::UE4Register(FToolBarBuilder& Builder) {
 			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
 		),
 		NAME_None,
-		FText::FromString(FRMetadata::Version),
+		FText::FromString(""),
 		FText::FromString(""),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon"))
 	);
@@ -256,7 +256,7 @@ void UReflectionToolbar::UE4Register(FToolBarBuilder& Builder) {
 			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
 		),
 		FOnGetContent::CreateStatic(&UReflectionToolbar::CreateMenuDropdown),
-		FText::FromString(FRMetadata::Version),
+		FText::FromString(""),
 		FText::FromString(""),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Icon")),
 		true
