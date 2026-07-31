@@ -6,6 +6,12 @@
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the blueprint function library type used to come in from */
+#if UE4_25_BELOW
+#include "Kismet/BlueprintFunctionLibrary.h"
+#endif
+
 inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const FString& ObjectPath) {
 	const FString FullPath = ObjectPath + TEXT(".") + ObjectName;
 

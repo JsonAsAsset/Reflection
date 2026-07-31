@@ -3,6 +3,13 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Engine/Compatibility.h"
+
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the multi box builders used to come in from */
+#if UE4_25_BELOW
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#endif
 
 /* Default: Does the first section in the dropdown */
 struct IParentDropdownBuilder {

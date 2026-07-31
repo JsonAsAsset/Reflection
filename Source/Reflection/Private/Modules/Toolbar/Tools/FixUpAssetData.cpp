@@ -29,7 +29,13 @@ void TToolFixUpAssetData::Execute() {
 		if (Asset == nullptr) continue;
 
 		if (UAnimSequence* AnimSequence = Cast<UAnimSequence>(Asset)) {
+			/* Bone compression moved behind a settings asset in 4.23; before that the sequence
+			 * points straight at the compression scheme */
+#if UE4_22_BELOW
+			AnimSequence->CompressionScheme = nullptr;
+#else
 			AnimSequence->BoneCompressionSettings = nullptr;
+#endif
 			AnimSequence->CurveCompressionSettings = nullptr;
 
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2

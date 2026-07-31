@@ -32,5 +32,10 @@ void TCurveLinearColorData::Process(UObject* Object, const TArray<TSharedPtr<FJs
 		}
 	}
 
+	/* UObject::GetPackage arrived in 4.26; before that the package is the outermost object */
+#if UE4_25_BELOW
+	HandleAssetCreation(CurveLinearColor, CurveLinearColor->GetOutermost());
+#else
 	HandleAssetCreation(CurveLinearColor, CurveLinearColor->GetPackage());
+#endif
 }

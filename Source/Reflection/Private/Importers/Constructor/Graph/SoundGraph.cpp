@@ -7,6 +7,12 @@
 #include "Misc/MessageDialog.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Sound/SoundCue.h"
+
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the sound wave type used to come in from */
+#if UE4_25_BELOW
+#include "Sound/SoundWave.h"
+#endif
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 
@@ -28,7 +34,7 @@ USoundNode* ISoundGraph::CreateEmptyNode(const FName Name, const FName Type, USo
 	const UClass* Class = FindClassByType(Type.ToString());
 
 	/* Set flag to be transactional so it registers with undo system */
-	USoundNode* SoundNode = NewObject<USoundNode>(SoundCue, Class, Name, RF_Transactional);
+	USoundNode* SoundNode = NewObject<USoundNode>(SoundCue, ToNewObjectClass(Class), Name, RF_Transactional);
 	SoundCue->AllNodes.Add(SoundNode);
 	SoundCue->SetupSoundNode(SoundNode, false);
 	

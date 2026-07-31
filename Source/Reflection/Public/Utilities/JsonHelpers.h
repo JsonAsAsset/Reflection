@@ -5,6 +5,7 @@
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonSerializer.h"
+#include "Engine/Compatibility.h"
 
 /* Conversion Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 #if ENGINE_UE5
@@ -279,5 +280,5 @@ inline FName GetExportNameOfSubobject(const FString& PackageIndex) {
 		Name = Name.Replace(TEXT("'"), TEXT(""));
 	}
 	
-	return FName(Name);
+	return StringToName(Name);
 }

@@ -87,7 +87,10 @@ inline EObjectFlags ParseObjectFlags(const FString& FlagsString) {
 		{ TEXT("RF_StrongRefOnFrame"), RF_StrongRefOnFrame },
 		{ TEXT("RF_NonPIEDuplicateTransient"), RF_NonPIEDuplicateTransient },
 		{ TEXT("RF_WillBeLoaded"), RF_WillBeLoaded },
+		/* External packages, and the flag that marks them, arrived in 4.26 */
+#if !UE4_25_BELOW
 		{ TEXT("RF_HasExternalPackage"), RF_HasExternalPackage },
+#endif
 #if ENGINE_UE5
 #if ENGINE_MINOR_VERSION > 3
 		{ TEXT("RF_HasPlaceholderType"), RF_HasPlaceholderType },

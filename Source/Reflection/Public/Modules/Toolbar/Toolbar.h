@@ -8,13 +8,23 @@
 
 class FMenuBuilder;
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the toolbar builder used to come in from */
+#if UE4_25_BELOW
+class FToolBarBuilder;
+#endif
+
 UCLASS()
 class REFLECTION_API UReflectionToolbar : public UObject {
 	GENERATED_BODY()
 public:
 	void Register();
+
+	/* FToolMenuSection arrived with ToolMenus, which replaced the FExtender toolbar in 4.24 ~~~ */
+#if !UE4_23_BELOW
 	void AddReflectionButtons(FToolMenuSection& Section);
 	void AddCloudButtons(FToolMenuSection& Section);
+#endif
 
 	/* Validation is UE5 only, it has no place to live on UE4's menu bar ~~~~~~~~~~~~~~~~~~~ */
 #if ENGINE_UE5

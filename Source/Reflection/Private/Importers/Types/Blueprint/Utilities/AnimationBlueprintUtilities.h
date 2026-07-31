@@ -200,9 +200,12 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 					/* Cannot be compiled */
 					if (PinName.Equals(TEXT("BlendTime")) || PinName.Equals(TEXT("BlendWeights"))) continue;
 
-					FName PinNameAsName(PinName);
-
 					UClass* AnimClass = AnimBlueprint->GeneratedClass;
+
+					/* Property bindings on animation graph nodes, and the struct describing
+					 * them, arrived in 4.26. Before that a node carries no binding to fill in. */
+#if !UE4_25_BELOW
+					FName PinNameAsName(PinName);
 
 					/* Setup Property Binding */
 					FAnimGraphNodePropertyBinding PropertyBinding;
@@ -253,7 +256,8 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 #if (ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION < 3) || ENGINE_UE4
 					Node->PropertyBindings.Add(PinNameAsName, PropertyBinding);
 #endif
-					
+#endif
+
 					if (PinName == "ActiveEnumValue" && Node != nullptr) {
 						if (UAnimGraphNode_BlendListByEnum* BlendListByEnum = Cast<UAnimGraphNode_BlendListByEnum>(Node)) {
 							FProperty* Prop = AnimClass->FindPropertyByName(*SourcePropertyName);

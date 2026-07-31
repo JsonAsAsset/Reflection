@@ -14,7 +14,13 @@
 #include "Dom/JsonObject.h"
 
 #include "HttpModule.h"
+
+/* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
+#if UE4_22_BELOW
+#include "AssetRegistryModule.h"
+#else
 #include "AssetRegistry/AssetRegistryModule.h"
+#endif
 #include "Engine/FontFace.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/Graph/SoundGraph.h"

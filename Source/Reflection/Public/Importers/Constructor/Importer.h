@@ -173,7 +173,12 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 			auto Components = NewLoadedObject->GetComponents();
 		
 			for (UActorComponent* Component : Components) {
+				/* TIsDerivedFrom only spelled its result IsDerived before Value was added */
+#if UE4_22_BELOW
+				if constexpr (TIsDerivedFrom<T, UActorComponent>::IsDerived) {
+#else
 				if constexpr (TIsDerivedFrom<T, UActorComponent>::Value) {
+#endif
 					if (ObjectName == Component->GetName()) {
 						if (Component->IsA(T::StaticClass())) {
 							LoadedObject = Cast<T>(Component);

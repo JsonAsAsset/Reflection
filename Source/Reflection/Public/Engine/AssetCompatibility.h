@@ -10,7 +10,12 @@
 #include "Engine/Compatibility.h"
 
 #include "Animation/AnimSequence.h"
+/* AssetData.h only moved under an AssetRegistry/ folder later on */
+#if UE4_22_BELOW
+#include "AssetData.h"
+#else
 #include "AssetRegistry/AssetData.h"
+#endif
 #include "Engine/SkeletalMesh.h"
 #include "ScopedTransaction.h"
 

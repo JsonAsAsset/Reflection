@@ -12,6 +12,11 @@
 #if ENGINE_UE5
 using FReflectionHttpRequest = TSharedRef<IHttpRequest>;
 using FReflectionHttpResponse = TSharedPtr<IHttpResponse>;
+#elif UE4_25_BELOW
+/* HTTP only started handing out a thread-safe request ref in 4.26; before that CreateRequest
+ * returned a plain ESPMode::Fast ref, while the response was already thread safe */
+using FReflectionHttpRequest = TSharedRef<IHttpRequest>;
+using FReflectionHttpResponse = TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>;
 #else
 using FReflectionHttpRequest = TSharedRef<IHttpRequest, ESPMode::ThreadSafe>;
 using FReflectionHttpResponse = TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>;

@@ -7,7 +7,7 @@ template class ITemplatedImporter<UObject>;
 
 template <typename AssetType>
 UObject* ITemplatedImporter<AssetType>::CreateAsset(UObject* CreatedAsset) {
-	return IImporter::CreateAsset(NewObject<AssetType>(GetPackage(), GetAssetClass() ? GetAssetClass() : AssetType::StaticClass(), FName(GetAssetName()), RF_Public | RF_Standalone));
+	return IImporter::CreateAsset(NewObject<AssetType>(GetPackage(), GetAssetClass() ? GetAssetClass() : AssetType::StaticClass(), StringToName(GetAssetName()), RF_Public | RF_Standalone));
 }
 
 template <typename AssetType>

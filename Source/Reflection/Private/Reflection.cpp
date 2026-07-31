@@ -5,7 +5,9 @@
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 #if ENGINE_UE4
+#if !UE4_23_BELOW
 #include "ToolMenus.h"
+#endif
 #include "LevelEditor.h"
 #endif
 
@@ -73,8 +75,10 @@ void FReflectionModule::StartupModule() {
 
 void FReflectionModule::ShutdownModule() {
 	/* Unregister startup callback and tool menus */
+#if !UE4_23_BELOW
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
+#endif
 
 #if ENGINE_UE5
 	/* The main menu bar entry is owned by the toolbar, not the module */

@@ -10,6 +10,14 @@
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
 
+#include "Engine/Compatibility.h"
+
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the message dialog used to come in from */
+#if UE4_25_BELOW
+#include "Misc/MessageDialog.h"
+#endif
+
 /* Prompts ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 inline void SpawnPrompt(const FString& Title, const FString& Text) {
 	FText DialogTitle = FText::FromString(Title);

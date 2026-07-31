@@ -40,7 +40,12 @@ bool IAnimationBlueprintImporter::Import() {
 	RootAnimNodeProperties = RootAnimNodeDefaults->GetObjectField(TEXT("Properties"));
 	if (!RootAnimNodeProperties.IsValid()) return false;
 
+	/* UClass::GetDefaultObject only became const later on */
+#if UE4_22_BELOW
+	UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(AnimBlueprint->GeneratedClass);
+#else
 	const UBlueprintGeneratedClass* GeneratedClass = Cast<UBlueprintGeneratedClass>(AnimBlueprint->GeneratedClass);
+#endif
 	GetObjectSerializer()->Exports = GetContainer()->JsonObjects;
 	GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(RootAnimNodeProperties, {
 		"RootComponent"
@@ -398,7 +403,7 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 				new FUObjectExport(
 					FName(*Key),
 					FName(*NodeType),
-					FName(AnimGraph->GetName()),
+					StringToName(AnimGraph->GetName()),
 					Value,
 					nullptr,
 					nullptr
@@ -419,7 +424,7 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 		
 		if (!Class) continue;
 
-		UAnimGraphNode_Base* Node = NewObject<UAnimGraphNode_Base>(AnimGraph, Class, NAME_None, RF_Transactional);
+		UAnimGraphNode_Base* Node = NewObject<UAnimGraphNode_Base>(AnimGraph, ToNewObjectClass(Class), NAME_None, RF_Transactional);
 		Node->NodeGuid = NodeGuid;
 
 		/* Add new node */
@@ -427,7 +432,7 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 			new FUObjectExport(
 				FName(*Key),
 				FName(*NodeType),
-				FName(AnimGraph->GetName()),
+				StringToName(AnimGraph->GetName()),
 				Value,
 				Node,
 				AnimGraph

@@ -2,7 +2,14 @@
 
 #pragma once
 
+#include "Engine/Compatibility.h"
+
+/* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
+#if UE4_22_BELOW
+#include "AssetRegistryModule.h"
+#else
 #include "AssetRegistry/AssetRegistryModule.h"
+#endif
 #include "VectorField/VectorFieldStatic.h"
 
 #include "Utilities/ContentBrowser.h"

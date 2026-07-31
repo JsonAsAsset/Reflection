@@ -4,6 +4,12 @@
 
 #include "Importers/Constructor/Importer.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the material function type used to come in from */
+#if UE4_25_BELOW
+class UMaterialFunction;
+#endif
+
 /*
  * Material Graph Handler
  * Handles everything needed to create a material graph from JSON.

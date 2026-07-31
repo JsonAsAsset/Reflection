@@ -4,6 +4,7 @@
 
 #include "Dom/JsonObject.h"
 #include "UObject/Object.h"
+#include "Engine/Compatibility.h"
 
 struct REFLECTION_API FUObjectJsonValueExport {
 	FUObjectJsonValueExport() {
@@ -84,7 +85,12 @@ struct REFLECTION_API FUObjectJsonValueExport {
 			return EmptyObject;
 		}
 
+		/* TMap::FindByHash, which saves rehashing the key HasField already hashed, came later */
+#if UE4_22_BELOW
+		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.Find(FieldName);
+#else
 		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.FindByHash(GetTypeHash(FieldName), FieldName);
+#endif
 		if (Field == nullptr || !Field->IsValid()) {
 			static const TSharedPtr<FJsonObject> EmptyObject = MakeShared<FJsonObject>();
 			return EmptyObject;

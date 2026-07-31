@@ -7,6 +7,11 @@
  * it contains structures and classes to replicate missing classes/structs.
 */
 
+/* Every macro below reads ENGINE_MAJOR_VERSION and friends. Nothing here guarantees they are
+ * already in scope, so pull in the header that defines them rather than relying on whichever
+ * shared PCH the current engine happens to build with. */
+#include "Misc/EngineVersionComparison.h"
+
 /* Compiles an experimental version of Reflection */
 #ifndef REFLECTION_EXPERIMENTAL
 #define REFLECTION_EXPERIMENTAL 0
@@ -112,14 +117,193 @@
 	#define UE5_2_BEYOND 0
 #endif
 
+/* 4.25 is where properties stopped being UObjects (UProperty -> FProperty) */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION <= 24
+	#define UE4_24_BELOW 1
+#else
+	#define UE4_24_BELOW 0
+#endif
+
+/* 4.24 is where UToolMenus replaced the level editor's FExtender toolbar */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION <= 23
+	#define UE4_23_BELOW 1
+#else
+	#define UE4_23_BELOW 0
+#endif
+
+/* The oldest engine Reflection builds against */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION <= 22
+	#define UE4_22_BELOW 1
+#else
+	#define UE4_22_BELOW 0
+#endif
+
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION < 2
 	#define UE5_1_BELOW 1
 #else
 	#define UE5_1_BELOW 0
 #endif
 
+/*
+ * Properties were UObjects until 4.25 moved them onto FField, renaming UProperty to FProperty
+ * and the whole U*Property family with it. Reflection is written against the 4.25+ spelling,
+ * so on 4.24 and below the old types are aliased back into it instead of every call site
+ * carrying a branch. UProperty is a UField, so Cast/FindField stand in for the FField helpers.
+ */
+#if UE4_24_BELOW
+#include "UObject/UnrealType.h"
+#include "UObject/EnumProperty.h"
+#include "UObject/TextProperty.h"
+
+using FField = UField;
+using FProperty = UProperty;
+using FNumericProperty = UNumericProperty;
+using FByteProperty = UByteProperty;
+using FInt8Property = UInt8Property;
+using FInt16Property = UInt16Property;
+using FIntProperty = UIntProperty;
+using FInt64Property = UInt64Property;
+using FUInt16Property = UUInt16Property;
+using FUInt32Property = UUInt32Property;
+using FUInt64Property = UUInt64Property;
+using FFloatProperty = UFloatProperty;
+using FDoubleProperty = UDoubleProperty;
+using FBoolProperty = UBoolProperty;
+using FObjectPropertyBase = UObjectPropertyBase;
+using FObjectProperty = UObjectProperty;
+using FWeakObjectProperty = UWeakObjectProperty;
+using FLazyObjectProperty = ULazyObjectProperty;
+using FSoftObjectProperty = USoftObjectProperty;
+using FClassProperty = UClassProperty;
+using FSoftClassProperty = USoftClassProperty;
+using FInterfaceProperty = UInterfaceProperty;
+using FNameProperty = UNameProperty;
+using FStrProperty = UStrProperty;
+using FTextProperty = UTextProperty;
+using FArrayProperty = UArrayProperty;
+using FMapProperty = UMapProperty;
+using FSetProperty = USetProperty;
+using FStructProperty = UStructProperty;
+using FEnumProperty = UEnumProperty;
+using FDelegateProperty = UDelegateProperty;
+using FMulticastDelegateProperty = UMulticastDelegateProperty;
+
+/* FField's class object is a plain UClass here, not the separate FFieldClass 4.25 introduced */
+using FFieldClass = UClass;
+
+template <typename To, typename From>
+FORCEINLINE To* CastField(From* Src) {
+	return Cast<To>(Src);
+}
+
+template <typename To, typename From>
+FORCEINLINE To* CastField(const From* Src) {
+	return Cast<To>(const_cast<From*>(Src));
+}
+
+template <typename To, typename From>
+FORCEINLINE To* CastFieldChecked(From* Src) {
+	return CastChecked<To>(Src);
+}
+
+template <typename To, typename From>
+FORCEINLINE To* CastFieldChecked(const From* Src) {
+	return CastChecked<To>(const_cast<From*>(Src));
+}
+
+template <typename T>
+FORCEINLINE T* FindFProperty(const UStruct* Owner, const TCHAR* FieldName) {
+	return FindField<T>(Owner, FieldName);
+}
+
+template <typename T>
+FORCEINLINE T* FindFProperty(const UStruct* Owner, const FName FieldName) {
+	return FindField<T>(Owner, FieldName);
+}
+#endif
+
+/*
+ * TSharedPtr only learned to compare against nullptr later on. Reflection leans on that spelling
+ * in a lot of validity checks, so the operators are supplied here rather than rewritten into
+ * IsValid() at every call site.
+ */
+#if UE4_22_BELOW
+#include "Templates/SharedPointer.h"
+
+template <typename ObjectType, ESPMode Mode>
+FORCEINLINE bool operator==(const TSharedPtr<ObjectType, Mode>& Ptr, TYPE_OF_NULLPTR) {
+	return !Ptr.IsValid();
+}
+
+template <typename ObjectType, ESPMode Mode>
+FORCEINLINE bool operator==(TYPE_OF_NULLPTR, const TSharedPtr<ObjectType, Mode>& Ptr) {
+	return !Ptr.IsValid();
+}
+
+template <typename ObjectType, ESPMode Mode>
+FORCEINLINE bool operator!=(const TSharedPtr<ObjectType, Mode>& Ptr, TYPE_OF_NULLPTR) {
+	return Ptr.IsValid();
+}
+
+template <typename ObjectType, ESPMode Mode>
+FORCEINLINE bool operator!=(TYPE_OF_NULLPTR, const TSharedPtr<ObjectType, Mode>& Ptr) {
+	return Ptr.IsValid();
+}
+#endif
+
+/*
+ * FName and FGuid only grew constructors taking an FString later on. Reflection turns strings out
+ * of JSON into both of these all over the place, so the version split lives here once rather than
+ * at every call site.
+ */
+#include "Misc/Guid.h"
+#include "UObject/NameTypes.h"
+
+inline FName StringToName(const FString& String) {
+#if UE4_22_BELOW
+	return FName(*String);
+#else
+	return FName(String);
+#endif
+}
+
+/*
+ * NewObject only started taking a const UClass* later on, and the class Reflection has in hand is
+ * almost always const. Returns whatever the current engine's overload wants.
+ */
+#if UE4_22_BELOW
+inline UClass* ToNewObjectClass(const UClass* Class) {
+	return const_cast<UClass*>(Class);
+}
+#else
+inline const UClass* ToNewObjectClass(const UClass* Class) {
+	return Class;
+}
+#endif
+
+inline FGuid StringToGuid(const FString& GuidString) {
+#if UE4_22_BELOW
+	/* What the constructor added later does: parse, and leave the guid invalid when the
+	 * string is not one */
+	FGuid Guid;
+
+	if (!FGuid::Parse(GuidString, Guid)) {
+		Guid.Invalidate();
+	}
+
+	return Guid;
+#else
+	return FGuid(GuidString);
+#endif
+}
+
 #if UE4_26_0
 #include "AssetRegistry/Public/AssetRegistryModule.h"
+#endif
+
+/* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
+#if UE4_22_BELOW
+#include "AssetRegistryModule.h"
 #endif
 
 #if (ENGINE_UE5 && ENGINE_MINOR_VERSION < 4) || ((ENGINE_UE4 && ENGINE_MINOR_VERSION >= 26) && !(ENGINE_MINOR_VERSION == 26 && ENGINE_PATCH_VERSION == 0))
@@ -205,6 +389,18 @@ bool IsObjectPtrValid(TObjectPtr<T> ObjectPtr) {
 #endif
 }
 
+/*
+ * NamePrivate is FField's own member from 4.25 on. Before that a property was still a UObject and
+ * the member belongs to UObjectBase, which keeps it private.
+ */
+inline FName GetPropertyName(const FProperty* Property) {
+#if UE4_24_BELOW
+	return Property->GetFName();
+#else
+	return Property->NamePrivate;
+#endif
+}
+
 inline int32 GetElementSize(FProperty* Property) {
 #if ENGINE_UE5 && UE5_6_BEYOND
 	return Property->GetElementSize();
@@ -284,6 +480,12 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 #endif
 	}
 }
+
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * so the animation types this file uses have to be pulled in explicitly */
+#if UE4_25_BELOW
+#include "Animation/AnimSequence.h"
+#endif
 
 inline void UpdateAnimationCaching(UAnimSequenceBase* AnimationSequenceBase) {
 	if (UAnimSequence* AnimationSequence = Cast<UAnimSequence>(AnimationSequenceBase)) {

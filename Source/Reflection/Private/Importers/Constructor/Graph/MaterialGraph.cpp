@@ -12,6 +12,14 @@
 #include "Materials/MaterialExpressionTextureBase.h"
 #endif
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the material types used below used to come in from */
+#if UE4_25_BELOW
+#include "Materials/Material.h"
+#include "Materials/MaterialFunction.h"
+#include "Materials/MaterialExpressionTextureBase.h"
+#endif
+
 TSharedPtr<FJsonObject> IMaterialGraph::FindMaterialData(const FString& Type, FUObjectExportContainer* Container) {
 	TSharedPtr<FJsonObject> EditorOnlyData;
 
@@ -310,7 +318,7 @@ FExpressionInput IMaterialGraph::PopulateExpressionInput(const FJsonObject* Json
 	int OutputIndex;
 	if (JsonProperties->TryGetNumberField(TEXT("OutputIndex"), OutputIndex)) Input.OutputIndex = OutputIndex;
 	FString InputName;
-	if (JsonProperties->TryGetStringField(TEXT("InputName"), InputName)) Input.InputName = FName(InputName);
+	if (JsonProperties->TryGetStringField(TEXT("InputName"), InputName)) Input.InputName = StringToName(InputName);
 	int Mask;
 	if (JsonProperties->TryGetNumberField(TEXT("Mask"), Mask)) Input.Mask = Mask;
 	int MaskR;
@@ -360,7 +368,7 @@ FName IMaterialGraph::GetExpressionName(const FJsonObject* JsonProperties, const
 
 	if (ExpressionField == nullptr || ExpressionField->IsNull()) {
 		/* Must be from < 4.25 */
-		return FName(JsonProperties->GetStringField(TEXT("ExpressionName")));
+		return StringToName(JsonProperties->GetStringField(TEXT("ExpressionName")));
 	}
 
 	const TSharedPtr<FJsonObject> ExpressionObject = ExpressionField->AsObject();

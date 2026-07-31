@@ -7,6 +7,12 @@
 class UAnimGraphNode_BlendListByEnum;
 class UAnimGraphNode_Base;
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the animation blueprint type used to come in from */
+#if UE4_25_BELOW
+class UAnimBlueprint;
+#endif
+
 class IAnimationBlueprintImporter final : public IImporter {
 public:
 	virtual bool Import() override;

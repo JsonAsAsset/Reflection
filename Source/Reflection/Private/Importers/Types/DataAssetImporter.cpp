@@ -4,7 +4,7 @@
 #include "Engine/DataAsset.h"
 
 UObject* IDataAssetImporter::CreateAsset(UObject* CreatedAsset) {
-	return IImporter::CreateAsset(NewObject<UDataAsset>(GetPackage(), GetAssetClass(), FName(GetAssetName()), RF_Public | RF_Standalone));
+	return IImporter::CreateAsset(NewObject<UDataAsset>(GetPackage(), GetAssetClass(), StringToName(GetAssetName()), RF_Public | RF_Standalone));
 }
 
 bool IDataAssetImporter::Import() {

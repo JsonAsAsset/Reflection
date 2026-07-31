@@ -154,7 +154,12 @@ void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
 	
 	const FString AnimSequencePackagePath = ParentPath / CleanName;
 
-	UPackage* AnimPackage = CreatePackage(*AnimSequencePackagePath);
+	UPackage* AnimPackage = CreatePackage(
+		/* 4.25, 4.26.0 and below need an Outer */
+#if UE4_25_BELOW || (UE4_26_0)
+		nullptr,
+#endif
+		*AnimSequencePackagePath);
 
 	if (UAnimSequence* AnimSequence = CreateAnimSequenceFromPose(Skeleton, CleanName, PoseContainer, AnimPackage)) {
 		PoseAsset->SourceAnimation = AnimSequence;

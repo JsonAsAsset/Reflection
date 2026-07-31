@@ -200,7 +200,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 							Properties.SetArray(TEXT("LODData"), TargetExport->GetArray(TEXT("LODData")));
 						}
 
-						if (ObjectProperty->NamePrivate != "AttachParent") {
+						if (GetPropertyName(ObjectProperty) != "AttachParent") {
 							ObjectSerializer->DeserializeObjectProperties(Properties.JsonObject, Object);
 						} else {
 							ObjectProperty->SetObjectPropertyValue(OutValue, Object);
@@ -398,7 +398,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		FString OutString;
 		
 		if (JsonValue->TryGetString(OutString)) {
-			FGuid GUID = FGuid(OutString); /* Create GUID from String */
+			FGuid GUID = StringToGuid(OutString); /* Create GUID from String */
 
 			TSharedRef<FJsonObject> SharedObject = MakeShareable(new FJsonObject());
 			SharedObject->SetNumberField(TEXT("A"), GUID.A); SharedObject->SetNumberField(TEXT("B"), GUID.B);
@@ -573,11 +573,15 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 		}
 	}
+	/* FFieldPath, and the property type that holds one, came in with FField in 4.25. A property
+	 * reference is still a plain UObject reference before that, handled by the object branch. */
+#if !UE4_24_BELOW
 	else if (CastField<const FFieldPathProperty>(Property)) {
 		FFieldPath FieldPath;
 		FieldPath.Generate(*NewJsonValue->AsString());
 		*static_cast<FFieldPath*>(OutValue) = FieldPath;
 	}
+#endif
 	else {
 		UE_LOG(LogReflectionPropertySerializer, Fatal, TEXT("Found unsupported property type when deserializing value: %s"), *Property->GetClass()->GetName());
 	}

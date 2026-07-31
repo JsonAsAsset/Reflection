@@ -95,7 +95,7 @@ void IUserDefinedStructImporter::ImportPropertyIntoStruct(UUserDefinedStruct* Us
     if (RegexMatcher.FindNext()) {
         /* Import properties keeping GUID if present */
         FieldDisplayName = RegexMatcher.GetCaptureGroup(1);
-        FieldGuid = FGuid(RegexMatcher.GetCaptureGroup(3));
+        FieldGuid = StringToGuid(RegexMatcher.GetCaptureGroup(3));
     } else {
         CastChecked<UUserDefinedStructEditorData>(UserDefinedStruct->EditorData)->GenerateUniqueNameIdForMemberVariable();
         FieldGuid = FGuid::NewGuid();

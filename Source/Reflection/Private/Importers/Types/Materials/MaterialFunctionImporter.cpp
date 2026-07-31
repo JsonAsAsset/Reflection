@@ -3,6 +3,12 @@
 #include "Importers/Types/Materials/MaterialFunctionImporter.h"
 #include "Factories/MaterialFunctionFactoryNew.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the material function type used to come in from */
+#if UE4_25_BELOW
+#include "Materials/MaterialFunction.h"
+#endif
+
 UObject* IMaterialFunctionImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(Cast<UMaterialFunction>(
 		NewObject<UMaterialFunctionFactoryNew>()->FactoryCreateNew(
@@ -54,7 +60,11 @@ bool IMaterialFunctionImporter::Import() {
 	 * IterateDependentFunctions, which iterates nothing else. Left empty, a parent material misses
 	 * every texture one level deep, then fails to compile on Compiler->Texture(). */
 	MaterialFunction->UpdateInputOutputTypes();
+	/* Neither the candidate list nor the cached expression data it feeds exist before 4.26,
+	 * where a parent material walks the function's expressions directly instead */
+#if !UE4_25_BELOW
 	MaterialFunction->UpdateDependentFunctionCandidates();
+#endif
 
 	MaterialFunction->PreEditChange(nullptr);
 	MaterialFunction->PostEditChange();

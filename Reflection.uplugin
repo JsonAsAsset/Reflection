@@ -47,11 +47,13 @@
 		},
 		{
 			"Name": "AudioModulation",
-			"Enabled": true
+			"Enabled": true,
+			"Optional": true
 		},
 		{
 			"Name": "PluginUtils",
-			"Enabled": true
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

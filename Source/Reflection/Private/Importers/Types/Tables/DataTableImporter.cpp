@@ -2,6 +2,12 @@
 
 #include "Importers/Types/Tables/DataTableImporter.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the data table type used to come in from */
+#if UE4_25_BELOW
+#include "Engine/DataTable.h"
+#endif
+
 UObject* IDataTableImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UDataTable>(GetPackage(), UDataTable::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }

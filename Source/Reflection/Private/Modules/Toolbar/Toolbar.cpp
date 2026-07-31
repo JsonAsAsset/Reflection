@@ -23,6 +23,12 @@
 #include "Utilities/Dialog.h"
 #include "Widgets/Layout/SBox.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the multi box builders used to come in from */
+#if UE4_25_BELOW
+#include "Framework/MultiBox/MultiBoxBuilder.h"
+#endif
+
 static TWeakPtr<SNotificationItem> WaitingForCloud;
 
 #if ENGINE_UE5
@@ -131,6 +137,7 @@ void UReflectionToolbar::PopulateValidationMenu(FMenuBuilder& MenuBuilder) {
 }
 #endif
 
+#if !UE4_23_BELOW
 void UReflectionToolbar::AddReflectionButtons(FToolMenuSection& Section) {
 #if ENGINE_UE5
 	/* Displays Reflection's icon along with the Version */
@@ -224,6 +231,7 @@ void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 	));
 #endif
 }
+#endif
 
 #if ENGINE_UE4
 void UReflectionToolbar::UE4Register(FToolBarBuilder& Builder) {

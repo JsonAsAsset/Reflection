@@ -5,7 +5,14 @@
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
 #include "Utilities/Dialog.h"
+#include "Engine/Compatibility.h"
+
+/* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
+#if UE4_22_BELOW
+#include "AssetRegistryModule.h"
+#else
 #include "AssetRegistry/AssetRegistryModule.h"
+#endif
 #include "Engine/Log.h"
 
 inline void BrowseToAsset(UObject* Asset) {

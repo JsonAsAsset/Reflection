@@ -104,7 +104,7 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 			ObjectName.Split("_INST", &ObjectName, nullptr, ESearchCase::CaseSensitive);
 		}
 		
-		Export->Object = NewObject<UObject>(ObjectOuter, Class, FName(ObjectName), Flags);
+		Export->Object = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), StringToName(ObjectName), Flags);
 	}
 	
 	if (UParticleSystem* ParticleSystem = Cast<UParticleSystem>(Export->Object)) {
@@ -275,7 +275,7 @@ void UObjectSerializer::DeserializeExport(FUObjectExport* Export, TMap<TSharedPt
 		ObjectOuter = Parent;
 	}
 
-	UObject* NewUObject = NewObject<UObject>(ObjectOuter, Class, FName(*Name), RF_Public | RF_Transactional);
+	UObject* NewUObject = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), FName(*Name), RF_Public | RF_Transactional);
 
 	if (ExportObject->HasField(TEXT("Properties"))) {
 		const TSharedPtr<FJsonObject> Properties = ExportObject->GetObjectField(TEXT("Properties"));

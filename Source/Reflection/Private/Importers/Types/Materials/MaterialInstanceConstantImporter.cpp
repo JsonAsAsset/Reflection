@@ -64,7 +64,7 @@ bool IMaterialInstanceConstantImporter::Import() {
 
 		/* Create Material Parameter Info */
 		FMaterialParameterInfo MaterialParameterParameterInfo = FMaterialParameterInfo(
-			FName(ParameterInfo.GetString("Name")),
+			StringToName(ParameterInfo.GetString("Name")),
 			static_cast<EMaterialParameterAssociation>(StaticEnum<EMaterialParameterAssociation>()->GetValueByNameString(ParameterInfo.GetString("Association"))),
 			ParameterInfo.GetInteger("Index")
 		);
@@ -74,7 +74,7 @@ bool IMaterialInstanceConstantImporter::Import() {
 			MaterialParameterParameterInfo,
 			StaticParameter.GetBool(TEXT("Value")),
 			StaticParameter.GetBool("bOverride"),
-			FGuid(StaticParameter.GetString("ExpressionGUID"))
+			StringToGuid(StaticParameter.GetString("ExpressionGUID"))
 		);
 
 		StaticSwitchParameters.Add(Parameter);
@@ -95,7 +95,7 @@ bool IMaterialInstanceConstantImporter::Import() {
 
 		/* Create Material Parameter Info */
 		FMaterialParameterInfo MaterialParameterParameterInfo = FMaterialParameterInfo(
-			FName(ParameterInfo.GetString("Name")),
+			StringToName(ParameterInfo.GetString("Name")),
 			static_cast<EMaterialParameterAssociation>(StaticEnum<EMaterialParameterAssociation>()->GetValueByNameString(ParameterInfo.GetString("Association"))),
 			ParameterInfo.GetInteger("Index")
 		);
@@ -107,7 +107,7 @@ bool IMaterialInstanceConstantImporter::Import() {
 			StaticParameter.GetBool("B"),
 			StaticParameter.GetBool("A"),
 			StaticParameter.GetBool("bOverride"),
-			FGuid(StaticParameter.GetString("ExpressionGUID"))
+			StringToGuid(StaticParameter.GetString("ExpressionGUID"))
 		);
 
 		StaticSwitchMaskParameters.Add(Parameter);

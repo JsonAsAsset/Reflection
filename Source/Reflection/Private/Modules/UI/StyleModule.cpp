@@ -7,6 +7,12 @@
 #include "Engine/EngineUtilities.h"
 #include "Engine/Compatibility.h"
 
+/* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
+ * which is where the slate application used to come in from */
+#if UE4_25_BELOW
+#include "Framework/Application/SlateApplication.h"
+#endif
+
 #if ENGINE_UE5
 #include "Styling/ToolBarStyle.h"
 #include "Styling/StyleColors.h"

@@ -2,7 +2,18 @@
 
 #pragma once
 
+#include "Engine/Compatibility.h"
+
+/* FPluginUtils lives in the PluginUtils plugin, which did not ship before 4.26 */
+#if UE4_25_BELOW
+#include "Interfaces/IProjectManager.h"
+#include "PluginDescriptor.h"
+#include "HAL/PlatformFilemanager.h"
+#include "Misc/Paths.h"
+#else
 #include "PluginUtils.h"
+#endif
+
 #include "Interfaces/IPluginManager.h"
 
 #include "Engine/Notifications.h"
@@ -30,6 +41,40 @@ static void CreatePlugin(FString PluginName) {
 	LoadParams.bSelectInContentBrowser = false;
 
 	FPluginUtils::CreateAndLoadNewPlugin(PluginName, FPaths::ProjectPluginsDir(), CreationParams, LoadParams);
+#elif UE4_25_BELOW
+	/* Without FPluginUtils the content only plugin has to be laid down by hand. These are the
+	 * same steps FPluginUtils::CreateAndMountNewPlugin takes once the code paths, icon, and
+	 * template folders it also handles are stripped out, none of which apply here. */
+	const FString PluginFolder = FPaths::ConvertRelativePathToFull(FPaths::Combine(FPaths::ProjectPluginsDir(), PluginName));
+	const FString PluginFilePath = FPaths::Combine(PluginFolder, PluginName + TEXT(".uplugin"));
+	const FString PluginContentFolder = FPaths::Combine(PluginFolder, TEXT("Content"));
+
+	IPlatformFile& PlatformFile = FPlatformFileManager::Get().GetPlatformFile();
+
+	FText FailReason;
+
+	const bool bFoldersReady =
+		(PlatformFile.DirectoryExists(*PluginFolder) || PlatformFile.CreateDirectoryTree(*PluginFolder)) &&
+		(PlatformFile.DirectoryExists(*PluginContentFolder) || PlatformFile.CreateDirectoryTree(*PluginContentFolder));
+
+	if (bFoldersReady) {
+		FPluginDescriptor Descriptor;
+		Descriptor.FriendlyName = PluginName;
+		Descriptor.Version = 1;
+		Descriptor.VersionName = TEXT("1.0");
+		Descriptor.Category = TEXT("Other");
+		Descriptor.bCanContainContent = true;
+
+		if (Descriptor.Save(PluginFilePath, FailReason)) {
+			/* Project/Plugins is already a search path, so registering it is just a refresh */
+			IPluginManager::Get().RefreshPluginsList();
+
+			IProjectManager::Get().SetPluginEnabled(PluginName, true, FailReason);
+
+			/* Mounts the content folder and loads any modules, of which there are none here */
+			IPluginManager::Get().MountNewlyCreatedPlugin(PluginName);
+		}
+	}
 #else
 	FPluginUtils::FNewPluginParams CreationParams;
 	CreationParams.bCanContainContent = true;
