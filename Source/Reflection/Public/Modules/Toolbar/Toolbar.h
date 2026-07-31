@@ -9,9 +9,14 @@
 class FMenuBuilder;
 
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
- * which is where the toolbar builder used to come in from */
+ * which is where the menu types below used to come in from. FToolMenuSection is only named at
+ * all on the versions that have ToolMenus, so 4.24 and 4.25 are the ones that need it. */
 #if UE4_25_BELOW
 class FToolBarBuilder;
+
+#if !UE4_23_BELOW
+struct FToolMenuSection;
+#endif
 #endif
 
 UCLASS()
