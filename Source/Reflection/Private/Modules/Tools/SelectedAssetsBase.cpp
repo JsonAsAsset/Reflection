@@ -80,7 +80,7 @@ void TSelectedAssetsBase::HandleExports(const TArray<TSharedPtr<FJsonValue>>& Ex
 	if (Exports.Num() > 0 && !ObjectPath.IsEmpty()) {
 		/* Looked up now rather than held from Execute: the asset could have been unloaded
 		 * while the request was out */
-		if (UObject* Object = StaticLoadObject(UObject::StaticClass(), nullptr, *ObjectPath)) {
+		if (UObject* Object = LoadObjectByPath<UObject>(ObjectPath)) {
 			/* The serializers are plain NewObject's that nothing keeps alive, and a run spans
 			 * enough ticks for a collection to happen between two assets. Building them here
 			 * puts their whole lifetime inside one call stack, and hands each asset a
@@ -108,7 +108,7 @@ void TSelectedAssetsBase::Finish() {
 
 	if (!PendingBrowseTo.IsEmpty()) {
 		/* Looked up now rather than held from Process: the asset could have been unloaded since */
-		if (UObject* Object = StaticLoadObject(UObject::StaticClass(), nullptr, *PendingBrowseTo)) {
+		if (UObject* Object = LoadObjectByPath<UObject>(PendingBrowseTo)) {
 			BrowseToAsset(Object);
 		}
 

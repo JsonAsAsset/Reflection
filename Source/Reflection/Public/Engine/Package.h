@@ -11,6 +11,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #endif
 #include "VectorField/VectorFieldStatic.h"
+#include "UObject/ObjectRedirector.h"
 
 #include "Utilities/ContentBrowser.h"
 #include "Utilities/Dialog.h"
@@ -18,6 +19,29 @@
 #if ENGINE_UE5
 #include "UObject/SavePackage.h"
 #endif
+
+/* Follows an object redirector to whatever it points at.*/
+inline UObject* ResolveRedirector(UObject* Object) {
+	/* Redirectors chain. The cap only exists so a self referential one cannot spin forever. */
+	for (int32 Depth = 0; Depth < 16; ++Depth) {
+		const UObjectRedirector* Redirector = Cast<UObjectRedirector>(Object);
+
+		if (Redirector == nullptr) {
+			return Object;
+		}
+
+		Object = Redirector->DestinationObject;
+	}
+
+	return nullptr;
+}
+
+/* Loads an asset by package path, following any redirector left behind by a rename. Every load
+ * the importer does by path goes through here, so none of them can hand back a redirector. */
+template <typename T>
+T* LoadObjectByPath(const FString& Path) {
+	return Cast<T>(ResolveRedirector(StaticLoadObject(T::StaticClass(), nullptr, *Path)));
+}
 
 inline void SavePackage(UPackage* Package) {
 	const FString PackageName = Package->GetName();

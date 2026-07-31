@@ -836,7 +836,7 @@ void SValidationPanel::BrowseToEntry(TSharedPtr<FValidationEntry> Entry) {
 		return;
 	}
 
-	UObject* Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *(Entry->PackagePath + TEXT(".") + Entry->AssetName));
+	UObject* Asset = LoadObjectByPath<UObject>(Entry->PackagePath + TEXT(".") + Entry->AssetName);
 	if (Asset == nullptr) {
 		UE_LOG(LogReflection, Warning, TEXT("Validation couldn't load '%s' to browse to it."), *Entry->PackagePath);
 
@@ -869,7 +869,7 @@ void SValidationPanel::MoveEntryTo(TSharedPtr<FValidationEntry> Entry, FString D
 		return;
 	}
 
-	UObject* Asset = StaticLoadObject(UObject::StaticClass(), nullptr, *(Entry->PackagePath + TEXT(".") + Entry->AssetName));
+	UObject* Asset = LoadObjectByPath<UObject>(Entry->PackagePath + TEXT(".") + Entry->AssetName);
 	if (Asset == nullptr) {
 		SpawnPrompt(TEXT("Move Asset"), FString::Printf(TEXT("Couldn't load '%s'."), *Entry->PackagePath));
 

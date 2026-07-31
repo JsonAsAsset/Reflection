@@ -22,6 +22,20 @@
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionPropertySerializer, Error, Log);
 
+/* An object property takes whatever pointer it is handed without checking the type, so anything
+ * that resolves to the wrong class lands in the property and is only discovered when something
+ * calls through it, by which point the editor is already gone. */
+static void SetObjectPropertyValueChecked(const FObjectPropertyBase* ObjectProperty, void* OutValue, UObject* Object) {
+	if (Object != nullptr && ObjectProperty->PropertyClass != nullptr && !Object->IsA(ObjectProperty->PropertyClass)) {
+		UE_LOG(LogReflectionPropertySerializer, Warning, TEXT("Skipped '%s': '%s' is a %s, not a %s."),
+			*ObjectProperty->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *ObjectProperty->PropertyClass->GetName());
+
+		return;
+	}
+
+	ObjectProperty->SetObjectPropertyValue(OutValue, Object);
+}
+
 #if UE5_2_BEYOND
 UE_DISABLE_OPTIMIZATION
 #else
@@ -152,7 +166,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		TObjectPtr<UObject> Object = nullptr;
 
 		if (NewJsonValue->IsNull()) {
-			ObjectProperty->SetObjectPropertyValue(OutValue, nullptr);
+			SetObjectPropertyValueChecked(ObjectProperty, OutValue, nullptr);
 		}
 
 		if (NewJsonValue->Type == EJson::Object) {
@@ -191,7 +205,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 				bool bIsActorComponent = Object.Get()->IsA(UActorComponent::StaticClass());
 				
 				if (!bIsActorComponent) {
-					ObjectProperty->SetObjectPropertyValue(OutValue, Object);
+					SetObjectPropertyValueChecked(ObjectProperty, OutValue, Object);
 				} else {
 					if (FUObjectExport* TargetExport = ExportsContainer->GetExportByObjectPath(JsonValueAsObject)) {
 						FUObjectJsonValueExport Properties = TargetExport->GetObject(TEXT("Properties"));
@@ -203,7 +217,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 						if (GetPropertyName(ObjectProperty) != "AttachParent") {
 							ObjectSerializer->DeserializeObjectProperties(Properties.JsonObject, Object);
 						} else {
-							ObjectProperty->SetObjectPropertyValue(OutValue, Object);
+							SetObjectPropertyValueChecked(ObjectProperty, OutValue, Object);
 						}
 					}
 
@@ -238,7 +252,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			if (ExportsContainer) {
 				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
-						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
+						SetObjectPropertyValueChecked(ObjectProperty, OutValue, FoundObject);
 					}
 				}
 			}
@@ -261,7 +275,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 				
 				if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, ObjectOuter); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
-						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
+						SetObjectPropertyValueChecked(ObjectProperty, OutValue, FoundObject);
 					}
 				}
 			}
@@ -272,7 +286,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 
 					if (FUObjectExport* Export = ExportsContainer->Find(ObjectName, Name); Export->IsJsonValid() && Export->Object != nullptr) {
 						if (UObject* FoundObject = Export->Object) {
-							ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
+							SetObjectPropertyValueChecked(ObjectProperty, OutValue, FoundObject);
 						}
 					}
 				}
@@ -281,7 +295,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			if (ObjectIndex != -1 && ExportsContainer) {
 				if (FUObjectExport* Export = ExportsContainer->FindByPositionAndName(ObjectIndex, ObjectName); Export->IsJsonValid() && Export->Object != nullptr) {
 					if (UObject* FoundObject = Export->Object) {
-						ObjectProperty->SetObjectPropertyValue(OutValue, FoundObject);
+						SetObjectPropertyValueChecked(ObjectProperty, OutValue, FoundObject);
 					}
 				}
 			}
@@ -294,7 +308,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 
 			if (TreeSegments.Num() > 0) {
 				if (FUObjectExport& FoundExport = ExportsContainer->FindByTreeSegment(TreeSegments); FoundExport.Object != nullptr) {
-					ObjectProperty->SetObjectPropertyValue(OutValue, FoundExport.Object);
+					SetObjectPropertyValueChecked(ObjectProperty, OutValue, FoundExport.Object);
 				}
 			}
 #endif

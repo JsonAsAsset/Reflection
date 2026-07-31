@@ -15,7 +15,7 @@
 inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const FString& ObjectPath) {
 	const FString FullPath = ObjectPath + TEXT(".") + ObjectName;
 
-	if (UObject* LoadedObject = StaticLoadObject(UObject::StaticClass(), nullptr, *FullPath)) {
+	if (UObject* LoadedObject = LoadObjectByPath<UObject>(FullPath)) {
 		if (UClass* LoadedClass = Cast<UClass>(LoadedObject)) {
 			return LoadedClass;
 		}
@@ -36,7 +36,7 @@ inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
 		FullPath = FullPath.LeftChop(2);
 	}
 
-	if (UObject* LoadedObject = StaticLoadObject(UObject::StaticClass(), nullptr, *FullPath)) {
+	if (UObject* LoadedObject = LoadObjectByPath<UObject>(FullPath)) {
 		const UBlueprint* LoadedBlueprint = Cast<UBlueprint>(LoadedObject);
 		
 		if (LoadedBlueprint && LoadedBlueprint->GeneratedClass) {

@@ -123,7 +123,7 @@ void ISoundGraph::SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoun
 					AssetPtr = NodeProperties->GetStringField(TEXT("SoundWaveAssetPtr"));
 				}
 
-				USoundWave* SoundWave = Cast<USoundWave>(StaticLoadObject(USoundWave::StaticClass(), nullptr, *AssetPtr));
+				USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
 				
 				/* Already exists */
 				if (SoundWave != nullptr) {
@@ -179,7 +179,7 @@ void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr,
 	
 	auto AssetsImported = AssetTools.ImportAssetsAutomated(ImportData);
 	if (!AssetsImported.IsValidIndex(0)) {
-		USoundWave* SoundWave = Cast<USoundWave>(StaticLoadObject(USoundWave::StaticClass(), nullptr, *AssetPtr));
+		USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
 		if (Node) {
 			Node->SetSoundWave(SoundWave);
 		}

@@ -16,6 +16,7 @@
 #include "Registry/RegistrationInfo.h"
 #include "Styling/SlateIconFinder.h"
 #include "Importers/Constructor/Asset.h"
+#include "Engine/Package.h"
 
 /* Base handler for converting JSON to assets */
 class REFLECTION_API IImporter : public USerializerContainer {
@@ -152,7 +153,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 	FRRedirects::Redirect(ObjectPath);
 
 	/* Try to load object using the object path and the object name combined */
-	TObjectPtr<T> LoadedObject = Cast<T>(StaticLoadObject(T::StaticClass(), nullptr, *(ObjectPath + "." + ObjectName)));
+	TObjectPtr<T> LoadedObject = LoadObjectByPath<T>(ObjectPath + "." + ObjectName);
 
 	if (!LoadedObject) {
 		FString NewObjectPath;
@@ -163,7 +164,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 		NewObjectPath = NewObjectPath + "/" + ObjectName;
 
 		if (ObjectFileName != ObjectName) {
-			LoadedObject = Cast<T>(StaticLoadObject(T::StaticClass(), nullptr, *(NewObjectPath + "." + ObjectName)));
+			LoadedObject = LoadObjectByPath<T>(NewObjectPath + "." + ObjectName);
 		}
 	}
 
@@ -193,7 +194,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 	if (!LoadedObject && ObjectName.Contains("MaterialExpression")) {
 		FString SplitObjectName;
 		ObjectPath.Split("/", nullptr, &SplitObjectName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-		LoadedObject = Cast<T>(StaticLoadObject(T::StaticClass(), nullptr, *(ObjectPath + "." + SplitObjectName + ":" + ObjectName)));
+		LoadedObject = LoadObjectByPath<T>(ObjectPath + "." + SplitObjectName + ":" + ObjectName);
 	}
 
 	Object = LoadedObject;

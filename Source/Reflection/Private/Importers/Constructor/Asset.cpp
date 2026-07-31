@@ -253,7 +253,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 			FString RedirectedPath = RealPath;
 			
 			FRRedirects::Redirect(RedirectedPath);
-			OutObject = Cast<T>(StaticLoadObject(T::StaticClass(), nullptr, *RedirectedPath));
+			OutObject = LoadObjectByPath<T>(RedirectedPath);
 
 			return OutObject != nullptr;
 		}
