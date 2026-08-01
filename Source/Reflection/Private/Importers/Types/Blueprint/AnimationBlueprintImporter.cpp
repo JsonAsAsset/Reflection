@@ -25,6 +25,37 @@
 
 bool IAnimationBlueprintImporter::Import() {
 	AnimBlueprint = GetSelectedAsset<UAnimBlueprint>(true);
+
+	/* Nothing selected in the content browser doesn't mean nothing is there - reflecting the same animation
+	 * blueprint a second time lands on an asset that already exists, and FKismetEditorUtilities::CreateBlueprint
+	 * asserts outright when any blueprint of that name is already in the package. Reuse it in place instead;
+	 * CreateGraph clears the graph out before rebuilding it. Same handling as IBlueprintImporter::CreateAsset. */
+	if (!AnimBlueprint && GetPackage()) {
+		/* FindObject mirrors the assert's own lookup; LoadObject additionally covers the asset sitting on disk
+		 * without having been loaded into the package yet. */
+		UBlueprint* ExistingBlueprint = FindObject<UBlueprint>(GetPackage(), *GetAssetName());
+		if (!ExistingBlueprint) ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName());
+
+		if (ExistingBlueprint) {
+			AnimBlueprint = Cast<UAnimBlueprint>(ExistingBlueprint);
+
+			/* Something of that name is there but isn't an animation blueprint, so it can neither be reused nor
+			 * created over. Bail rather than let the assert take the editor down. */
+			if (!AnimBlueprint) {
+				AppendNotification(
+					FText::FromString("Asset Name Already Taken"),
+					FText::FromString(FString::Printf(TEXT("'%s' already exists and is not an Animation Blueprint. Rename or delete it before reflecting."), *GetAssetName())),
+					3.0f,
+					SNotificationItem::CS_Fail,
+					true,
+					350.0f
+				);
+
+				return false;
+			}
+		}
+	}
+
 	if (!AnimBlueprint) {
 		const TSharedPtr<FJsonObject> SuperStruct = GetAssetData()->GetObjectField(TEXT("SuperStruct"));
 		UClass* ParentClass = LoadClass(SuperStruct);
@@ -413,11 +444,19 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 			continue;
 		}
 
-		/* Parse the NodeGuid, if not parsed properly, generate a new one */
+		/* Parse the NodeGuid, if not parsed properly, generate a new one.
+		 *
+		 * UE4 named node properties after the node's guid ("AnimGraphNode_ApplyAdditive_10AB22C6...") so it
+		 * parses straight back out. UE5 numbers them instead ("AnimGraphNode_ModifyBone_3"), so the parse fails
+		 * for every node - and FGuid() is all zeroes, not a fresh guid, so they would all end up sharing one.
+		 * FAnimBlueprintCompilerContext does NodeGuidToIndexMap.Add(Node->NodeGuid, Index) per node, and TMap::Add
+		 * overwrites on a duplicate key, so a whole graph of zeroes collapses to a single entry pointing at
+		 * whichever node compiled last. Everything that resolves a node through that map afterwards - state
+		 * machines, asset players, blend space graphs - then reads the wrong index. */
 		FGuid NodeGuid; {
 			FGuid::Parse(NodeStringGUID, NodeGuid);
 
-			if (!NodeGuid.IsValid()) NodeGuid = FGuid();
+			if (!NodeGuid.IsValid()) NodeGuid = FGuid::NewGuid();
 		}
 
 		const UClass* Class = FindClassByType(NodeType);

@@ -78,6 +78,9 @@ public class Reflection : ModuleRules {
 			"AnimGraphRuntime",
 			"AnimGraph",
 
+			/* FNodeFactory/SGraphNode, used to measure anim graph nodes when auto-laying them out */
+			"GraphEditor",
+
 #if UE_4_23_OR_LATER
 			/* PhysicsCore was carved out of Engine in 4.23 */
 			"PhysicsCore",
