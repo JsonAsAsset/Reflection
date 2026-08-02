@@ -14,7 +14,6 @@
 
 #include "Modules/Toolbar/Tools/ClearImportData.h"
 #include "Modules/Toolbar/Tools/FixUpAssetData.h"
-#include "Modules/Toolbar/Tools/ImportFromPath.h"
 #include "Utilities/Dialog.h"
 
 void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
@@ -24,20 +23,6 @@ void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 		FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InnerMenuBuilder) {
 			InnerMenuBuilder.BeginSection("ReflectionToolsSection", FText::FromString("Tools"));
 			{
-				InnerMenuBuilder.AddMenuEntry(
-					FText::FromString("Reflect From Path"),
-					FText::FromString("Fetch an asset out of Cloud by its path"),
-					FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
-
-					FUIAction(
-						FExecuteAction::CreateLambda([] {
-							TToolImportFromPath* Tool = new TToolImportFromPath();
-							Tool->Execute();
-						})
-					),
-					NAME_None
-				);
-
 				InnerMenuBuilder.AddMenuEntry(
 					FText::FromString("Clear Import Data"),
 					FText::FromString(""),
