@@ -34,11 +34,7 @@ bool CanImport(const FString& Type, const bool IsCloud, const UClass* Class) {
 	if (Class == nullptr) {
 		return false;
 	}
-
-	if (ImportTypes::Cloud::Extra.Contains(Type)) {
-		return true;
-	}
-
+	
 	if (!ImportTypes::Allowed(Type)) return false;
 	
 	if (Class->IsChildOf(UDataAsset::StaticClass())) {

@@ -15,6 +15,7 @@
 #include "Modules/Versioning.h"
 
 #include "Modules/UI/StyleModule.h"
+#include "Modules/UI/SupportedAssets/SupportedAssetsTab.h"
 #include "Modules/UI/Validation/ValidationTab.h"
 #include "Modules/Toolbar/Toolbar.h"
 #include "Engine/EngineUtilities.h"
@@ -37,6 +38,8 @@ void FReflectionModule::StartupModule() {
     FReflectionStyle::ReloadTextures();
 
 	/* Register tabs, the style has to exist first for their icons */
+	FSupportedAssetsTab::Register();
+
 #if ENGINE_UE5
 	FValidationTab::Register();
 #endif
@@ -79,6 +82,8 @@ void FReflectionModule::ShutdownModule() {
 	UToolMenus::UnRegisterStartupCallback(this);
 	UToolMenus::UnregisterOwner(this);
 #endif
+
+	FSupportedAssetsTab::Unregister();
 
 #if ENGINE_UE5
 	/* The main menu bar entry is owned by the toolbar, not the module */

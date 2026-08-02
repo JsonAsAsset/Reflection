@@ -104,10 +104,6 @@ bool ImportTypes::Cloud::Allowed(const FString& Type) {
 		return false;
 	}
 
-	if (Extra.Contains(Type)) {
-		return true;
-	}
-
 	return true;
 }
 
