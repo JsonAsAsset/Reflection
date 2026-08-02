@@ -4,8 +4,11 @@
 
 #include "AnimGraphNode_Base.h"
 #include "AnimGraphNode_BlendListByEnum.h"
+#include "Animation/AnimBlueprint.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
+#include "Engine/Compatibility.h"
+#include "Engine/Log.h"
 #include "Serializers/ObjectSerializer.h"
 #include "Utilities/JsonHelpers.h"
 
@@ -153,6 +156,74 @@ inline void HarvestAndTagConnectedStateMachineNodes(const FString& StartKey, con
 	}
 }
 
+/* Property bindings on animation graph nodes, and the struct describing them, arrived in 4.26 */
+#if !UE4_25_BELOW
+/* Stores a pin binding on a node.
+ *
+ * 5.3 moved the map off the node into an instanced binding object, leaving PropertyBindings behind
+ * as PropertyBindings_DEPRECATED. The replacement lives in UAnimGraphNodeBinding_Base, which sits
+ * in the module's Private folder with no public way to add an entry, so the map is reached through
+ * reflection instead. The struct stored in it is the same FAnimGraphNodePropertyBinding either way. */
+inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, const FAnimGraphNodePropertyBinding& PropertyBinding) {
+#if (ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 3)
+	/* Taken by reflection so the private binding type never has to be named */
+	const FObjectProperty* BindingProperty = CastField<FObjectProperty>(Node->GetClass()->FindPropertyByName(TEXT("Binding")));
+	if (!BindingProperty) return false;
+
+	UObject* BindingObject = BindingProperty->GetObjectPropertyValue_InContainer(Node);
+
+	/*
+	 * A node built straight from NewObject never ran PostPlacedNewNode, which is where the editor
+	 * hands it one of these. UAnimGraphNode_Base::EnsureBindingsArePresent does the job but is
+	 * protected, so the same thing happens here: the blueprint's binding class if it names one,
+	 * the engine's own otherwise.
+	 */
+	if (!BindingObject) {
+		UClass* BindingClass = nullptr;
+
+		if (const UAnimBlueprint* OuterBlueprint = Node->GetTypedOuter<UAnimBlueprint>()) {
+			BindingClass = OuterBlueprint->GetDefaultBindingClass();
+		}
+
+		if (!BindingClass) {
+			BindingClass = FindClassByType(TEXT("AnimGraphNodeBinding_Base"));
+		}
+
+		if (!BindingClass) return false;
+
+		BindingObject = NewObject<UObject>(Node, BindingClass, NAME_None, RF_Transactional);
+		if (!BindingObject) return false;
+
+		Node->Modify();
+		BindingProperty->SetObjectPropertyValue_InContainer(Node, BindingObject);
+	}
+
+	const FMapProperty* MapProperty = CastField<FMapProperty>(BindingObject->GetClass()->FindPropertyByName(TEXT("PropertyBindings")));
+	if (!MapProperty) return false;
+
+	const FStructProperty* ValueProperty = CastField<FStructProperty>(MapProperty->ValueProp);
+	if (!ValueProperty || ValueProperty->Struct != FAnimGraphNodePropertyBinding::StaticStruct()) return false;
+
+	BindingObject->Modify();
+
+	FScriptMapHelper MapHelper(MapProperty, MapProperty->ContainerPtrToValuePtr<void>(BindingObject));
+
+	const int32 Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
+
+	*static_cast<FName*>(static_cast<void*>(MapHelper.GetKeyPtr(Index))) = PinName;
+	ValueProperty->Struct->CopyScriptStruct(MapHelper.GetValuePtr(Index), &PropertyBinding);
+
+	MapHelper.Rehash();
+
+	return true;
+#else
+	Node->PropertyBindings.Add(PinName, PropertyBinding);
+
+	return true;
+#endif
+}
+#endif
+
 inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TSharedPtr<FJsonValue>>& JsonObjects, UAnimGraphNode_Base* Node, IImporter* Importer, UAnimBlueprint* AnimBlueprint) {
 	const TSharedPtr<FJsonObject> NodeProperties = NodeExport->JsonObject;
 	
@@ -178,13 +249,11 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 
 					FString SourcePropertyName = CopyRecordAsObject->GetStringField(TEXT("SourcePropertyName"));
 					
-					/*
-					 * Take the property's name from the object name:
+					/* Take the property's name from the object name:
 					 *
 					 * FloatProperty'AnimNode_SkeletalControlBase:Alpha' ->
 					 * :Alpha' ->
-					 * Alpha
-					 */
+					 * Alpha */
 					const TSharedPtr<FJsonObject> DestProperty = CopyRecordAsObject->GetObjectField(TEXT("DestProperty"));
 					FString PinName = DestProperty->GetStringField(TEXT("ObjectName")); {
 						PinName.Split(TEXT(":"), nullptr, &PinName);
@@ -214,6 +283,14 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 					PropertyBinding.PinType.PinCategory = FName(PinCategory);
 					PropertyBinding.bIsBound = true;
 					PropertyBinding.PropertyPath.Append({ SourcePropertyName });
+
+					/* The category above is the property's type lowercased, which was the pin
+					 * category's spelling in 4.x. 5.0 folded float and double into "real" with the
+					 * width in the sub category, so "float" now names no pin at all and the binding
+					 * describes a pin that doesn't exist. The pin itself settles it when it's there. */
+					if (const UEdGraphPin* DestinationPin = Node->FindPin(PinNameAsName, EGPD_Input)) {
+						PropertyBinding.PinType = DestinationPin->PinType;
+					}
 
 					TSharedPtr<FJsonObject> SourcePropertyObject = GetExportMatchingWith(SourcePropertyName, "Name", JsonObjects);
 					if (PinCategory == "struct" && SourcePropertyObject.IsValid() && SourcePropertyObject->HasField(TEXT("Struct"))) {
@@ -253,9 +330,9 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 						}
 					}
 
-#if (ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION < 3) || ENGINE_UE4
-					Node->PropertyBindings.Add(PinNameAsName, PropertyBinding);
-#endif
+					if (!AddPropertyBinding(Node, PinNameAsName, PropertyBinding)) {
+						UE_LOG(LogReflection, Warning, TEXT("Binding dropped: %s.%s <- %s"), *Node->GetClass()->GetName(), *PinName, *SourcePropertyName);
+					}
 #endif
 
 					if (PinName == "ActiveEnumValue" && Node != nullptr) {
