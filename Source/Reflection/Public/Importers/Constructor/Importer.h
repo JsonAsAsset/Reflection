@@ -130,12 +130,17 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 
 	ObjectName = ObjectName.Replace(TEXT("'"), TEXT(""));
 
+	/* Subobjects nest arbitrarily deep, so only the last segment names the export and the one
+	 * before it is its outer. Peeling a fixed number of segments off the front leaves anything
+	 * deeper than two levels unresolvable: a reroute inside a composite's subgraph comes through
+	 * as Material:MaterialGraph_1.MaterialGraphNode_Composite_0.<Subgraph>.Reroute_8, and used to
+	 * come out of here still carrying "<Subgraph>." in front of its name. */
 	if (ObjectName.Contains(".")) {
-		ObjectName.Split(".", nullptr, &ObjectName);
-	}
+		FString Chain;
+		ObjectName.Split(".", &Chain, &ObjectName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 
-	if (ObjectName.Contains(".")) {
-		ObjectName.Split(".", &Outer, &ObjectName);
+		/* Leaves Outer alone when there is nothing in front of the leaf but the asset itself */
+		Chain.Split(".", nullptr, &Outer, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 	}
 
 	ObjectPath = ToEditorPackagePath(ObjectPath);

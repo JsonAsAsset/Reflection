@@ -278,7 +278,15 @@ inline FName GetExportNameOfSubobject(const FString& PackageIndex) {
 		PackageIndex.Split("'", nullptr, &Name);
 		Name.Split(":", nullptr, &Name);
 		Name = Name.Replace(TEXT("'"), TEXT(""));
+
+		/* Subobjects nest, and only the last segment names the export. A reroute living inside a
+		 * composite's subgraph arrives as
+		 * MaterialGraph_1.MaterialGraphNode_Composite_0.<Subgraph>.MaterialExpressionReroute_8,
+		 * and stopping at the colon would hand back the whole chain. */
+		if (Name.Contains(TEXT("."))) {
+			Name.Split(TEXT("."), nullptr, &Name, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+		}
 	}
-	
+
 	return StringToName(Name);
 }
