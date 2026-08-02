@@ -14,6 +14,10 @@ public:
 	virtual bool Import() override;
 	
 protected:
+	/* Recreates the variables the blueprint declares, returns how many were added.
+	 * Not const, reading the export off the container isn't. */
+	int32 ConstructVariables();
+
 	/* Handles SimpleConstructionScript, the component layout for Actor blueprints */
 	void ConstructScript() const;
 

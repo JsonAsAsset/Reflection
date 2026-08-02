@@ -81,6 +81,9 @@ public class Reflection : ModuleRules {
 			/* FNodeFactory/SGraphNode, used to measure anim graph nodes when auto-laying them out */
 			"GraphEditor",
 
+			/* UEdGraphSchema_K2, whose PC_* pin categories name the type of a blueprint variable */
+			"BlueprintGraph",
+
 #if UE_4_23_OR_LATER
 			/* PhysicsCore was carved out of Engine in 4.23 */
 			"PhysicsCore",

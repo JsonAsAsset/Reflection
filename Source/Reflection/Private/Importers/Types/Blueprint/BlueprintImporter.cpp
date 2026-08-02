@@ -19,6 +19,7 @@
 
 #include "Engine/SCS_Node.h"
 #include "Importers/Types/Blueprint/BlueprintUtilities.h"
+#include "Importers/Types/Blueprint/BlueprintVariables.h"
 
 UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 	UClass* Class = GetAssetClass();
@@ -89,6 +90,21 @@ bool IBlueprintImporter::Import() {
 
 	ClassDefaultObjectExport->Object = GeneratedClass;
 
+	/* The variables have to exist before their defaults can land anywhere. A recreated blueprint
+	 * only has what its parent class gave it, so any property the blueprint declared itself is
+	 * missing, and deserializing the class default object over it would drop those values on the
+	 * floor without complaining. */
+	if (ConstructVariables() > 0) {
+		/* Adding a variable only touches the blueprint, the generated class grows the property
+		 * when it recompiles, and the default object below is the one that comes out of that */
+		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+		GeneratedClass = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
+		if (!GeneratedClass) return false;
+
+		ClassDefaultObjectExport->Object = GeneratedClass;
+	}
+
 	GetObjectSerializer()->DeserializeObjectProperties(ClassDefaultObjectExport->GetProperties(), GeneratedClass->GetDefaultObject());
 
 	/* Experimental (for now) spawning */
@@ -98,6 +114,17 @@ bool IBlueprintImporter::Import() {
 	ConstructWidgetTree();
 
 	return OnAssetCreation(Blueprint);
+}
+
+int32 IBlueprintImporter::ConstructVariables() {
+	const TArray<TSharedPtr<FJsonValue>>* ChildProperties;
+
+	/* A blueprint that declared nothing of its own has no ChildProperties at all */
+	if (!GetAssetExport()->TryGetArrayField(TEXT("ChildProperties"), ChildProperties)) {
+		return 0;
+	}
+
+	return FBlueprintVariables::Construct(Blueprint, *ChildProperties);
 }
 
 void IBlueprintImporter::ConstructScript() const {
