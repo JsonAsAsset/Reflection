@@ -2,38 +2,44 @@
 
 #pragma once
 
+#include "Importers/Types/Texture/TextureFormats.h"
+#include "Importers/Types/Texture/TextureTypes.h"
 #include "Serializers/PropertySerializer.h"
+#include "Engine/Texture2D.h"
 #include "Dom/JsonObject.h"
 
-inline bool ShouldUseOctetStream(
-	const FString& Type,
-	const bool IsVectorDisplacementMap)
-{
-#if PLATFORM_LINUX
-	return false;
-#else
-	
-#if UE4_26_BELOW || UE5_5_BEYOND
-	return true;
-#else
-	
-	if (Type == "TextureLightProfile"
-	 || Type == "TextureCube"
-	 || Type == "VolumeTexture"
-	 || Type == "TextureRenderTarget2D")
-	{
-		return true;
-	}
-	
-	return IsVectorDisplacementMap;
-#endif
-#endif
-}
+/* The size and format an export was cooked at, once the stacked payload has been unfolded */
+struct FTextureCookedLayout {
+	int32 SizeX = 0;
 
-struct FTextureCreatorUtilities {
+	/* One slice, not the stacked height the export reports */
+	int32 SizeY = 0;
+
+	/* Slices stacked into the payload: 1 for a flat texture, 6 for a cube, the depth for a volume */
+	int32 SizeZ = 1;
+
+	/* A volume loses depth with every mip, a cube keeps its six faces all the way down */
+	bool SlicesHalvePerMip = false;
+
+	EPixelFormat PixelFormat = PF_Unknown;
+	FTextureSourceLayout Source;
+
+	/* Bytes the whole payload takes up at this size */
+	int64 GetEncodedSize() const;
+
+	/* Steps down to the next mip, false once there is nothing left to step down to */
+	bool DropMip();
+};
+
+/* Builds one texture asset out of a Cloud export.
+ *
+ * Every creator takes the export object itself rather than its properties, because a texture is
+ * described at both levels: the UPROPERTYs sit under "Properties", while the cooked size, pixel
+ * format and mip description sit on the export next to it. */
+struct FTextureCreator {
 public:
-	FTextureCreatorUtilities(const FString& AssetName, const FString& FilePath, UPackage* Package, const bool UseOctetStream)
-		: UseOctetStream(UseOctetStream), AssetName(AssetName), FilePath(FilePath), Package(Package)
+	FTextureCreator(const FString& AssetName, const FString& FilePath, UPackage* Package, const bool UseRawMipData)
+		: UseRawMipData(UseRawMipData), AssetName(AssetName), FilePath(FilePath), Package(Package)
 	{
 		PropertySerializer = NewObject<UPropertySerializer>();
 		ObjectSerializer = NewObject<UObjectSerializer>();
@@ -41,23 +47,50 @@ public:
 		ObjectSerializer->SetPropertySerializer(PropertySerializer);
 	}
 
-	bool UseOctetStream = true;
+	/* Builds whichever texture class Type names, false when it names none of them */
+	bool Create(const FString& Type, const TSharedPtr<FJsonObject>& Export, TArray<uint8>& Data, UTexture*& OutTexture);
 
-	bool IsOctetStreamEnabled() const;
-
-    template <class T = UObject>
-	bool CreateTexture(UTexture*& OutTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Properties);
-	bool CreateTextureCube(UTexture*& OutTextureCube, const TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Properties) const;
-	bool CreateVolumeTexture(UTexture*& OutVolumeTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Properties) const;
-	bool CreateRenderTarget2D(UTexture*& OutRenderTarget2D, const TSharedPtr<FJsonObject>& Properties) const;
-
-	/* Deserialization functions */
-	bool DeserializeTexture2D(UTexture2D* InTexture2D, const TSharedPtr<FJsonObject>& Properties) const;
-	bool DeserializeTexture(UTexture* Texture, const TSharedPtr<FJsonObject>& Properties) const;
-	bool DeserializeTexturePlatformData(UTexture* Texture, TArray<uint8>& Data, FTexturePlatformData& TexturePlatformData, const TSharedPtr<FJsonObject>& Properties);
+	/* Whether the payload holds raw mip bytes rather than an encoded image */
+	bool IsRawMipData() const;
 
 private:
-	static void GetDecompressedTextureData(uint8* Data, uint8*& OutData, const int SizeX, const int SizeY, const int SizeZ, const int TotalSize, const EPixelFormat Format);
+	/* Complains on behalf of the classes that can't be rebuilt from an encoded image */
+	bool RequireRawMipData(const TCHAR* What) const;
+
+	/* Texture2D and the classes deriving from it, either handed to the texture factory or rebuilt by hand */
+	template <class T = UTexture2D>
+	bool CreateTexture2D(UTexture*& OutTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
+
+	bool CreateTextureCube(UTexture*& OutTextureCube, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
+	bool CreateVolumeTexture(UTexture*& OutVolumeTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
+	bool CreateRenderTarget2D(UTexture*& OutRenderTarget2D, const TSharedPtr<FJsonObject>& Export);
+
+	/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Source data ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
+	/* Reads back the size and pixel format the export was cooked at.
+	 *
+	 * Cloud stacks the slices of a cube or a volume vertically into one tall image, so SizeY comes
+	 * back as SizeY * SizeZ and has to be unfolded. FallbackSlices covers Cloud builds too old to
+	 * send a slice count: pass the count for classes that have a fixed one, or zero to work it out
+	 * from the width on the assumption that the slices are square. */
+	bool GetCookedLayout(const TSharedPtr<FJsonObject>& Export, int32 FallbackSlices, FTextureCookedLayout& OutCooked) const;
+
+	/* Decodes the raw first mip, slice by slice, into the texture's source data */
+	bool BuildSourceFromRawMip(UTexture* Texture, const TArray<uint8>& Data, const FTextureCookedLayout& Cooked) const;
+
+	/* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Deserialization ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
+	/* The UPROPERTYs shared by every texture class */
+	void DeserializeTexture(UTexture* Texture, const TSharedPtr<FJsonObject>& Export) const;
+	void DeserializeTexture2D(UTexture2D* Texture2D, const TSharedPtr<FJsonObject>& Export) const;
+
+	/* Cloud only ever sends the top mip, so anything with just the one can't generate the rest */
+	static bool HasSingleMip(const TSharedPtr<FJsonObject>& Export);
+
+	/* The properties of an export, or an empty object when it carries none */
+	static TSharedPtr<FJsonObject> GetProperties(const TSharedPtr<FJsonObject>& Export);
+
+	bool UseRawMipData = true;
 
 protected:
 	FString AssetName;

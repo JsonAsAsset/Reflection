@@ -17,6 +17,7 @@
 #include "Styling/SlateIconFinder.h"
 #include "Importers/Constructor/Asset.h"
 #include "Engine/Package.h"
+#include "Utilities/AssetPaths.h"
 
 /* Base handler for converting JSON to assets */
 class REFLECTION_API IImporter : public USerializerContainer {
@@ -127,15 +128,6 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 	ObjectPath = PackageIndex->Get()->GetStringField(TEXT("ObjectPath"));
 	ObjectPath.Split(".", &ObjectPath, nullptr);
 
-	const UReflectionSettings* Settings = GetSettings();
-
-	if (!Settings->AssetSettings.ProjectName.IsEmpty()) {
-		ObjectPath = ObjectPath.Replace(*(Settings->AssetSettings.ProjectName + "/Content/"), TEXT("/Game/"));
-		ObjectPath = ObjectPath.Replace(*(Settings->AssetSettings.ProjectName + "/Plugins"), TEXT(""));
-		ObjectPath = ObjectPath.Replace(TEXT("/Content/"), TEXT("/"));
-	}
-
-	ObjectPath = ObjectPath.Replace(TEXT("Engine/Content"), TEXT("/Engine"));
 	ObjectName = ObjectName.Replace(TEXT("'"), TEXT(""));
 
 	if (ObjectName.Contains(".")) {
@@ -146,11 +138,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 		ObjectName.Split(".", &Outer, &ObjectName);
 	}
 
-	if (!ObjectPath.StartsWith(TEXT("/"))) {
-		ObjectPath = "/" + ObjectPath;
-	}
-
-	FRRedirects::Redirect(ObjectPath);
+	ObjectPath = ToEditorPackagePath(ObjectPath);
 
 	/* Try to load object using the object path and the object name combined */
 	TObjectPtr<T> LoadedObject = LoadObjectByPath<T>(ObjectPath + "." + ObjectName);

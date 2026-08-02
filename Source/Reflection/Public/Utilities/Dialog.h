@@ -10,6 +10,14 @@
 #include "DesktopPlatformModule.h"
 #include "IDesktopPlatform.h"
 
+#include "Framework/Application/SlateApplication.h"
+#include "Widgets/SBoxPanel.h"
+#include "Widgets/SWindow.h"
+#include "Widgets/Input/SButton.h"
+#include "Widgets/Input/SMultiLineEditableTextBox.h"
+#include "Widgets/Layout/SBorder.h"
+#include "Widgets/Text/STextBlock.h"
+
 #include "Engine/Compatibility.h"
 
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
@@ -38,6 +46,89 @@ inline auto SpawnYesNoPrompt = [](const FString& Title, const FString& Text, con
 
 	OnResponse(Response == EAppReturnType::Yes);
 };
+
+/*
+ * Asks the user for some text, seeded with whatever is already in InOutText.
+ *
+ * Multi line, because everything that needs typed input here takes a list. Returns false when the
+ * user cancels or leaves it empty, in which case InOutText is left alone.
+ */
+inline bool SpawnTextEntryPrompt(const FString& Title, const FString& Hint, FString& InOutText) {
+	bool Accepted = false;
+
+	TSharedPtr<SMultiLineEditableTextBox> TextBox;
+
+	const TSharedRef<SWindow> Window = SNew(SWindow)
+		.Title(FText::FromString(Title))
+		.ClientSize(FVector2D(640, 280))
+		.SupportsMinimize(false)
+		.SupportsMaximize(false);
+
+	Window->SetContent(
+		SNew(SBorder)
+		.Padding(12.0f)
+		[
+			SNew(SVerticalBox)
+
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.Padding(0.0f, 0.0f, 0.0f, 8.0f)
+			[
+				SNew(STextBlock)
+				.Text(FText::FromString(Hint))
+				.AutoWrapText(true)
+			]
+
+			+ SVerticalBox::Slot()
+			.FillHeight(1.0f)
+			[
+				SAssignNew(TextBox, SMultiLineEditableTextBox)
+				.Text(FText::FromString(InOutText))
+			]
+
+			+ SVerticalBox::Slot()
+			.AutoHeight()
+			.HAlign(HAlign_Right)
+			.Padding(0.0f, 10.0f, 0.0f, 0.0f)
+			[
+				SNew(SHorizontalBox)
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.Padding(0.0f, 0.0f, 6.0f, 0.0f)
+				[
+					SNew(SButton)
+					.Text(FText::FromString("Reflect"))
+					.OnClicked_Lambda([&Accepted, &InOutText, &TextBox, Window]() {
+						Accepted = true;
+						InOutText = TextBox->GetText().ToString();
+
+						Window->RequestDestroyWindow();
+
+						return FReply::Handled();
+					})
+				]
+
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				[
+					SNew(SButton)
+					.Text(FText::FromString("Cancel"))
+					.OnClicked_Lambda([Window]() {
+						Window->RequestDestroyWindow();
+
+						return FReply::Handled();
+					})
+				]
+			]
+		]
+	);
+
+	const IMainFrameModule& MainFrameModule = IMainFrameModule::Get();
+	FSlateApplication::Get().AddModalWindow(Window, MainFrameModule.GetParentWindow());
+
+	return Accepted && !InOutText.IsEmpty();
+}
 
 /* Clipboard and file pickers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 inline FString GetClipboard() {

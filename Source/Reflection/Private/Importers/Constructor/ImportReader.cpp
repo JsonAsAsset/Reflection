@@ -123,11 +123,6 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		Importer = new ITemplatedImporter<UObject>();
 	}
 
-	/* TODO: Don't hardcode this. */
-	if (ImportTypes::Cloud::Extra.Contains(Type)) {
-		Importer = new ITextureImporter<UTextureLightProfile>();
-	}
-
 	Export->Package = LocalPackage;
 	Importer->Initialize(Export, Container);
 

@@ -15,10 +15,6 @@ struct ImportTypes {
 			"WidgetBlueprintGeneratedClass",
 		};
 
-		static inline TArray<FString> Extra = {
-			"TextureLightProfile"
-		};
-
 		static bool Allowed(const FString& Type);
 	};
 
