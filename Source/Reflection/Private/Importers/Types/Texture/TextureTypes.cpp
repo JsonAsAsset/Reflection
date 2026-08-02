@@ -5,6 +5,7 @@
 const TArray<FString>& FTextureTypes::All() {
 	static const TArray<FString> Types = {
 		TEXT("Texture2D"),
+		TEXT("Texture2DArray"),
 		TEXT("TextureCube"),
 		TEXT("VolumeTexture"),
 		TEXT("TextureRenderTarget2D"),
@@ -30,9 +31,11 @@ bool FTextureTypes::RequiresRawMipData(const FString& Type, const bool bIsVector
 	/* Outside 4.27 through 5.4 the texture factory doesn't line up, so everything goes raw */
 	return true;
 #else
-	/* A cube is six faces and a volume is a stack of slices, neither of which survives being
-	 * encoded down to one flat image. Light profiles are 16 bit and would lose their curve. */
-	if (Type == TEXT("TextureCube")
+	/* A cube is six faces, a volume is a stack of slices and an array is a pile of them, none of
+	 * which survives being encoded down to one flat image. Light profiles are 16 bit and would
+	 * lose their curve. */
+	if (Type == TEXT("Texture2DArray")
+	 || Type == TEXT("TextureCube")
 	 || Type == TEXT("VolumeTexture")
 	 || Type == TEXT("TextureLightProfile")) {
 		return true;

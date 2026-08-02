@@ -16,6 +16,7 @@
 #ifndef REFLECTION_EXPERIMENTAL
 #define REFLECTION_EXPERIMENTAL 0
 
+#include "Engine/Texture2DArray.h"
 #include "Engine/TextureCube.h"
 #include "Engine/VolumeTexture.h"
 
@@ -451,7 +452,16 @@ inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 		return VolumeTexture->PlatformData;
 #endif
 	}
-	
+
+	/* Derives from UTexture rather than UTexture2D, so the cast above never catches it */
+	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
+#if ENGINE_UE5
+		return Texture2DArray->GetPlatformData();
+#else
+		return Texture2DArray->PlatformData;
+#endif
+	}
+
 	return nullptr;
 }
 
@@ -477,6 +487,14 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 		VolumeTexture->SetPlatformData(PlatformData);
 #else
 		VolumeTexture->PlatformData = PlatformData;
+#endif
+	}
+
+	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
+#if ENGINE_UE5
+		Texture2DArray->SetPlatformData(PlatformData);
+#else
+		Texture2DArray->PlatformData = PlatformData;
 #endif
 	}
 }

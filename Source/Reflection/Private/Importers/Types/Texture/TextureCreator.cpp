@@ -2,6 +2,7 @@
 
 #include "Importers/Types/Texture/TextureCreator.h"
 
+#include "Engine/Texture2DArray.h"
 #include "Engine/TextureCube.h"
 #include "Engine/TextureLightProfile.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -19,6 +20,10 @@ bool FTextureCreator::Create(const FString& Type, const TSharedPtr<FJsonObject>&
 
 	if (Type == TEXT("TextureLightProfile")) {
 		return CreateTexture2D<UTextureLightProfile>(OutTexture, Data, Export);
+	}
+
+	if (Type == TEXT("Texture2DArray")) {
+		return CreateTexture2DArray(OutTexture, Data, Export);
 	}
 
 	if (Type == TEXT("TextureCube")) {
@@ -133,6 +138,39 @@ bool FTextureCreator::CreateTexture2D(UTexture*& OutTexture, TArray<uint8>& Data
 	}
 
 	OutTexture = Texture2D;
+
+	return true;
+}
+
+bool FTextureCreator::CreateTexture2DArray(UTexture*& OutTexture2DArray, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export) {
+	if (!RequireRawMipData(TEXT("An array"))) {
+		return false;
+	}
+
+	UTexture2DArray* Texture2DArray = NewObject<UTexture2DArray>(Package, UTexture2DArray::StaticClass(), *AssetName, RF_Public | RF_Standalone);
+
+	DeserializeTexture(Texture2DArray, Export);
+	SetPlatformData(Texture2DArray, new FTexturePlatformData());
+
+	/* Slices sit one after another rather than stacked into the height */
+	FTextureCookedLayout Cooked;
+	if (!GetCookedArrayLayout(Export, Cooked)) {
+		return false;
+	}
+
+	if (FTexturePlatformData* PlatformData = GetPlatformData(Texture2DArray)) {
+		PlatformData->PixelFormat = Cooked.PixelFormat;
+	}
+
+	if (HasSingleMip(Export)) {
+		Texture2DArray->MipGenSettings = TMGS_NoMipmaps;
+	}
+
+	if (!BuildSourceFromRawMip(Texture2DArray, Data, Cooked)) {
+		return false;
+	}
+
+	OutTexture2DArray = Texture2DArray;
 
 	return true;
 }
@@ -274,29 +312,58 @@ bool FTextureCookedLayout::DropMip() {
 }
 
 bool FTextureCreator::GetCookedLayout(const TSharedPtr<FJsonObject>& Export, const int32 FallbackSlices, FTextureCookedLayout& OutCooked) const {
+	int32 SizeX = 0;
 	int32 StackedSizeY = 0;
 
-	Export->TryGetNumberField(TEXT("SizeX"), OutCooked.SizeX);
+	Export->TryGetNumberField(TEXT("SizeX"), SizeX);
 	Export->TryGetNumberField(TEXT("SizeY"), StackedSizeY);
 
-	if (!Export->TryGetNumberField(TEXT("SizeZ"), OutCooked.SizeZ) || OutCooked.SizeZ <= 0) {
-		OutCooked.SizeZ = FallbackSlices > 0
+	int32 Slices = 0;
+	if (!Export->TryGetNumberField(TEXT("SizeZ"), Slices) || Slices <= 0) {
+		Slices = FallbackSlices > 0
 			? FallbackSlices
-			: (OutCooked.SizeX > 0 ? StackedSizeY / OutCooked.SizeX : 0);
+			: (SizeX > 0 ? StackedSizeY / SizeX : 0);
 
 		if (FallbackSlices <= 0) {
-			UE_LOG(LogReflection, Warning, TEXT("\"%s\" was sent without a slice count, reading %d off its width. Update Core to import this reliably."), *AssetName, OutCooked.SizeZ);
+			UE_LOG(LogReflection, Warning, TEXT("\"%s\" was sent without a slice count, reading %d off its width. Update Core to import this reliably."), *AssetName, Slices);
 		}
 	}
 
-	OutCooked.SizeY = OutCooked.SizeZ > 0 ? StackedSizeY / OutCooked.SizeZ : 0;
+	const int32 SizeY = Slices > 0 ? StackedSizeY / Slices : 0;
+
+	if (Slices <= 0 || SizeY * Slices != StackedSizeY) {
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, SizeX, StackedSizeY, Slices);
+
+		return false;
+	}
+
+	return ReadCookedLayout(Export, SizeX, SizeY, Slices, OutCooked);
+}
+
+bool FTextureCreator::GetCookedArrayLayout(const TSharedPtr<FJsonObject>& Export, FTextureCookedLayout& OutCooked) const {
+	int32 SizeX = 0;
+	int32 SizeY = 0;
+
+	Export->TryGetNumberField(TEXT("SizeX"), SizeX);
+	Export->TryGetNumberField(TEXT("SizeY"), SizeY);
+
+	/* Nothing was folded into the height here, so the count is whatever the export says it is */
+	const int32 Slices = GetReportedSliceCount(Export);
+
+	return ReadCookedLayout(Export, SizeX, SizeY, Slices > 0 ? Slices : 1, OutCooked);
+}
+
+bool FTextureCreator::ReadCookedLayout(const TSharedPtr<FJsonObject>& Export, const int32 SizeX, const int32 SizeY, const int32 Slices, FTextureCookedLayout& OutCooked) const {
+	OutCooked.SizeX = SizeX;
+	OutCooked.SizeY = SizeY;
+	OutCooked.SizeZ = Slices;
 
 	FString PixelFormatName;
 	Export->TryGetStringField(TEXT("PixelFormat"), PixelFormatName);
 	OutCooked.PixelFormat = FTextureFormats::FromName(PixelFormatName);
 
-	if (OutCooked.SizeX <= 0 || OutCooked.SizeY <= 0 || OutCooked.SizeZ <= 0 || OutCooked.SizeY * OutCooked.SizeZ != StackedSizeY) {
-		UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, OutCooked.SizeX, StackedSizeY, OutCooked.SizeZ);
+	if (SizeX <= 0 || SizeY <= 0 || Slices <= 0) {
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, SizeX, SizeY, Slices);
 
 		return false;
 	}
@@ -308,6 +375,22 @@ bool FTextureCreator::GetCookedLayout(const TSharedPtr<FJsonObject>& Export, con
 	}
 
 	return true;
+}
+
+int32 FTextureCreator::GetReportedSliceCount(const TSharedPtr<FJsonObject>& Export) {
+	/* 4.25 packed the slice count in with the cube map and opt data bits. Before that it stood on
+	 * its own, and the dump names it accordingly, so both spellings are read. */
+	uint32 PackedData = 0;
+	if (Export->TryGetNumberField(TEXT("PackedData"), PackedData)) {
+		constexpr uint32 SliceMask = (1u << 30) - 1u;
+
+		return static_cast<int32>(PackedData & SliceMask);
+	}
+
+	int32 NumSlices = 0;
+	Export->TryGetNumberField(TEXT("NumSlices"), NumSlices);
+
+	return NumSlices;
 }
 
 bool FTextureCreator::BuildSourceFromRawMip(UTexture* Texture, const TArray<uint8>& Data, const FTextureCookedLayout& Cooked) const {

@@ -61,6 +61,7 @@ private:
 	template <class T = UTexture2D>
 	bool CreateTexture2D(UTexture*& OutTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
 
+	bool CreateTexture2DArray(UTexture*& OutTexture2DArray, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
 	bool CreateTextureCube(UTexture*& OutTextureCube, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
 	bool CreateVolumeTexture(UTexture*& OutVolumeTexture, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export);
 	bool CreateRenderTarget2D(UTexture*& OutRenderTarget2D, const TSharedPtr<FJsonObject>& Export);
@@ -74,6 +75,18 @@ private:
 	 * send a slice count: pass the count for classes that have a fixed one, or zero to work it out
 	 * from the width on the assumption that the slices are square. */
 	bool GetCookedLayout(const TSharedPtr<FJsonObject>& Export, int32 FallbackSlices, FTextureCookedLayout& OutCooked) const;
+
+	/* The same, for classes whose slices sit one after another with SizeY left alone.
+	 *
+	 * A texture array is stored that way rather than stacked, so its height needs no unfolding and
+	 * the count has to be read off the export instead of divided out of the height. */
+	bool GetCookedArrayLayout(const TSharedPtr<FJsonObject>& Export, FTextureCookedLayout& OutCooked) const;
+
+	/* Shared tail of both: pixel format, source layout and the sanity check over the lot */
+	bool ReadCookedLayout(const TSharedPtr<FJsonObject>& Export, int32 SizeX, int32 SizeY, int32 Slices, FTextureCookedLayout& OutCooked) const;
+
+	/* The slice count an export reports, from PackedData or the older standalone field */
+	static int32 GetReportedSliceCount(const TSharedPtr<FJsonObject>& Export);
 
 	/* Decodes the raw first mip, slice by slice, into the texture's source data */
 	bool BuildSourceFromRawMip(UTexture* Texture, const TArray<uint8>& Data, const FTextureCookedLayout& Cooked) const;
