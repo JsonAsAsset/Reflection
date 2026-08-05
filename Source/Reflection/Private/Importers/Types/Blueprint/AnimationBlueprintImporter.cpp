@@ -544,7 +544,7 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 		}
 #else
 		/* UE5+ games use PhysicsBodyDefinitions for AnimGraphNode_AnimDynamics */
-		if (!NodeExport->HasProperty("PhysicsBodyDefinitions")) {
+		if (NodeExport->HasProperty("BoxExtents")) {
 			TSharedPtr<FJsonObject> PhysicsBodyDefinition = MakeShared<FJsonObject>();
 			auto& RootValues = NodeExport->JsonObject->Values;
 
