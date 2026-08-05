@@ -27,13 +27,10 @@
 bool IAnimationBlueprintImporter::Import() {
 	AnimBlueprint = GetSelectedAsset<UAnimBlueprint>(true);
 
-	/* Nothing selected in the content browser doesn't mean nothing is there - reflecting the same animation
+	/* Nothing selected in the content browser doesn't mean anything is there, reflecting the same animation
 	 * blueprint a second time lands on an asset that already exists, and FKismetEditorUtilities::CreateBlueprint
-	 * asserts outright when any blueprint of that name is already in the package. Reuse it in place instead;
-	 * CreateGraph clears the graph out before rebuilding it. Same handling as IBlueprintImporter::CreateAsset. */
+	 * asserts outright when any blueprint of that name is already in the package. */
 	if (!AnimBlueprint && GetPackage()) {
-		/* FindObject mirrors the assert's own lookup; LoadObject additionally covers the asset sitting on disk
-		 * without having been loaded into the package yet. */
 		UBlueprint* ExistingBlueprint = FindObject<UBlueprint>(GetPackage(), *GetAssetName());
 		if (!ExistingBlueprint) ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName());
 
@@ -72,11 +69,9 @@ bool IAnimationBlueprintImporter::Import() {
 	RootAnimNodeProperties = RootAnimNodeDefaults->GetObjectField(TEXT("Properties"));
 	if (!RootAnimNodeProperties.IsValid()) return false;
 
-	/*
-	 * The variables the blueprint declares have to exist before the class default object below can
+	/* The variables the blueprint declares have to exist before the class default object below can
 	 * put anything in them. ChildProperties holds them alongside the anim graph node state, which
-	 * FBlueprintVariables filters out.
-	 */
+	 * FBlueprintVariables filters out. */
 	if (const TArray<TSharedPtr<FJsonValue>>* ChildProperties; GetAssetExport()->TryGetArrayField(TEXT("ChildProperties"), ChildProperties)) {
 		if (FBlueprintVariables::Construct(AnimBlueprint, *ChildProperties) > 0) {
 			/* The properties only appear on the generated class once it recompiles */
