@@ -320,18 +320,18 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 #if ENGINE_UE5
 		/* ExponentialHeightFog: Migration to new API */
 		if (Object->IsA<UExponentialHeightFogComponent>()) {
-			if (Property->NamePrivate == "FogInscatteringLuminance" && !Properties->Values.Contains("FogInscatteringLuminance")) {
+			if (Property->NamePrivate == "FogInscatteringLuminance" && !Properties->HasField(TEXT("FogInscatteringLuminance"))) {
 				PropertyName = "FogInscatteringColor";
 			}
 
-			if (Property->NamePrivate == "DirectionalInscatteringLuminance" && !Properties->Values.Contains("DirectionalInscatteringLuminance")) {
+			if (Property->NamePrivate == "DirectionalInscatteringLuminance" && !Properties->HasField(TEXT("DirectionalInscatteringLuminance"))) {
 				PropertyName = "DirectionalInscatteringColor";
 			}
 		}
 #endif
-		
+
 		if (Properties->HasField(PropertyName) && !HasHandledProperty && PropertyName != "LODParentPrimitive" && PropertyName != "bIsCookedForEditor") {
-			const TSharedPtr<FJsonValue>& ValueObject = Properties->Values.FindChecked(PropertyName);
+			const TSharedPtr<FJsonValue>& ValueObject = Properties->Values.FindChecked(StringToJsonKey(PropertyName));
 
 			if (Property->ArrayDim == 1 || ValueObject->Type == EJson::Array) {
 				PropertySerializer->DeserializePropertyValue(Property, ValueObject.ToSharedRef(), PropertyValue, Object);

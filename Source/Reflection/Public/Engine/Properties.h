@@ -72,7 +72,10 @@ inline EObjectFlags ParseObjectFlags(const FString& FlagsString) {
 
 		{ TEXT("RF_NeedInitialization"), RF_NeedInitialization },
 		{ TEXT("RF_NeedLoad"), RF_NeedLoad },
+	/* RF_KeepForCooker was deprecated in 5.6 */
+#if !UE5_6_BEYOND
 		{ TEXT("RF_KeepForCooker"), RF_KeepForCooker },
+#endif
 		{ TEXT("RF_NeedPostLoad"), RF_NeedPostLoad },
 		{ TEXT("RF_NeedPostLoadSubobjects"), RF_NeedPostLoadSubobjects },
 		{ TEXT("RF_NewerVersionExists"), RF_NewerVersionExists },
@@ -92,11 +95,17 @@ inline EObjectFlags ParseObjectFlags(const FString& FlagsString) {
 		{ TEXT("RF_HasExternalPackage"), RF_HasExternalPackage },
 #endif
 #if ENGINE_UE5
-#if ENGINE_MINOR_VERSION > 3
+	/* RF_HasPlaceholderType arrived in 5.4 and was removed in 5.8; RF_MirroredGarbage is 5.4+ */
+#if ENGINE_MINOR_VERSION > 3 && ENGINE_MINOR_VERSION < 8
 		{ TEXT("RF_HasPlaceholderType"), RF_HasPlaceholderType },
+#endif
+#if ENGINE_MINOR_VERSION > 3
 		{ TEXT("RF_MirroredGarbage"), RF_MirroredGarbage },
 #endif
+	/* RF_AllocatedInSharedPage was deprecated in 5.8; its bit was reassigned to RF_HasDynamicImports */
+#if !UE5_8_BEYOND
 		{ TEXT("RF_AllocatedInSharedPage"), RF_AllocatedInSharedPage }
+#endif
 #endif
 	};
 

@@ -53,7 +53,7 @@ bool IDataTableImporter::Import() {
 	const TSharedPtr<FJsonObject> RowData = GetAssetData()->GetObjectField(TEXT("Rows"));
 
 	/* Loop throughout row data, and deserialize */
-	for (TPair<FString, TSharedPtr<FJsonValue>>& Pair : RowData->Values) {
+	for (const auto& Pair : RowData->Values) {
 		const TSharedPtr<FStructOnScope> ScopedStruct = MakeShareable(new FStructOnScope(TableRowStruct));
 		TSharedPtr<FJsonObject> StructData = Pair.Value->AsObject();
 

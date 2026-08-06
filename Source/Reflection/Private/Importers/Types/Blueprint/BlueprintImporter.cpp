@@ -237,7 +237,8 @@ void IBlueprintImporter::ConstructWidgetTree() {
 				}
 			}
 			
-			for (const FMovieSceneBinding& Binding : WidgetAnimation->MovieScene->GetBindings()) {
+			const UMovieScene* MovieScene = WidgetAnimation->MovieScene;
+			for (const FMovieSceneBinding& Binding : MovieScene->GetBindings()) {
 				for (UMovieSceneTrack* Track : Binding.GetTracks()) {
 					Track->Modify();
 					Track->MarkAsChanged();

@@ -111,7 +111,7 @@ inline void RemoveNotification(TWeakPtr<SNotificationItem>& Notification) {
 	const TSharedPtr<SNotificationItem> Item = Notification.Pin();
 
 	if (Item.IsValid()) {
-		Item->SetFadeOutDuration(0.001);
+		Item->SetFadeOutDuration(0.001f);
 		Item->Fadeout();
 	}
 

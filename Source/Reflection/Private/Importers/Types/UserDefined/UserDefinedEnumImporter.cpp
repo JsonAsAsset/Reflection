@@ -47,9 +47,12 @@ bool IUserDefinedEnumImporter::Import() {
 
 		/* Update the enumeration with the enum names */
 		UserDefinedEnum->SetEnums(EnumNames, CppForm
-			#if ENGINE_UE5 || ((ENGINE_UE4 && ENGINE_MINOR_VERSION >= 26) && !(ENGINE_MINOR_VERSION == 26 && ENGINE_PATCH_VERSION == 0))
+	#if UE5_8_BEYOND
+			/* 5.8 added UEnum::EUnderlyingType and replaced the bool with UEnum::EAddMaxKeyIfMissing */
+			, UEnum::EUnderlyingType::int32, EEnumFlags::None, UEnum::EAddMaxKeyIfMissing::Yes
+	#elif ENGINE_UE5 || ((ENGINE_UE4 && ENGINE_MINOR_VERSION >= 26) && !(ENGINE_MINOR_VERSION == 26 && ENGINE_PATCH_VERSION == 0))
 			, EEnumFlags::None, true
-			#endif
+	#endif
 		);
 	}
 	
@@ -78,7 +81,12 @@ bool IUserDefinedEnumImporter::Import() {
 			DisplayNames.Add(EnumKey, FText::FromString(*ValueObject->GetStringField(TEXT("CultureInvariantString"))));
 		} else {
 			/* TODO: Add LocalizedString */
+	#if UE5_8_BEYOND
+			/* ForUseOnlyByLocMacroAndGraphNodeTextLiterals_CreateText was removed in 5.8 */
+			DisplayNames.Add(EnumKey, FText::FromString(SourceString));
+	#else
 			DisplayNames.Add(EnumKey, FInternationalization::ForUseOnlyByLocMacroAndGraphNodeTextLiterals_CreateText(*SourceString, *TextNamespace, *UniqueKey));
+	#endif
 		}
 	}
 

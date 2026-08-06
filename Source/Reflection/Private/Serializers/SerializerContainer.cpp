@@ -17,7 +17,7 @@ void USerializerContainer::Initialize(FUObjectExport* Export, FUObjectExportCont
 
 	/* Move asset properties defined outside "Properties" and move it inside */
 	for (const auto& Pair : AssetExport->JsonObject->Values) {
-		const FString& PropertyName = Pair.Key;
+		const FString PropertyName = JsonKeyToString(Pair.Key);
     
 		if (!PropertyName.Equals(TEXT("Type")) &&
 			!PropertyName.Equals(TEXT("Name")) &&

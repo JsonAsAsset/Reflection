@@ -66,7 +66,7 @@ void FReflectionVersioning::Update() {
 			return;
 		}
 		
-		Reset(ConvertVersionStringToInt(FRMetadata::Version), ConvertVersionStringToInt(JsonObject->GetStringField("name")), JsonObject->GetStringField(TEXT("html_url")), JsonObject->GetStringField(TEXT("name")), FRMetadata::Version);
+		Reset(ConvertVersionStringToInt(FRMetadata::Version), ConvertVersionStringToInt(JsonObject->GetStringField(TEXT("name"))), JsonObject->GetStringField(TEXT("html_url")), JsonObject->GetStringField(TEXT("name")), FRMetadata::Version);
 
 		static bool IsNotificationShown = false;
 
