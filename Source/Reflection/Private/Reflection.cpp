@@ -98,7 +98,9 @@ void FReflectionModule::ShutdownModule() {
 	FReflectionStyle::Shutdown();
 
 	if (Toolbar) {
-		Toolbar->RemoveFromRoot();
+		if (!IsEngineExitRequested()) {
+			Toolbar->RemoveFromRoot();
+		}
 		Toolbar = nullptr;
 	}
 }
