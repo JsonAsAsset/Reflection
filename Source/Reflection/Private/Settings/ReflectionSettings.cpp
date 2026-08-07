@@ -12,7 +12,3 @@ UReflectionSettings::UReflectionSettings() {
 	CategoryName = GReflectionSettingsCategoryName;
 	SectionName = GReflectionName;
 }
-
-FText UReflectionSettings::GetSectionText() const {
-	return FText::FromString(GReflectionName.ToString());
-}

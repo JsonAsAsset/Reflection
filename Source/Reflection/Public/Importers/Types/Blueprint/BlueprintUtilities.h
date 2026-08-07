@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Settings/ReflectionSettings.h"
+#include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
 
@@ -25,10 +26,10 @@ inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const F
 }
 
 inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
-	const UReflectionSettings* Settings = GetSettings();
-	
-	if (!Settings->AssetSettings.ProjectName.IsEmpty()) {
-		ObjectPath = ObjectPath.Replace(*(Settings->AssetSettings.ProjectName + "/Content"), TEXT("/Game"));
+	const FString& ProfileName = GReflectionRuntime.Profile.Name;
+
+	if (!ProfileName.IsEmpty()) {
+		ObjectPath = ObjectPath.Replace(*(ProfileName + "/Content"), TEXT("/Game"));
 	}
 	
 	FString FullPath = ObjectPath; 

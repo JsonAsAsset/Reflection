@@ -9,6 +9,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Engine/EngineUtilities.h"
+#include "Settings/Runtime.h"
 #include "Utilities/AssetPaths.h"
 #include "Utilities/Dialog.h"
 
@@ -26,15 +27,13 @@ void TToolImportFromPath::Execute() {
 	}
 
 	/* The example writes itself out of whatever profile Cloud has loaded */
-	const UReflectionSettings* Settings = GetSettings();
-
-	const FString ProjectName = Settings->AssetSettings.ProjectName.IsEmpty()
+	const FString ProfileName = GReflectionRuntime.Profile.Name.IsEmpty()
 		? TEXT("Project")
-		: Settings->AssetSettings.ProjectName;
+		: GReflectionRuntime.Profile.Name;
 
 	if (!SpawnTextEntryPrompt(
 		TEXT("Reflect From Path"),
-		FString::Printf(TEXT("One asset path per line, as Cloud knows it:\n\n%s/Content/Path/To/Asset"), *ProjectName),
+		FString::Printf(TEXT("One asset path per line, as Cloud knows it:\n\n%s/Content/Path/To/Asset"), *ProfileName),
 		Paths)) {
 		return;
 	}

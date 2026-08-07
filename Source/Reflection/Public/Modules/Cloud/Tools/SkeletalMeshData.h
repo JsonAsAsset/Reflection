@@ -16,7 +16,8 @@ public:
 	virtual FSlateIcon GetIcon() const override { return FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.SkeletalMeshComponent"); }
 
 protected:
-	static TArray<FSkeletalMaterial> GetMaterials(USkeletalMesh* Mesh);
+	/* By reference: the caller writes slots back into the mesh */
+	static TArray<FSkeletalMaterial>& GetMaterials(USkeletalMesh* Mesh);
 };
 
 REGISTER_TOOL(TSkeletalMeshData)

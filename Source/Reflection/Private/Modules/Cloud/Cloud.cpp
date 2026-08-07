@@ -192,11 +192,6 @@ void Cloud::Update(TFunction<void(bool)> OnResponse) {
 			return;
 		}
 
-		if (MetadataResponse->HasField(TEXT("name"))) {
-			FString Name = MetadataResponse->GetStringField(TEXT("name"));
-			MutableSettings->AssetSettings.ProjectName = Name;
-		}
-
 		if (MetadataResponse->HasField(TEXT("major_version"))) {
 			const int MajorVersion = MetadataResponse->GetIntegerField(TEXT("major_version"));
 

@@ -5,16 +5,17 @@
 #include "CoreMinimal.h"
 #include "Settings/ReflectionSettings.h"
 #include "Settings/SettingsAccess.h"
+#include "Settings/Runtime.h"
 
 /* Turns a package path as Cloud knows it into the one the same asset takes in the editor. */
 inline FString ToEditorPackagePath(const FString& InPath) {
 	FString Path = InPath;
 
-	const UReflectionSettings* Settings = GetSettings();
+	const FString& ProfileName = GReflectionRuntime.Profile.Name;
 
-	if (!Settings->AssetSettings.ProjectName.IsEmpty()) {
-		Path = Path.Replace(*(Settings->AssetSettings.ProjectName + "/Content/"), TEXT("/Game/"));
-		Path = Path.Replace(*(Settings->AssetSettings.ProjectName + "/Plugins"), TEXT(""));
+	if (!ProfileName.IsEmpty()) {
+		Path = Path.Replace(*(ProfileName + "/Content/"), TEXT("/Game/"));
+		Path = Path.Replace(*(ProfileName + "/Plugins"), TEXT(""));
 		Path = Path.Replace(TEXT("/Content/"), TEXT("/"));
 	}
 

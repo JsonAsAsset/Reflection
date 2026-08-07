@@ -1,7 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Reflection.h"
-#include "Utilities/JsonHelpers.h"
 
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 #if ENGINE_UE4
@@ -67,12 +66,7 @@ void FReflectionModule::StartupModule() {
 	}
 #endif
 	
-    const UReflectionSettings* Settings = GetSettings();
-	
-	if (!Settings->Versioning.Disable) {
-		GReflectionVersioning.Update();
-	}
-
+	GReflectionVersioning.Update();
 	GReflectionRuntime.Update();
 }
 

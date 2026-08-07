@@ -34,18 +34,17 @@ private:
 	/* The name of this redirector. */
 	UPROPERTY(EditAnywhere, Config, Category = Redirector)
 	FName Name;
+	
+	/* Master toggle for this redirector.
+	 * If false, this redirector is always disabled regardless of any other setting. */
+	UPROPERTY(EditAnywhere, Config, Category = Redirector)
+	bool Enable = true;
 
 public:
 	/* Ordered list of redirect rules applied to the path.
 	 * Each point can modify the result of the previous one. */
 	UPROPERTY(EditAnywhere, Config, Category = Redirector)
 	TArray<FRRedirectorPoint> Points;
-
-private:
-	/* Master toggle for this redirector.
-	 * If false, this redirector is always disabled regardless of any other setting. */
-	UPROPERTY(EditAnywhere, Config, Category = Redirector)
-	bool Enable = true;
 
 private:
 	/* Optional whitelist of profile names that can use this redirector.

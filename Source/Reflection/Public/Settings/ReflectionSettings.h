@@ -38,20 +38,7 @@ public:
 	FRMaterialSettings Material;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FString ProjectName;
-	
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;
-};
-
-USTRUCT()
-struct FRVersioningSettings
-{
-	GENERATED_BODY()
-public:
-	/* Disable checking for newer updates of Reflection. */
-	UPROPERTY(EditAnywhere, Config, Category = VersioningSettings)
-	bool Disable = false;
 };
 
 /* Reconstruction Toolkit for Unreal Engine */
@@ -61,13 +48,7 @@ class REFLECTION_API UReflectionSettings : public UDeveloperSettings {
 public:
 	UReflectionSettings();
 
-	/* Overriden to stop the Editor spacing the words between Reflection */
-	virtual FText GetSectionText() const override;
-	
 public:
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRVersioningSettings Versioning;
-	
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRSettings AssetSettings;
 

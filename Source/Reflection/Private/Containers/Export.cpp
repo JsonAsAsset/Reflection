@@ -3,6 +3,7 @@
 #include "Containers/Export.h"
 #include "Engine/EngineUtilities.h"
 #include "Settings/ReflectionSettings.h"
+#include "Settings/Runtime.h"
 #include "Importers/Types/Blueprint/BlueprintUtilities.h"
 
 FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex) {
@@ -12,10 +13,10 @@ FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex) {
 	ObjectPath = PackageIndex.GetString("ObjectPath");
 	ObjectPath.Split(".", &ObjectPath, nullptr);
 
-	const UReflectionSettings* Settings = GetSettings();
+	const FString& ProfileName = GReflectionRuntime.Profile.Name;
 
-	if (!Settings->AssetSettings.ProjectName.IsEmpty()) {
-		ObjectPath = ObjectPath.Replace(*(Settings->AssetSettings.ProjectName + "/Content"), TEXT("/Game"));
+	if (!ProfileName.IsEmpty()) {
+		ObjectPath = ObjectPath.Replace(*(ProfileName + "/Content"), TEXT("/Game"));
 	}
 
 	ObjectPath = ObjectPath.Replace(TEXT("Engine/Content"), TEXT("/Engine"));

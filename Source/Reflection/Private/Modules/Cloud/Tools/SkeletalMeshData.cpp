@@ -77,8 +77,12 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 
 			TArray<TSharedPtr<FJsonValue>> SkeletalMaterials = JsonObject->GetArrayField(TEXT("SkeletalMaterials"));
 
+			TArray<FSkeletalMaterial>& Materials = GetMaterials(SkeletalMesh);
+
 			int SkeletalMaterialIndex = 0;
-			
+
+			IImporter Importer;
+
 			for (const TSharedPtr<FJsonValue>& SkeletalMaterialExport : SkeletalMaterials) {
 				if (!SkeletalMaterialExport.IsValid() || !SkeletalMaterialExport->AsObject().IsValid()) {
 					continue;
@@ -86,18 +90,16 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 
 				const TSharedPtr<FJsonObject> SkeletalMaterialObject = SkeletalMaterialExport->AsObject();
 
-				if (GetMaterials(SkeletalMesh).IsValidIndex(SkeletalMaterialIndex)) {
-					FSkeletalMaterial& MaterialSlot = GetMaterials(SkeletalMesh)[SkeletalMaterialIndex];
-					
+				if (Materials.IsValidIndex(SkeletalMaterialIndex)) {
+					FSkeletalMaterial& MaterialSlot = Materials[SkeletalMaterialIndex];
+
 					MaterialSlot.MaterialSlotName = FName(*SkeletalMaterialObject->GetStringField(TEXT("MaterialSlotName")));
 					MaterialSlot.ImportedMaterialSlotName = MaterialSlot.MaterialSlotName;
 
 					TSharedPtr<FJsonObject> SkeletalMaterial = SkeletalMaterialObject->GetObjectField(TEXT("Material"));
 
-					IImporter* Importer = new IImporter();
-					
 					TObjectPtr<UObject> LoadedObject;
-					Importer->LoadExport<UObject>(&SkeletalMaterial, LoadedObject);
+					Importer.LoadExport<UObject>(&SkeletalMaterial, LoadedObject);
 
 					if (IsObjectPtrValid(LoadedObject)) MaterialSlot.MaterialInterface = Cast<UMaterialInterface>(LoadedObject.Get());
 				} else break;
@@ -198,7 +200,7 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 	}
 }
 
-TArray<FSkeletalMaterial> TSkeletalMeshData::GetMaterials(USkeletalMesh* Mesh) {
+TArray<FSkeletalMaterial>& TSkeletalMeshData::GetMaterials(USkeletalMesh* Mesh) {
 #if UE4_27 || ENGINE_UE5
 	return Mesh->GetMaterials();
 #else
