@@ -14,6 +14,8 @@
 #endif
 
 #include "Importers/Types/Materials/MaterialImporter.h"
+#include "Engine/Package.h"
+#include "Utilities/AssetPaths.h"
 #include "Materials/MaterialExpressionAdd.h"
 #include "Materials/MaterialExpressionClamp.h"
 #include "Materials/MaterialExpressionConstant.h"
@@ -22,6 +24,9 @@
 #include "Materials/MaterialExpressionStaticSwitchParameter.h"
 #include "Materials/MaterialExpressionTextureSampleParameter2D.h"
 #include "Materials/MaterialExpressionVectorParameter.h"
+#if UE5_8_BEYOND
+#include "Materials/MaterialExpressionUtils.h"
+#endif
 
 inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 	UMaterial* Material = MaterialImporter->GetTypedAsset<UMaterial>();
@@ -101,32 +106,46 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 	TSharedPtr<FJsonObject> CachedExpressionData = MaterialImporter->GetAssetData()->GetObjectField(TEXT("CachedExpressionData"));
 	UMaterialExpressionAdd* lastAdd = NULL;
 
+	/* Legacy (UE 4.2x-era) exports nest the cached entries under "Parameters" ("ParameterInfos",
+	 * textures at RuntimeEntries[2]); UE 5.x keeps them flat ("ParameterInfoSet", [3]). */
+	const bool bNestedParameters = CachedExpressionData->HasTypedField<EJson::Object>(TEXT("Parameters"));
+	if (bNestedParameters) {
+		CachedExpressionData = CachedExpressionData->GetObjectField(TEXT("Parameters"));
+	}
+	const FString ParameterInfosKey = bNestedParameters ? TEXT("ParameterInfos") : TEXT("ParameterInfoSet");
+	const FString TextureEntriesKey = bNestedParameters ? TEXT("RuntimeEntries[2]") : TEXT("RuntimeEntries[3]");
+
 
 	// map known scalar params
 	if (
 		CachedExpressionData->HasTypedField<EJson::Object>(TEXT("RuntimeEntries"))
-		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries"))->HasTypedField<EJson::Array>(TEXT("ParameterInfoSet"))
-		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("ScalarPrimitiveDataIndexValues"))
+		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries"))->HasTypedField<EJson::Array>(ParameterInfosKey)
+		&& (bNestedParameters || CachedExpressionData->HasTypedField<EJson::Array>(TEXT("ScalarPrimitiveDataIndexValues")))
 		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("ScalarValues"))
 		) {
 		const TArray<TSharedPtr<FJsonValue>>
-			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries"))->GetArrayField(TEXT("ParameterInfoSet")),
-			paramValueIndexesPtr = CachedExpressionData->GetArrayField(TEXT("ScalarPrimitiveDataIndexValues")),
+			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries"))->GetArrayField(ParameterInfosKey),
 			paramValuesPtr = CachedExpressionData->GetArrayField(TEXT("ScalarValues"));
-		if (paramsPtr.Num() == paramValueIndexesPtr.Num() && paramsPtr.Num() == paramValuesPtr.Num()) {
+		const TArray<TSharedPtr<FJsonValue>> EmptyIndexes;
+		const TArray<TSharedPtr<FJsonValue>>& paramValueIndexesPtr = bNestedParameters
+			? EmptyIndexes
+			: CachedExpressionData->GetArrayField(TEXT("ScalarPrimitiveDataIndexValues"));
+		if ((bNestedParameters || paramsPtr.Num() == paramValueIndexesPtr.Num()) && paramsPtr.Num() == paramValuesPtr.Num()) {
 			int32 i = 0;
 			y -= 0;
 			x -= 16*8*3;
 			for (const TSharedPtr<FJsonValue> paramVal : paramsPtr) {
 				const FJsonObject* paramObj = paramVal->AsObject().Get();
 				FString paramName;
-				int32 index;
+				int32 index = -1;
 				float value;
+				const bool bHasValueIndex = bNestedParameters || paramValueIndexesPtr[i]->TryGetNumber(index);
+				const int32 ValueIndex = bNestedParameters ? i : (index == -1 ? i : index);
 				if (
-					paramObj->TryGetStringField(TEXT("Name"), paramName)
-					&& paramValueIndexesPtr[i]->TryGetNumber(index)
-					&& paramValuesPtr.IsValidIndex(index == -1 ? i : index)
-					&& paramValuesPtr[index == -1 ? i : index]->TryGetNumber(value)
+					bHasValueIndex
+					&& paramObj->TryGetStringField(TEXT("Name"), paramName)
+					&& paramValuesPtr.IsValidIndex(ValueIndex)
+					&& paramValuesPtr[ValueIndex]->TryGetNumber(value)
 					) {
 					UMaterialExpressionScalarParameter* param = NewObject<UMaterialExpressionScalarParameter>(Material);
 					Material->GetExpressionCollection().AddExpression(param);
@@ -157,29 +176,34 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 	// map known vector params
 	if (
 		CachedExpressionData->HasTypedField<EJson::Object>(TEXT("RuntimeEntries[1]"))
-		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[1]"))->HasTypedField<EJson::Array>(TEXT("ParameterInfoSet"))
-		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("VectorPrimitiveDataIndexValues"))
+		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[1]"))->HasTypedField<EJson::Array>(ParameterInfosKey)
+		&& (bNestedParameters || CachedExpressionData->HasTypedField<EJson::Array>(TEXT("VectorPrimitiveDataIndexValues")))
 		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("VectorValues"))
 		) {
 		const TArray<TSharedPtr<FJsonValue>>
-			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[1]"))->GetArrayField(TEXT("ParameterInfoSet")),
-			paramValueIndexesPtr = CachedExpressionData->GetArrayField(TEXT("VectorPrimitiveDataIndexValues")),
+			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[1]"))->GetArrayField(ParameterInfosKey),
 			paramValuesPtr = CachedExpressionData->GetArrayField(TEXT("VectorValues"));
-		if (paramsPtr.Num() == paramValueIndexesPtr.Num() && paramsPtr.Num() == paramValuesPtr.Num()) {
+		const TArray<TSharedPtr<FJsonValue>> EmptyIndexes;
+		const TArray<TSharedPtr<FJsonValue>>& paramValueIndexesPtr = bNestedParameters
+			? EmptyIndexes
+			: CachedExpressionData->GetArrayField(TEXT("VectorPrimitiveDataIndexValues"));
+		if ((bNestedParameters || paramsPtr.Num() == paramValueIndexesPtr.Num()) && paramsPtr.Num() == paramValuesPtr.Num()) {
 			int32 i = 0;
 			x -= 16*8*4;
 			y = 0;
 			for (const TSharedPtr<FJsonValue> paramVal : paramsPtr) {
 				const FJsonObject* paramObj = paramVal->AsObject().Get();
 				FString paramName;
-				int32 index;
+				int32 index = -1;
 				TSharedPtr<FJsonObject>* value;
 				float r, g, b, a;
+				const bool bHasValueIndex = bNestedParameters || paramValueIndexesPtr[i]->TryGetNumber(index);
+				const int32 ValueIndex = bNestedParameters ? i : (index == -1 ? i : index);
 				if (
-					paramObj->TryGetStringField(TEXT("Name"), paramName)
-					&& paramValueIndexesPtr[i]->TryGetNumber(index)
-					&& paramValuesPtr.IsValidIndex(index == -1 ? i : index)
-					&& paramValuesPtr[index == -1 ? i : index]->TryGetObject(value)
+					bHasValueIndex
+					&& paramObj->TryGetStringField(TEXT("Name"), paramName)
+					&& paramValuesPtr.IsValidIndex(ValueIndex)
+					&& paramValuesPtr[ValueIndex]->TryGetObject(value)
 					&& value->Get()->TryGetNumberField(TEXT("R"), r)
 					&& value->Get()->TryGetNumberField(TEXT("G"), g)
 					&& value->Get()->TryGetNumberField(TEXT("B"), b)
@@ -213,12 +237,12 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 
 	// map known texture params
 	if (
-		CachedExpressionData->HasTypedField<EJson::Object>(TEXT("RuntimeEntries[3]"))
-		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[3]"))->HasTypedField<EJson::Array>(TEXT("ParameterInfoSet"))
+		CachedExpressionData->HasTypedField<EJson::Object>(TextureEntriesKey)
+		&& CachedExpressionData->GetObjectField(TextureEntriesKey)->HasTypedField<EJson::Array>(ParameterInfosKey)
 		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("TextureValues"))
 		) {
 		const TArray<TSharedPtr<FJsonValue>>
-			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[3]"))->GetArrayField(TEXT("ParameterInfoSet")),
+			paramsPtr = CachedExpressionData->GetObjectField(TextureEntriesKey)->GetArrayField(ParameterInfosKey),
 			paramValuesPtr = CachedExpressionData->GetArrayField(TEXT("TextureValues"));
 		if (paramsPtr.Num() == paramValuesPtr.Num()) {
 			int32 i = 0;
@@ -231,24 +255,43 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 			}
 			for (const TSharedPtr<FJsonValue> paramVal : paramsPtr) {
 				const FJsonObject* paramObj = paramVal->AsObject().Get();
-				FString paramName, textureAssetPath, textureSubPath;
-				TSharedPtr<FJsonObject>* textureValueObj;
-				if (
-					paramObj->TryGetStringField(TEXT("Name"), paramName)
-					&& paramValuesPtr.IsValidIndex(i)
-					&& paramValuesPtr[i]->TryGetObject(textureValueObj)
-					&& textureValueObj->Get()->TryGetStringField(TEXT("AssetPathName"), textureAssetPath)
-					&& textureValueObj->Get()->TryGetStringField(TEXT("SubPathString"), textureSubPath)
-					) {
+				FString paramName;
+				UTexture* tex = nullptr;
+				if (paramObj->TryGetStringField(TEXT("Name"), paramName) && paramValuesPtr.IsValidIndex(i)) {
+					if (bNestedParameters) {
+						/* Legacy cached data references textures by package index */
+						const FJsonObject* TextureValueObj = paramValuesPtr[i]->AsObject().Get();
+						FString ObjectPath;
+						if (TextureValueObj && TextureValueObj->TryGetStringField(TEXT("ObjectPath"), ObjectPath)) {
+							ObjectPath.Split(TEXT("."), &ObjectPath, nullptr);
+							tex = LoadObjectByPath<UTexture>(ToEditorPackagePath(ObjectPath));
+						}
+					}
+#if ENGINE_MINOR_VERSION <= 5
+					else {
+						/* UE 5.x textures are soft object paths (two-arg ctor gone in 5.6) */
+						TSharedPtr<FJsonObject>* TextureValueObj;
+						FString TextureAssetPath, TextureSubPath;
+						if (paramValuesPtr[i]->TryGetObject(TextureValueObj)
+							&& TextureValueObj->Get()->TryGetStringField(TEXT("AssetPathName"), TextureAssetPath)
+							&& TextureValueObj->Get()->TryGetStringField(TEXT("SubPathString"), TextureSubPath)) {
+							tex = TSoftObjectPtr<UTexture>(FSoftObjectPath(FName(TextureAssetPath), TextureSubPath)).LoadSynchronous();
+						}
+					}
+#endif
+				}
+				if (tex) {
 					UMaterialExpressionTextureSampleParameter2D* param = NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
 					Material->GetExpressionCollection().AddExpression(param);
 					param->ParameterName = FName(paramName);
 					param->MaterialExpressionEditorX = x;
 					param->MaterialExpressionEditorY = y;
-#if ENGINE_MINOR_VERSION <= 5
-					TObjectPtr<UTexture> tex = TSoftObjectPtr<UTexture>(FSoftObjectPath(FName(textureAssetPath), textureSubPath)).LoadSynchronous();
 					param->Texture = tex;
-					param->SamplerType = param->GetSamplerTypeForTexture(tex.Get());
+#if UE5_8_BEYOND
+					param->SamplerType = MaterialExpressionUtils::GetSamplerTypeForTexture(tex);
+#else
+					param->SamplerType = param->GetSamplerTypeForTexture(tex);
+#endif
 					UMaterialExpressionAdd* newAdd = NewObject<UMaterialExpressionAdd>(Material);
 					Material->GetExpressionCollection().AddExpression(newAdd);
 					newAdd->MaterialExpressionEditorX = x + 16 * 8 * 2;
@@ -260,7 +303,6 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 						lastAdd->B.Connect(0, newAdd);
 					}
 					lastAdd = newAdd;
-#endif
 				}
 				y += 16*8*2;
 				i++;
@@ -270,14 +312,15 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 
 
 	// map known switch params
+	/* Legacy exports keep switches in editor-only StaticSwitchParameters; no-op for them. */
 	if (
 		CachedExpressionData->HasTypedField<EJson::Object>(TEXT("RuntimeEntries[7]"))
-		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[7]"))->HasTypedField<EJson::Array>(TEXT("ParameterInfoSet"))
+		&& CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[7]"))->HasTypedField<EJson::Array>(ParameterInfosKey)
 		&& CachedExpressionData->HasTypedField<EJson::Array>(TEXT("StaticSwitchValues"))
 		)
 	{
 		const TArray<TSharedPtr<FJsonValue>>
-			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[7]"))->GetArrayField(TEXT("ParameterInfoSet")),
+			paramsPtr = CachedExpressionData->GetObjectField(TEXT("RuntimeEntries[7]"))->GetArrayField(ParameterInfosKey),
 			paramValuesPtr = CachedExpressionData->GetArrayField(TEXT("StaticSwitchValues"));
 		if (paramsPtr.Num() == paramValuesPtr.Num()) {
 			int32 i = 0;
