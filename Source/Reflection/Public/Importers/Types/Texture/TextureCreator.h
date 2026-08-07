@@ -88,6 +88,9 @@ private:
 	/* The slice count an export reports, from PackedData or the older standalone field */
 	static int32 GetReportedSliceCount(const TSharedPtr<FJsonObject>& Export);
 
+	/* Mip zero's own depth and the byte count it holds, both zero when it describes neither */
+	static void GetFirstMipDescription(const TSharedPtr<FJsonObject>& Export, int32& OutSlices, int64& OutPayload);
+
 	/* Decodes the raw first mip, slice by slice, into the texture's source data */
 	bool BuildSourceFromRawMip(UTexture* Texture, const TArray<uint8>& Data, const FTextureCookedLayout& Cooked) const;
 

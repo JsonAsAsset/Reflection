@@ -4,10 +4,8 @@
 
 #include "AnimGraphNode_Base.h"
 #include "AnimGraphNode_BlendListByEnum.h"
-#include "Animation/AnimBlueprint.h"
 #include "Dom/JsonObject.h"
 #include "Dom/JsonValue.h"
-#include "Engine/Compatibility.h"
 #include "Engine/Log.h"
 #include "Serializers/ObjectSerializer.h"
 #include "Utilities/JsonHelpers.h"

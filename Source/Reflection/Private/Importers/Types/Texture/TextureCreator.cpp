@@ -313,31 +313,76 @@ bool FTextureCookedLayout::DropMip() {
 
 bool FTextureCreator::GetCookedLayout(const TSharedPtr<FJsonObject>& Export, const int32 FallbackSlices, FTextureCookedLayout& OutCooked) const {
 	int32 SizeX = 0;
-	int32 StackedSizeY = 0;
+	int32 ReportedSizeY = 0;
 
 	Export->TryGetNumberField(TEXT("SizeX"), SizeX);
-	Export->TryGetNumberField(TEXT("SizeY"), StackedSizeY);
+	Export->TryGetNumberField(TEXT("SizeY"), ReportedSizeY);
 
-	int32 Slices = 0;
-	if (!Export->TryGetNumberField(TEXT("SizeZ"), Slices) || Slices <= 0) {
-		Slices = FallbackSlices > 0
-			? FallbackSlices
-			: (SizeX > 0 ? StackedSizeY / SizeX : 0);
+	/* Two shapes of export reach here. Cloud used to fold every slice into the height and flatten
+	 * the mip's depth to one, so the height had to be divided back down. It now leaves the height
+	 * alone and writes the real depth on each mip, which is the same thing the archive holds.
+	 *
+	 * Mip zero tells them apart without having to know which Core produced the dump: it says how
+	 * many bytes it holds, and only one of the two readings accounts for all of them. */
+	int32 MipSlices = 0;
+	int64 MipPayload = 0;
+	GetFirstMipDescription(Export, MipSlices, MipPayload);
 
-		if (FallbackSlices <= 0) {
+	int32 Slices = MipSlices > 1 ? MipSlices : 0;
+
+	if (Slices <= 0 && (!Export->TryGetNumberField(TEXT("SizeZ"), Slices) || Slices <= 0)) {
+		Slices = FallbackSlices > 0 ? FallbackSlices : GetReportedSliceCount(Export);
+
+		if (Slices <= 0) {
+			Slices = SizeX > 0 ? ReportedSizeY / SizeX : 0;
+
 			UE_LOG(LogReflection, Warning, TEXT("\"%s\" was sent without a slice count, reading %d off its width. Update Core to import this reliably."), *AssetName, Slices);
 		}
 	}
 
-	const int32 SizeY = Slices > 0 ? StackedSizeY / Slices : 0;
-
-	if (Slices <= 0 || SizeY * Slices != StackedSizeY) {
-		UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, SizeX, StackedSizeY, Slices);
+	if (Slices <= 0) {
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, SizeX, ReportedSizeY, Slices);
 
 		return false;
 	}
 
+	int32 SizeY = ReportedSizeY;
+
+	/* The height carries every slice when it alone accounts for the whole payload */
+	FTextureSourceLayout Layout;
+	FString PixelFormatName;
+	Export->TryGetStringField(TEXT("PixelFormat"), PixelFormatName);
+
+	if (MipPayload > 0 && FTextureFormats::GetLayout(FTextureFormats::FromName(PixelFormatName), Layout)
+		&& Layout.GetEncodedSliceSize(SizeX, ReportedSizeY) == MipPayload) {
+		SizeY = ReportedSizeY / Slices;
+
+		if (SizeY * Slices != ReportedSizeY) {
+			UE_LOG(LogReflection, Error, TEXT("\"%s\" was cooked at an unusable size (%d x %d over %d slices)"), *AssetName, SizeX, ReportedSizeY, Slices);
+
+			return false;
+		}
+	}
+
 	return ReadCookedLayout(Export, SizeX, SizeY, Slices, OutCooked);
+}
+
+void FTextureCreator::GetFirstMipDescription(const TSharedPtr<FJsonObject>& Export, int32& OutSlices, int64& OutPayload) {
+	OutSlices = 0;
+	OutPayload = 0;
+
+	const TArray<TSharedPtr<FJsonValue>>* Mips;
+	if (!Export->TryGetArrayField(TEXT("Mips"), Mips) || Mips->Num() == 0) return;
+
+	const TSharedPtr<FJsonObject> Mip = (*Mips)[0]->AsObject();
+	if (!Mip.IsValid()) return;
+
+	Mip->TryGetNumberField(TEXT("SizeZ"), OutSlices);
+
+	const TSharedPtr<FJsonObject>* BulkData;
+	if (Mip->TryGetObjectField(TEXT("BulkData"), BulkData)) {
+		(*BulkData)->TryGetNumberField(TEXT("ElementCount"), OutPayload);
+	}
 }
 
 bool FTextureCreator::GetCookedArrayLayout(const TSharedPtr<FJsonObject>& Export, FTextureCookedLayout& OutCooked) const {
