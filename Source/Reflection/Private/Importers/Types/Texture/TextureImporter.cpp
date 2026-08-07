@@ -13,6 +13,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Settings/ReflectionSettings.h"
+#include "Utilities/ContentBrowser.h"
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
 #if UE4_25_BELOW
@@ -131,6 +132,9 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 	Texture->PostEditChange();
 	Texture->AddToRoot();
 	Package->FullyLoad();
+
+	/* Textures don't go through HandleAssetCreation, so the jump to the asset has to happen here */
+	BrowseToAsset(Texture);
 
 	if (Settings->AssetSettings.SaveAssets) {
 		SavePackage(Package);
