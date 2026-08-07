@@ -93,7 +93,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		FScriptSetHelper SetHelper(SetProperty, OutValue);
 		const TArray<TSharedPtr<FJsonValue>>& SetArray = NewJsonValue->AsArray();
 		SetHelper.EmptyElements();
-		uint8* TempElementStorage = static_cast<uint8*>(FMemory::Malloc(ElementProperty->ElementSize));
+		uint8* TempElementStorage = static_cast<uint8*>(FMemory::Malloc(GetElementSize(ElementProperty)));
 		ElementProperty->InitializeValue(TempElementStorage);
 
 		for (int32 i = 0; i < SetArray.Num(); i++) {
@@ -583,7 +583,12 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			if (Object->HasField(TEXT("CultureInvariantString"))) {
 				TextProperty->SetPropertyValue(OutValue, FText::FromString(*Object->GetStringField(TEXT("CultureInvariantString"))));
 			} else {
+	#if UE5_8_BEYOND
+				/* ForUseOnlyByLocMacroAndGraphNodeTextLiterals_CreateText was removed in 5.8 */
+				TextProperty->SetPropertyValue(OutValue, FText::FromString(SourceString));
+	#else
 				TextProperty->SetPropertyValue(OutValue, FInternationalization::ForUseOnlyByLocMacroAndGraphNodeTextLiterals_CreateText(*SourceString, *TextNamespace, *UniqueKey));
+	#endif
 			}
 		}
 	}

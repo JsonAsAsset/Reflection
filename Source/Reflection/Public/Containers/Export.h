@@ -201,7 +201,12 @@ struct REFLECTION_API FUObjectExport : FUObjectJsonValueExport {
 		}
 
 		if (bRemoveLast && Result.Num() > 0) {
+	#if UE5_6_BEYOND
+			/* Pop's bool parameter became EAllowShrinking in 5.4, and the bool overload was removed in 5.8 */
+			Result.Pop(EAllowShrinking::No);
+	#else
 			Result.Pop(false);
+	#endif
 		}
 
 		return Result;

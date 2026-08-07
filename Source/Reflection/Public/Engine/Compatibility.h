@@ -28,6 +28,12 @@
 	#define ENGINE_UE5 0
 #endif
 
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 8
+	#define UE5_8_BEYOND 1
+#else
+	#define UE5_8_BEYOND 0
+#endif
+
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 6
 	#define UE5_6_BEYOND 1
 #else
@@ -297,6 +303,36 @@ inline FGuid StringToGuid(const FString& GuidString) {
 	return FGuid(GuidString);
 #endif
 }
+
+/* 5.8 moved FJsonObject's Values map onto UE::FSharedString keys, which convert to FString only explicitly */
+#if UE5_8_BEYOND
+#include "Containers/SharedString.h"
+#endif
+
+#if UE5_8_BEYOND
+inline FString JsonKeyToString(const FString& Key) {
+	return Key;
+}
+
+inline FString JsonKeyToString(const UE::FSharedString& Key) {
+	return FString(*Key);
+}
+#else
+/* Before 5.8 the key already is an FString, so hand the reference through untouched */
+inline const FString& JsonKeyToString(const FString& Key) {
+	return Key;
+}
+#endif
+
+#if UE5_8_BEYOND
+inline UE::FSharedString StringToJsonKey(const FString& Key) {
+	return UE::FSharedString(*Key);
+}
+#else
+inline const FString& StringToJsonKey(const FString& Key) {
+	return Key;
+}
+#endif
 
 #if UE4_26_0
 #include "AssetRegistry/Public/AssetRegistryModule.h"

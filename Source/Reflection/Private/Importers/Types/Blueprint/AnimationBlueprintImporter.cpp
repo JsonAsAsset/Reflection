@@ -117,17 +117,19 @@ bool IAnimationBlueprintImporter::Import() {
 	ProcessEvaluateGraphExposedInputs(RootAnimNodeProperties);
 
 	/* Parse LinkIDs to proper Node IDs ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-	RootAnimNodeProperties->Values.GetKeys(NodesKeys);
-	
+	for (const auto& Pair : RootAnimNodeProperties->Values) {
+		NodesKeys.Add(JsonKeyToString(Pair.Key));
+	}
+
 	ReversedNodesKeys = NodesKeys;
 	Algo::Reverse(ReversedNodesKeys);
 
 	for (const FString& Key : NodesKeys) {
-		TSharedPtr<FJsonValue> NodeValue = RootAnimNodeProperties->Values.FindChecked(Key);
+		TSharedPtr<FJsonValue> NodeValue = RootAnimNodeProperties->Values.FindChecked(StringToJsonKey(Key));
 		if (!NodeValue.IsValid()) continue;
-		
+
 		ReplaceLinkID(NodeValue, NodesKeys);
-		RootAnimNodeProperties->Values[Key] = NodeValue;
+		RootAnimNodeProperties->Values[StringToJsonKey(Key)] = NodeValue;
 	}
 
 	/* Sets "State" and "Machine" for each state result */
@@ -157,7 +159,7 @@ bool IAnimationBlueprintImporter::Import() {
 	/* Separate main graph nodes (without "State" and "Machine") into RootGraphAnimProperties ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 	const TSharedPtr<FJsonObject> RootGraphAnimProperties = MakeShared<FJsonObject>(); {
 		for (const FString& Key : NodesKeys) {
-			const TSharedPtr<FJsonValue> NodeValue = RootAnimNodeProperties->Values.FindChecked(Key);
+			const TSharedPtr<FJsonValue> NodeValue = RootAnimNodeProperties->Values.FindChecked(StringToJsonKey(Key));
 		
 			if (NodeValue->Type == EJson::Object) {
 				const TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
@@ -261,7 +263,7 @@ void IAnimationBlueprintImporter::CreateGraph(const TSharedPtr<FJsonObject>& Ani
 				TSharedPtr<FJsonObject> StateMachineAnimNodeProperties = MakeShared<FJsonObject>();
 
 				for (const auto& Pair : RootAnimNodeProperties->Values) {
-					const  FString Key = Pair.Key;
+					const FString Key = JsonKeyToString(Pair.Key);
 					const TSharedPtr<FJsonObject> Value = Pair.Value->AsObject();
 
 					if (!Value.IsValid()) continue;
@@ -406,7 +408,7 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
 
 void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, const TSharedPtr<FJsonObject>& AnimNodeProperties, FUObjectExportContainer& OutContainer) {
 	for (const auto& Pair : AnimNodeProperties->Values) {
-		FString Key = Pair.Key;
+		FString Key = JsonKeyToString(Pair.Key);
 
 		TSharedPtr<FJsonObject> Value = Pair.Value->AsObject();
 
@@ -544,9 +546,9 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 			auto& RootValues = NodeExport->JsonObject->Values;
 
 			auto MoveField = [&](const FString& Key) {
-				if (RootValues.Contains(Key)) {
+				if (RootValues.Contains(StringToJsonKey(Key))) {
 					if (Key == TEXT("LocalJointOffset")) {
-						TSharedPtr<FJsonObject> Original = RootValues[Key]->AsObject();
+						TSharedPtr<FJsonObject> Original = RootValues[StringToJsonKey(Key)]->AsObject();
 
 						if (Original.IsValid()) {
 							TSharedPtr<FJsonObject> VecObj = MakeShared<FJsonObject>(*Original);
@@ -565,7 +567,7 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 						}
 					}
 
-					PhysicsBodyDefinition->SetField(Key, RootValues[Key]);
+					PhysicsBodyDefinition->SetField(Key, RootValues[StringToJsonKey(Key)]);
 				}
 			};
 
@@ -650,7 +652,7 @@ void IAnimationBlueprintImporter::ConnectAnimGraphNodes(FUObjectExportContainer*
         }
     	
         for (const auto& Pair : Json->Values) {
-            const FString& Key = Pair.Key;
+            const FString Key = JsonKeyToString(Pair.Key);
             const TSharedPtr<FJsonValue>& Value = Pair.Value;
             
             if (Value->Type == EJson::Array) {
@@ -683,7 +685,7 @@ void IAnimationBlueprintImporter::ConnectAnimGraphNodes(FUObjectExportContainer*
                     for (TFieldIterator<FProperty> It(NodeProp->Struct); It; ++It) {
                         FProperty* Property = *It;
                         
-                        if (Property->GetName() != Pair.Key) {
+                        if (Property->GetName() != JsonKeyToString(Pair.Key)) {
                             continue;
                         }
                         
@@ -718,7 +720,7 @@ void IAnimationBlueprintImporter::ConnectAnimGraphNodes(FUObjectExportContainer*
                 for (TFieldIterator<FProperty> It(NodeProp->Struct); It; ++It) {
                     const FProperty* Property = *It;
                     
-                    if (Property->GetName() != Pair.Key) {
+                    if (Property->GetName() != JsonKeyToString(Pair.Key)) {
                         continue;
                     }
                     

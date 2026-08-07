@@ -70,7 +70,7 @@ inline void ReplaceLinkID(const TSharedPtr<FJsonValue>& Data, const TArray<FStri
 					Pair.Value = MakeShared<FJsonValueString>(NodesKeys[Index]);
 				}
 			} else {
-				ReplaceLinkID(Pair.Value, NodesKeys, Pair.Key);
+				ReplaceLinkID(Pair.Value, NodesKeys, JsonKeyToString(Pair.Key));
 			}
 		}
 	} else if (Data->Type == EJson::Array) {
@@ -87,13 +87,13 @@ inline void FilterAnimGraphNodeProperties(const TSharedPtr<FJsonObject>& JsonObj
 	
 	TArray<FString> KeysToRemove;
 	for (auto& Pair : JsonObject->Values) {
-		if (!Pair.Key.Contains(TEXT("AnimGraphNode"))) {
-			KeysToRemove.Add(Pair.Key);
+		if (!JsonKeyToString(Pair.Key).Contains(TEXT("AnimGraphNode"))) {
+			KeysToRemove.Add(JsonKeyToString(Pair.Key));
 		}
 	}
-	
+
 	for (const FString& Key : KeysToRemove) {
-		JsonObject->Values.Remove(Key);
+		JsonObject->Values.Remove(StringToJsonKey(Key));
 	}
 }
 
@@ -107,13 +107,13 @@ inline TArray<TPair<FString, FString>> FindLinkIDs(const TSharedPtr<FJsonValue>&
         for (auto& Pair : Object->Values) {
             if (Pair.Key == TEXT("LinkID")) {
                 FString LinkStr = Pair.Value->AsString();
-                FString Prop = ParentProperty.IsEmpty() ? Pair.Key : ParentProperty;
+                FString Prop = ParentProperty.IsEmpty() ? JsonKeyToString(Pair.Key) : ParentProperty;
             	
                 Results.Add(TPair<FString, FString>(Prop, LinkStr));
             	continue;
             }
         	
-            TArray<TPair<FString, FString>> SubResults = FindLinkIDs(Pair.Value, Pair.Key);
+            TArray<TPair<FString, FString>> SubResults = FindLinkIDs(Pair.Value, JsonKeyToString(Pair.Key));
             Results.Append(SubResults);
         }
     } else if (Data->Type == EJson::Array) {
@@ -129,17 +129,18 @@ inline TArray<TPair<FString, FString>> FindLinkIDs(const TSharedPtr<FJsonValue>&
     return Results;
 }
 
-inline void HarvestAndTagConnectedStateMachineNodes(const FString& StartKey, const FString& StateName, const FString& MachineName, TMap<FString, TSharedPtr<FJsonValue>>& Nodes) {
-	if (!Nodes.Contains(StartKey)) return;
+template <typename KeyType>
+inline void HarvestAndTagConnectedStateMachineNodes(const FString& StartKey, const FString& StateName, const FString& MachineName, TMap<KeyType, TSharedPtr<FJsonValue>>& Nodes) {
+	if (!Nodes.Contains(StringToJsonKey(StartKey))) return;
 
-	const TSharedPtr<FJsonValue> NodeValue = Nodes.FindChecked(StartKey);
-	
+	const TSharedPtr<FJsonValue> NodeValue = Nodes.FindChecked(StringToJsonKey(StartKey));
+
 	if (NodeValue->Type == EJson::Object) {
 		TSharedPtr<FJsonObject> NodeObject = NodeValue->AsObject();
 		NodeObject->SetStringField(TEXT("State"), StateName);
 		NodeObject->SetStringField(TEXT("Machine"), MachineName);
-		
-		Nodes[StartKey] = MakeShared<FJsonValueObject>(NodeObject);
+
+		Nodes[StringToJsonKey(StartKey)] = MakeShared<FJsonValueObject>(NodeObject);
 	}
 	
 	TArray<TPair<FString, FString>> Links = FindLinkIDs(NodeValue, StartKey);

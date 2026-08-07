@@ -58,7 +58,7 @@ inline bool PassthroughPropertyHandler(FProperty* Property, const FString& Prope
 
 		/* Finds array elements with the format: PropertyName[Index] and sets them properly into an array */
 		for (const auto& Pair : Properties->Values) {
-			const FString& Key = Pair.Key;
+			const FString Key = JsonKeyToString(Pair.Key);
 			const TSharedPtr<FJsonValue> Value = Pair.Value;
 
 			/* If it doesn't start with the same property name */

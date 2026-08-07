@@ -74,7 +74,7 @@ inline void ProcessObjects(const TSharedPtr<FJsonObject>& Parent, const TFunctio
 
 		if (Pair.Value->Type == EJson::Object) {
 			if (const TSharedPtr<FJsonObject> ChildObject = Pair.Value->AsObject()) {
-				ProcessObjectFunction(Pair.Key, ChildObject);
+				ProcessObjectFunction(JsonKeyToString(Pair.Key), ChildObject);
 			}
 		}
 	}

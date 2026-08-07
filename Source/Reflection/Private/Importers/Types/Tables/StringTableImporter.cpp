@@ -23,11 +23,16 @@ bool IStringTableImporter::Import() {
 		/* Set "SourceStrings" from KeysToEntries */
 		const TSharedPtr<FJsonObject> KeysToEntries = StringTableData->GetObjectField(TEXT("KeysToEntries"));
 	
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : KeysToEntries->Values) {
-			FString Key = Pair.Key;
+		for (const auto& Pair : KeysToEntries->Values) {
+			FString Key = JsonKeyToString(Pair.Key);
 			FString SourceString = Pair.Value->AsString();
 
+	#if UE5_8_BEYOND
+			/* 5.8 added a DevNotes parameter to the editor build's SetSourceString */
+			MutableStringTable->SetSourceString(Key, SourceString, TEXT(""));
+	#else
 			MutableStringTable->SetSourceString(Key, SourceString);
+	#endif
 		}
 
 		/* Set Metadata from KeysToMetaData */

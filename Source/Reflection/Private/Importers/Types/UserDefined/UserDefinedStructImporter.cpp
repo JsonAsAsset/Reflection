@@ -112,7 +112,7 @@ void IUserDefinedStructImporter::ImportPropertyIntoStruct(UUserDefinedStruct* Us
     FStructureEditorUtils::GetVarDesc(UserDefinedStruct).Add(Variable);
     FStructureEditorUtils::OnStructureChanged(UserDefinedStruct, FStructureEditorUtils::EStructureEditorChangeInfo::AddedVariable);
 
-    const TSharedPtr<FJsonValue>& PropertyJsonValue = DefaultProperties->Values.FindChecked(Name);
+    const TSharedPtr<FJsonValue>& PropertyJsonValue = DefaultProperties->Values.FindChecked(StringToJsonKey(Name));
 
     FProperty* Property = FindFProperty<FProperty>(UserDefinedStruct, *Name);
 

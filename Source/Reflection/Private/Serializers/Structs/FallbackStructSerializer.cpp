@@ -74,7 +74,7 @@ void FFallbackStructSerializer::Deserialize(UScriptStruct* Struct, void* StructV
 			const bool bHasHandledProperty = PassthroughPropertyHandler(Property, PropertyName, PropertyValue, JsonValue, PropertySerializer);
 
 			if (!bHasHandledProperty && JsonValue->HasField(ValueName)) {
-				const TSharedPtr<FJsonValue> ValueObject = JsonValue->Values.FindChecked(ValueName);
+				const TSharedPtr<FJsonValue> ValueObject = JsonValue->Values.FindChecked(StringToJsonKey(ValueName));
 
 				if (Property->ArrayDim == 1 || ValueObject->Type == EJson::Array) {
 					PropertySerializer->DeserializePropertyValue(Property, ValueObject.ToSharedRef(), PropertyValue, OptionalOuter);

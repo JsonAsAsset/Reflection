@@ -84,7 +84,7 @@ bool IPhysicsAssetImporter::Import() {
 	}), PhysicsAsset);
 
 	/* If the user selected a skeletal mesh in the browser, set it in the physics asset */
-	const USkeletalMesh* SkeletalMesh = GetSelectedAsset<USkeletalMesh>(true);
+	USkeletalMesh* SkeletalMesh = GetSelectedAsset<USkeletalMesh>(true);
 
 	/* Otherwise, fallback to any skeletal mesh sitting in the same folder as the physics asset */
 	if (!SkeletalMesh) {

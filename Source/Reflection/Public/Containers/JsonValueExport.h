@@ -89,7 +89,7 @@ struct REFLECTION_API FUObjectJsonValueExport {
 #if UE4_24_BELOW
 		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.Find(FieldName);
 #else
-		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.FindByHash(GetTypeHash(FieldName), FieldName);
+		const TSharedPtr<FJsonValue>* Field = JsonObject->Values.FindByHash(GetTypeHash(StringToJsonKey(FieldName)), StringToJsonKey(FieldName));
 #endif
 		if (Field == nullptr || !Field->IsValid()) {
 			static const TSharedPtr<FJsonObject> EmptyObject = MakeShared<FJsonObject>();
