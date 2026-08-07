@@ -75,7 +75,7 @@ public:
 	TArray<FRRedirector> Redirectors;
 
 	/* Retrieves assets from an API and imports references directly into your project. */
-	UPROPERTY(Config)
+	UPROPERTY()
 	bool EnableCloudServer = true;
 
 	/* Enables experimental/developing features. Features may not work as intended. */
