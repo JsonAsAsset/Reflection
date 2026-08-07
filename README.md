@@ -83,7 +83,7 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 | 🟣 **Data** | DataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, UserDefinedEnum, UserDefinedStruct |
 | 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
 | 🟠 **Material** | Material, MaterialFunction, MaterialInstanceConstant, MaterialParameterCollection, SubsurfaceProfile |
-| 🟧 **Texture** | TextureRenderTarget2D, RuntimeVirtualTexture, PaperSprite |
+| 🟧 **Texture** | TextureRenderTarget2D, TextureLightProfile, VolumeTexture, Texture2DArray, RuntimeVirtualTexture, PaperSprite, VolumeTexture, Texture2DArray |
 | 🟡 **Sound** | SoundCue and most other sound classes are supported. SoundWave is fetched by a [Cloud Server](#cloud)! |
 | 🔴 **Animation** | PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
