@@ -98,7 +98,11 @@ void FReflectionModule::ShutdownModule() {
 	FReflectionStyle::Shutdown();
 
 	if (Toolbar) {
+#if UE4_23_BELOW
+		if (!GIsRequestingExit) {
+#else
 		if (!IsEngineExitRequested()) {
+#endif
 			Toolbar->RemoveFromRoot();
 		}
 		Toolbar = nullptr;
