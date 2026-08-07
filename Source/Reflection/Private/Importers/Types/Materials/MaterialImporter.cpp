@@ -105,6 +105,8 @@ bool IMaterialImporter::Import() {
 
 			if (ExpressionContainer->Contains(InputExpressionName)) {
 				FExpressionInput Input = PopulateExpressionInput(InputObject, ExpressionContainer->Find<UMaterialExpression>(InputExpressionName));
+				RemapConvertOutput(Input);
+
 				EditorOnlyData->CustomizedUVs[i] = *reinterpret_cast<FVector2MaterialInput*>(&Input);
 			}
 			i++;

@@ -155,6 +155,26 @@ TSharedPtr<FJsonObject> Cloud::Export::GetRawBlocking(const FString& Path, const
 	return GetBlocking(Path, true, Parameters, Headers);
 }
 
+bool Cloud::Export::GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData) {
+	const FReflectionHttpRequest Request = BuildRequest(ExportURL, { { TEXT("path"), Path } }, { { TEXT("content-type"), ContentType } });
+	Request->SetVerb(TEXT("GET"));
+
+	const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+
+	if (!Response.IsValid() || Response->GetResponseCode() != 200) {
+		return false;
+	}
+
+	/* Json here means the Cloud has the export but couldn't hand back the payload for it */
+	if (Response->GetContentType().StartsWith(TEXT("application/json"))) {
+		return false;
+	}
+
+	OutData = Response->GetContent();
+
+	return OutData.Num() > 0;
+}
+
 /* Metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 void Cloud::Update(TFunction<void(bool)> OnResponse) {
 	UReflectionSettings* MutableSettings = GetSettings();

@@ -88,7 +88,7 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 | 🔴 **Animation** | PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
 | 🟤 **Sequencer** | CameraAnim, ForceFeedbackEffect |
-| ✨ **Effects** | ParticleSystem |
+| ✨ **Effects** | ParticleSystem, VectorFieldStatic. Vector data is fetched by a [Cloud Server](#cloud)! |
 | 🟩 **Landscape** | LandscapeGrassType, FoliageType_InstancedStaticMesh, FoliageType_Actor |
 | 🔤 **UI** | Font |
 

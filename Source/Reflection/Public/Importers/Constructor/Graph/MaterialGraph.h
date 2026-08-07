@@ -10,6 +10,8 @@
 class UMaterialFunction;
 #endif
 
+class UMaterialExpressionComponentMask;
+
 /*
  * Material Graph Handler
  * Handles everything needed to create a material graph from JSON.
@@ -34,6 +36,26 @@ protected:
 	/* Functions to Handle Node Connections ~~~~~~~~~~~~ */
 	static FExpressionInput PopulateExpressionInput(const FJsonObject* JsonProperties, UMaterialExpression* Expression, const FString& Type = "Default");
 	static FName GetExpressionName(const FJsonObject* JsonProperties, const FString& OverrideParameterName = "Expression");
+
+	/* MaterialExpressionConvert (5.6) rebuilt out of nodes every engine has ~~~~~~~~~~~~ */
+	UMaterialExpression* CreateConvertSubstitute(FUObjectExport* Export);
+	void ResolveConvertSubstitutes(FUObjectExportContainer* Container);
+	bool IsConvertSubstitute(UMaterialExpression* Expression) const;
+
+	/* Moves an input that named one of a rebuilt convert node's outputs onto the expression
+	 * standing in for that output. Inputs built by the property serializer are handled there;
+	 * this is for the few the importers populate by hand. */
+	void RemapConvertOutput(FExpressionInput& Input) const;
+
+	/* A component mask standing in for one mapped convert input. The expression it reads from is
+	 * only known once every export in the graph has an object, so the connection is made after
+	 * the whole container has been constructed. */
+	struct FPendingConvertInput {
+		UMaterialExpressionComponentMask* Mask;
+		TSharedPtr<FJsonObject> ExpressionInput;
+	};
+
+	TArray<FPendingConvertInput> PendingConvertInputs;
 
 public:
 	UMaterialExpression* OnMissingNodeClass(FUObjectExport* Export, FUObjectExportContainer* Container);

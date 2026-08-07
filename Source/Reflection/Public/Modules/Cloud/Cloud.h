@@ -56,6 +56,11 @@ public:
 
 		static TSharedPtr<FJsonObject> GetBlocking(const FString& Path, bool Raw, TMap<FString, FString> Parameters = {}, const TMap<FString, FString>& Headers = {});
 		static TSharedPtr<FJsonObject> GetRawBlocking(const FString& Path, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
+
+		/* Asks the export endpoint for bytes rather than json, with ContentType picking the
+		 * encoding. False when the Cloud couldn't produce the payload, which it says by answering
+		 * with json instead. */
+		static bool GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData);
 	};
 
 	/* Requests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

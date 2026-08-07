@@ -36,6 +36,35 @@ static void SetObjectPropertyValueChecked(const FObjectPropertyBase* ObjectPrope
 	ObjectProperty->SetObjectPropertyValue(OutValue, Object);
 }
 
+void UPropertySerializer::RemapConvertOutput(const UStruct* Struct, void* StructValue) const {
+	/* Matched by shape rather than by type: an expression connects through FExpressionInput, the
+	 * material's own inputs through FColorMaterialInput and friends, and which of those are
+	 * separate reflected structs (and whether they share a reflected base) changes by version.
+	 * Everything that carries a connection has both of these. */
+	FObjectProperty* ExpressionProperty = FindFProperty<FObjectProperty>(Struct, TEXT("Expression"));
+	FIntProperty* OutputIndexProperty = FindFProperty<FIntProperty>(Struct, TEXT("OutputIndex"));
+
+	if (ExpressionProperty == nullptr || OutputIndexProperty == nullptr) {
+		return;
+	}
+
+	void* ExpressionValue = ExpressionProperty->ContainerPtrToValuePtr<void>(StructValue);
+
+	const TArray<UObject*>* Roots = ConvertOutputRoots.Find(ExpressionProperty->GetObjectPropertyValue(ExpressionValue));
+	if (Roots == nullptr) {
+		return;
+	}
+
+	int32* OutputIndexValue = OutputIndexProperty->ContainerPtrToValuePtr<int32>(StructValue);
+	if (!Roots->IsValidIndex(*OutputIndexValue)) {
+		return;
+	}
+
+	/* Each root has the one output, so the index the convert node was asked for is spent here */
+	ExpressionProperty->SetObjectPropertyValue(ExpressionValue, (*Roots)[*OutputIndexValue]);
+	*OutputIndexValue = 0;
+}
+
 #if UE5_2_BEYOND
 UE_DISABLE_OPTIMIZATION
 #else
@@ -446,6 +475,14 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 
 		/* To serialize struct, we need its type and value pointer, because struct value doesn't contain type information */
 		DeserializeStruct(StructProperty->Struct, NewJsonValue->AsObject().ToSharedRef(), OutValue, OptionalOuter);
+
+		/* An input that named one of a convert node's outputs has to follow that output onto the
+		 * root the material graph built for it. Every connection in the graph passes through here,
+		 * which is what catches the material's own BaseColor/Emissive inputs as well as the ones
+		 * sitting on expressions. */
+		if (ConvertOutputRoots.Num() > 0) {
+			RemapConvertOutput(StructProperty->Struct, OutValue);
+		}
 
 #if ENGINE_UE4
 		/* If we're importing from UE5 to UE4, adjust the material attribute nodes to adjust for attributes that don't exist */

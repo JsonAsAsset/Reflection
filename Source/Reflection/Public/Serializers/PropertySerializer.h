@@ -29,6 +29,10 @@ public:
 
 	void DeserializePropertyValue(FProperty* Property, const TSharedRef<FJsonValue>& Value, void* OutValue, UObject* OptionalOuter = nullptr);
 	void DeserializeStruct(UScriptStruct* Struct, const TSharedRef<FJsonObject>& Value, void* OutValue, UObject* OptionalOuter = nullptr) const;
+
+	/* Moves an expression input that points at a rebuilt MaterialExpressionConvert onto the root
+	 * standing in for the output it named. No-op unless ConvertOutputRoots has entries. */
+	void RemapConvertOutput(const UStruct* Struct, void* StructValue) const;
 private:
 	FStructSerializer* GetStructSerializer(const UScriptStruct* Struct) const;
 	
@@ -48,6 +52,12 @@ public:
 
 	FUObjectExportContainer* ExportsContainer = nullptr;
 	TArray<FString> BlacklistedPropertyNames;
+
+	/* MaterialExpressionConvert has no class before 5.6, so IMaterialGraph rebuilds one as a
+	 * network with a separate root expression per convert output. Keyed by the expression the
+	 * convert export hands out to everything referencing it (the root of its first output), the
+	 * value holds a root per output index. Empty for every asset that has no such node. */
+	TMap<UObject*, TArray<UObject*>> ConvertOutputRoots;
 };
 
 /* Use to handle differentiating formats produced by UEParse */
