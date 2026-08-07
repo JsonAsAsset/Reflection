@@ -97,12 +97,6 @@ bool IPhysicsAssetImporter::Import() {
 		AssetRegistryModule.Get().GetAssetsByPath(FName(*SearchPath), AssetDataList, false);
 
 		for (const FAssetData& AssetData : AssetDataList) {
-			const UClass* AssetClass = AssetData.GetClass();
-
-			if (!AssetClass || !AssetClass->IsChildOf(USkeletalMesh::StaticClass())) {
-				continue;
-			}
-
 			SkeletalMesh = Cast<USkeletalMesh>(AssetData.GetAsset());
 
 			if (SkeletalMesh) {
@@ -110,7 +104,7 @@ bool IPhysicsAssetImporter::Import() {
 			}
 		}
 	}
-	
+
 	if (SkeletalMesh) {
 		PhysicsAsset->PreviewSkeletalMesh = SkeletalMesh;
 		PhysicsAsset->PostEditChange();
