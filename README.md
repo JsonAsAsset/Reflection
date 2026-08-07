@@ -83,7 +83,7 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 | 🟣 **Data** | DataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, UserDefinedEnum, UserDefinedStruct |
 | 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
 | 🟠 **Material** | Material, MaterialFunction, MaterialInstanceConstant, MaterialParameterCollection, SubsurfaceProfile |
-| 🟧 **Texture** | TextureRenderTarget2D, TextureLightProfile, VolumeTexture, Texture2DArray, RuntimeVirtualTexture, PaperSprite, VolumeTexture, Texture2DArray |
+| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite. Pixels are fetched by a [Cloud Server](#cloud)! |
 | 🟡 **Sound** | SoundCue and most other sound classes are supported. SoundWave is fetched by a [Cloud Server](#cloud)! |
 | 🔴 **Animation** | PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
@@ -96,6 +96,11 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 |  | Asset Types |
 |-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | **🔴 Animation** | AnimSequence, AnimMontage **(Animation Curves)** |
+| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
+| **🟢 Curve** | CurveLinearColor **(Colors)** |
+| **🔤 UI** | FontFace **(Font Properties)**, WidgetBlueprint **(Widget Animations)** |
+
+These are reached from **Cloud Tools** with the asset selected in your content browser, and need a [Cloud Server](#cloud).
 
 #### Partial Blueprint Importing (Experimental)
 If the parent class exists, it'll import the components and defaults of the blueprint (Blueprints, Widget Blueprints, and Animation Blueprints). Enable **Enable Experiments** in Plugin Settings to use it.
