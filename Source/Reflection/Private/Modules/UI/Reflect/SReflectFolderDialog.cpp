@@ -12,6 +12,7 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
+#include "Widgets/SNullWidget.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -86,18 +87,6 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 					.IsEnabled(this, &SReflectFolderDialog::HasSelectedFolder)
 					.OnClicked(this, &SReflectFolderDialog::OnUseSelectedFolderClicked)
 				]
-
-				+ SHorizontalBox::Slot()
-				.AutoWidth()
-				.VAlign(VAlign_Center)
-				.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
-				[
-					SNew(SButton)
-					.Text(LOCTEXT("Find", "Find"))
-					.ToolTipText(LOCTEXT("FindTooltip", "Ask Cloud what is under that folder"))
-					.IsEnabled(this, &SReflectFolderDialog::CanFind)
-					.OnClicked(this, &SReflectFolderDialog::OnFindClicked)
-				]
 			]
 		]
 
@@ -128,10 +117,27 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		/* Footer ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.HAlign(HAlign_Right)
 		.Padding(FMargin(8.0f, 0.0f, 8.0f, 8.0f))
 		[
 			SNew(SHorizontalBox)
+
+			/* Find sits away from the other two: it fills the list rather than acting on it */
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("Find", "Find"))
+				.ToolTipText(LOCTEXT("FindTooltip", "Ask Cloud what is under that folder"))
+				.IsEnabled(this, &SReflectFolderDialog::CanFind)
+				.OnClicked(this, &SReflectFolderDialog::OnFindClicked)
+			]
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			[
+				SNullWidget::NullWidget
+			]
 
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
