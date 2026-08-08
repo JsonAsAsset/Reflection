@@ -4,6 +4,7 @@
 
 #include "Engine/Compatibility.h"
 
+#include "Containers/Export.h"
 #include "Utilities/Dialog.h"
 
 #include "Interfaces/IMainFrameModule.h"
@@ -18,6 +19,65 @@
 #include "Widgets/Views/STableRow.h"
 
 #define LOCTEXT_NAMESPACE "Reflection.ReflectPaths"
+
+/* Whether one line could be an asset path.
+ *
+ * Deliberately shallow: only Cloud can say whether a path leads anywhere, and this runs against
+ * whatever happened to be copied last. It is here to tell a path from a sentence, not to validate. */
+static bool IsPath(const FString& Line) {
+	/* A copied reference arrives as Type'/Game/Path/Asset.Asset' */
+	FString Path = StripObjectOuter(Line.TrimStartAndEnd());
+	Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+	if (Path.IsEmpty()) {
+		return false;
+	}
+
+	/* Every form of these has a root and something under it */
+	int32 Slash;
+	if (!Path.FindChar(TEXT('/'), Slash) || Path.Len() < 3) {
+		return false;
+	}
+
+	/* Prose is what this is mostly guarding against, and prose has spaces in it. Package paths
+	 * are allowed them in principle, but nothing that ships in a game uses them. */
+	for (const TCHAR Character : Path) {
+		if (FChar::IsWhitespace(Character)) {
+			return false;
+		}
+
+		/* Illegal in a package path either way */
+		if (FCString::Strchr(TEXT("?*:\"<>|"), Character) != nullptr) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
+/* Whether the whole of Text is paths, one per line.
+ *
+ * All of it or none: a clipboard holding a path and a line of something else is not a list that
+ * was copied to be reflected, and queueing the half that parses would be putting words in the
+ * user's mouth. */
+static bool IsPathList(const FString& Text) {
+	TArray<FString> Lines;
+	Text.ParseIntoArrayLines(Lines);
+
+	int32 Paths = 0;
+
+	for (const FString& Line : Lines) {
+		if (Line.TrimStartAndEnd().IsEmpty()) continue;
+
+		if (!IsPath(Line)) {
+			return false;
+		}
+
+		Paths++;
+	}
+
+	return Paths > 0;
+}
 
 bool SReflectPathsDialog::Open(TArray<FString>& OutPaths) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
@@ -155,10 +215,11 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 		]
 	];
 
-	/* The path is usually already on the clipboard, straight out of the asset it was copied from */
+	/* The path is usually already on the clipboard, straight out of the asset it was copied from.
+	 * Whatever else was copied since is not, so nothing goes in unless all of it is paths. */
 	const FString Clipboard = GetClipboard();
 
-	if (Clipboard.Contains(TEXT("/"))) {
+	if (IsPathList(Clipboard)) {
 		AddPaths(Clipboard);
 	}
 
