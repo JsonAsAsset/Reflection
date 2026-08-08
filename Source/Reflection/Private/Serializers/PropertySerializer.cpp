@@ -16,11 +16,148 @@
 #include "Serializers/Structs/FallbackStructSerializer.h"
 #include "Serializers/Structs/TimeSpanSerializer.h"
 
-#if ENGINE_UE4
 #include "Settings/Runtime.h"
-#endif
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionPropertySerializer, Error, Log);
+
+/* Material Attributes ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
+namespace {
+	/* 4.25 ~~> 425, 5.3 ~~> 503. Only ever compared against another one of these. */
+	constexpr int32 ToVersionKey(const int32 Major, const int32 Minor) {
+		return Major * 100 + Minor;
+	}
+
+	/* The outputs of a BreakMaterialAttributes node, in the order the node lists them, against the
+	 * engines each one is there for. Read out of the engine sources rather than worked out from a
+	 * material: 4.16 through 5.7 all lay the common attributes out in this same relative order and
+	 * only ever add one or drop one, which is the whole reason an index recorded against one
+	 * engine can be named on another.
+	 *
+	 * Anisotropy and Tangent arrive in 4.25, ShadingModel in 4.23, Displacement in 5.3.
+	 * WorldDisplacement and TessellationMultiplier leave with tessellation in 5.0. */
+	struct FBreakAttributeSlot {
+		const TCHAR* Name;
+
+		/* Version keys, 0 meaning no bound on that end */
+		int32 First;
+		int32 Last;
+
+		bool IsPresentIn(const int32 Version) const {
+			return (First == 0 || Version >= First) && (Last == 0 || Version <= Last);
+		}
+	};
+
+	const FBreakAttributeSlot BreakAttributeSlots[] = {
+		{ TEXT("BaseColor"),              0,   0   },
+		{ TEXT("Metallic"),               0,   0   },
+		{ TEXT("Specular"),               0,   0   },
+		{ TEXT("Roughness"),              0,   0   },
+		{ TEXT("Anisotropy"),             425, 0   },
+		{ TEXT("EmissiveColor"),          0,   0   },
+		{ TEXT("Opacity"),                0,   0   },
+		{ TEXT("OpacityMask"),            0,   0   },
+		{ TEXT("Normal"),                 0,   0   },
+		{ TEXT("Tangent"),                425, 0   },
+		{ TEXT("WorldPositionOffset"),    0,   0   },
+		{ TEXT("WorldDisplacement"),      0,   427 },
+		{ TEXT("TessellationMultiplier"), 0,   427 },
+		{ TEXT("SubsurfaceColor"),        0,   0   },
+		{ TEXT("ClearCoat"),              0,   0   },
+		{ TEXT("ClearCoatRoughness"),     0,   0   },
+		{ TEXT("AmbientOcclusion"),       0,   0   },
+		{ TEXT("Refraction"),             0,   0   },
+		{ TEXT("CustomizedUV0"),          0,   0   },
+		{ TEXT("CustomizedUV1"),          0,   0   },
+		{ TEXT("CustomizedUV2"),          0,   0   },
+		{ TEXT("CustomizedUV3"),          0,   0   },
+		{ TEXT("CustomizedUV4"),          0,   0   },
+		{ TEXT("CustomizedUV5"),          0,   0   },
+		{ TEXT("CustomizedUV6"),          0,   0   },
+		{ TEXT("CustomizedUV7"),          0,   0   },
+		{ TEXT("PixelDepthOffset"),       0,   0   },
+		{ TEXT("ShadingModel"),           423, 0   },
+		{ TEXT("Displacement"),           503, 0   },
+	};
+
+	/* What the engine the json came from called the output sitting at this index */
+	FString GetSourceBreakOutputName(const int32 OutputIndex) {
+		if (OutputIndex < 0 || GReflectionRuntime.MajorVersion <= 0 || GReflectionRuntime.MinorVersion < 0) {
+			return FString();
+		}
+
+		const int32 SourceVersion = ToVersionKey(GReflectionRuntime.MajorVersion, GReflectionRuntime.MinorVersion);
+
+		int32 Index = 0;
+
+		for (const FBreakAttributeSlot& Slot : BreakAttributeSlots) {
+			if (!Slot.IsPresentIn(SourceVersion)) {
+				continue;
+			}
+
+			if (Index == OutputIndex) {
+				return Slot.Name;
+			}
+
+			Index++;
+		}
+
+		return FString();
+	}
+
+	/* Where the same attribute sits on the node this engine built, asked of the node itself. The
+	 * outputs are named in the constructor of every version, so this side needs nothing written
+	 * down: whatever this engine put in the list is what the index has to end up matching. */
+	int32 FindBreakOutputIndex(const UMaterialExpression* Break, const FString& Name) {
+		for (int32 Index = 0; Index < Break->Outputs.Num(); Index++) {
+			if (OutputNameToString(Break->Outputs[Index].OutputName) == Name) {
+				return Index;
+			}
+		}
+
+		return INDEX_NONE;
+	}
+
+	/* An input reading a BreakMaterialAttributes names its attribute by position, and the list it
+	 * is a position into is not the same list on every engine. Ported straight across, an input
+	 * lands on whichever attribute happens to sit at that index here, which is the graph coming
+	 * out wired one or two pins off all the way down.
+	 *
+	 * The index is turned back into the attribute it meant on the engine that wrote it, then asked
+	 * for again by name here. */
+	void RemapBreakMaterialAttributesOutput(FExpressionInput* Input) {
+		if (Input == nullptr || Input->Expression == nullptr) {
+			return;
+		}
+
+		if (Input->Expression->GetClass()->GetName() != TEXT("MaterialExpressionBreakMaterialAttributes")) {
+			return;
+		}
+
+		const FString AttributeName = GetSourceBreakOutputName(Input->OutputIndex);
+
+		/* No metadata to say which engine this came from, so there is nothing to map between */
+		if (AttributeName.IsEmpty()) {
+			return;
+		}
+
+		const int32 TargetIndex = FindBreakOutputIndex(Input->Expression, AttributeName);
+
+		/* An attribute this engine does not have. Leaving the index where it is would read some
+		 * unrelated attribute instead, and there is no honest answer to give, so the wire comes
+		 * off and the input falls back to whatever the node it sits on defaults to.  */
+		if (TargetIndex == INDEX_NONE) {
+			UE_LOG(LogReflectionPropertySerializer, Warning, TEXT("Disconnected a material attribute input: this engine has no \"%s\""), *AttributeName);
+
+			Input->Expression = nullptr;
+			Input->OutputIndex = 0;
+
+			return;
+		}
+
+		Input->OutputIndex = TargetIndex;
+	}
+}
 
 /* An object property takes whatever pointer it is handed without checking the type, so anything
  * that resolves to the wrong class lands in the property and is only discovered when something
@@ -484,38 +621,11 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			RemapConvertOutput(StructProperty->Struct, OutValue);
 		}
 
-#if ENGINE_UE4
-		/* If we're importing from UE5 to UE4, adjust the material attribute nodes to adjust for attributes that don't exist */
+		/* A material attribute is recorded by its position in a list this engine may not lay out
+		 * the same way, so the index is put back onto the attribute it was written against */
 		if (Property->GetCPPType(nullptr, CPPF_None) == TEXT("FExpressionInput")) {
-			if (GReflectionRuntime.IsUE5()) {
-				FExpressionInput* ExpressionInput = static_cast<FExpressionInput*>(OutValue);
-
-				if (ExpressionInput &&
-					ExpressionInput->OutputIndex > 10
-					&& ExpressionInput->Expression
-					&& ExpressionInput->Expression->GetFName().ToString().Contains("MaterialExpressionBreakMaterialAttributes")) {
-
-					ExpressionInput->OutputIndex += 2;
-				}
-			}
-
-			if (GReflectionRuntime.IsOlderUE4Target()) {
-				FExpressionInput* ExpressionInput = static_cast<FExpressionInput*>(OutValue);
-
-				if (ExpressionInput
-					&& ExpressionInput->Expression
-					&& ExpressionInput->Expression->GetFName().ToString().Contains("MaterialExpressionBreakMaterialAttributes")) {
-					if (ExpressionInput->OutputIndex > 3) {
-						ExpressionInput->OutputIndex += 1;
-					}
-
-					if (ExpressionInput->OutputIndex > 8) {
-						ExpressionInput->OutputIndex += 1;
-					}
-				}
-			}
+			RemapBreakMaterialAttributesOutput(static_cast<FExpressionInput*>(OutValue));
 		}
-#endif
 		
 		/* If there's a missing distribution, create it from the lookup table */
 		if (IsStructPropertyADistribution(StructProperty)) {

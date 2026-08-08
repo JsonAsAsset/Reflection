@@ -8,6 +8,11 @@
 #include "Materials/MaterialExpressionComponentMask.h"
 #include "Materials/MaterialExpressionConstant.h"
 #include "Materials/MaterialExpressionReroute.h"
+/* MaterialExpressionLocalPosition is rebuilt as a call to an engine material function */
+#include "Materials/MaterialExpressionMaterialFunctionCall.h"
+#include "Materials/MaterialFunctionInterface.h"
+/* FCustomPrimitiveData, for how many data floats this engine gives a primitive */
+#include "SceneTypes.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 
@@ -71,8 +76,10 @@ void IMaterialGraph::ConstructExpressions(FUObjectExportContainer* Container) {
 		Export->Object = Expression;
 	}
 
-	/* Every export has an object now, which is what the convert substitutes were waiting on */
+	/* Every export has an object now, which is what the substitutes were waiting on */
 	ResolveConvertSubstitutes(Container);
+	ResolveNamedRerouteUsages(Container);
+	ResolveSwitchPassthroughs(Container);
 }
 
 void IMaterialGraph::PropagateExpressions(FUObjectExportContainer* Container) {
@@ -98,45 +105,76 @@ void IMaterialGraph::PropagateExpressions(FUObjectExportContainer* Container) {
 			continue;
 		}
 
-		bool AddToParentExpression = true;
-		
-		/* Sub-graph (natively only on Unreal Engine 5) */
+		/* Which subgraph an expression was drawn inside of, on the engines that have subgraphs.
+		 *
+		 * Where they do not, the nesting is the only thing that does not survive: the expression is
+		 * kept and parented to the material or function directly, so the graph comes out flat with
+		 * every node in it. Dropping it instead leaves the rest of the graph holding an expression
+		 * that is in no expression list, which has no node built for it, and the material editor
+		 * casts that missing node unchecked the first time the asset is opened. */
 		if (Properties->HasField(TEXT("SubgraphExpression"))) {
-			TSharedPtr<FJsonObject> SubGraphExpressionObject = Properties->GetObjectField(TEXT("SubgraphExpression"));
-
-			FName SubGraphExpressionName = GetExportNameOfSubobject(SubGraphExpressionObject->GetStringField(TEXT("ObjectName")));
-			FUObjectExport* SubGraphExport = Container->Find(SubGraphExpressionName);
-
 #if ENGINE_UE5
-			UMaterialExpression* SubGraphExpression = SubGraphExport->Get<UMaterialExpression>();
+			const TSharedPtr<FJsonObject> SubGraphExpressionObject = Properties->GetObjectField(TEXT("SubgraphExpression"));
 
-			/* SubgraphExpression is only on Unreal Engine 5 */
-			Expression->SubgraphExpression = SubGraphExpression;
-#else
+			const FName SubGraphExpressionName = GetExportNameOfSubobject(SubGraphExpressionObject->GetStringField(TEXT("ObjectName")));
+			const FUObjectExport* SubGraphExport = Container->Find(SubGraphExpressionName);
 
-			/* Not implemented yet */
-			continue;
-			
-			/* Add it to the subgraph function ~ UE4 ONLY */
-			UMaterialFunction* ParentSubgraphFunction = SubgraphFunctions[SubGraphExpressionName];
-
-			Export->Parent = ParentSubgraphFunction;
-			Expression = CreateEmptyExpression(Export, Container);
-
-			Expression->Function = ParentSubgraphFunction;
-			ParentSubgraphFunction->FunctionExpressions.Add(Expression);
-
-			AddToParentExpression = false;
+			Expression->SubgraphExpression = SubGraphExport->Get<UMaterialExpression>();
 #endif
 		}
 
 		GetObjectSerializer()->DeserializeObjectProperties(Properties, Expression);
+		ClampCustomPrimitiveDataIndex(Expression);
 		SetExpressionParent(Parent, Expression, Properties);
 
-		if (AddToParentExpression) {
-			AddExpressionToParent(Parent, Expression);
-		}
+		AddExpressionToParent(Parent, Expression);
 	}
+}
+
+/* How many custom primitive data floats a primitive carries is not the same number on every
+ * engine: 4.23 has 32 where 4.27 and 5.x have 36. A scalar or vector parameter set to read one
+ * past the end of what this build has does not fail to compile, it trips the translator's own
+ * bounds check the first time the material is cached, and that is a crash rather than an error in
+ * the material editor.
+ *
+ * The slot the node wanted is not in this engine either way, so the index is brought back to the
+ * last one that exists. The translator already fills the components past the end of the array
+ * with zero, so a vector parameter clamped this way reads what there is and zero for the rest.
+ *
+ * Found by property name rather than by class: the engines that never had custom primitive data
+ * have neither property and so have nothing here to clamp. */
+void IMaterialGraph::ClampCustomPrimitiveDataIndex(UMaterialExpression* Expression) {
+	if (Expression == nullptr) {
+		return;
+	}
+
+	const FBoolProperty* UsesCustomData = FindFProperty<FBoolProperty>(Expression->GetClass(), TEXT("bUseCustomPrimitiveData"));
+
+	if (UsesCustomData == nullptr || !UsesCustomData->GetPropertyValue_InContainer(Expression)) {
+		return;
+	}
+
+	FNumericProperty* IndexProperty = FindFProperty<FNumericProperty>(Expression->GetClass(), TEXT("PrimitiveDataIndex"));
+
+	if (IndexProperty == nullptr) {
+		return;
+	}
+
+	void* IndexValue = IndexProperty->ContainerPtrToValuePtr<void>(Expression);
+
+	constexpr int64 LastIndex = FCustomPrimitiveData::NumCustomPrimitiveDataFloats - 1;
+	const int64 Index = IndexProperty->GetSignedIntPropertyValue(IndexValue);
+
+	if (Index <= LastIndex) {
+		return;
+	}
+
+	IndexProperty->SetIntPropertyValue(IndexValue, LastIndex);
+
+	GLog->Log(*FString::Printf(
+		TEXT("Reflection: \"%s\" reads custom primitive data %lld, which this engine stops at %lld"),
+		*Expression->GetName(), Index, LastIndex
+	));
 }
 
 void IMaterialGraph::SetExpressionParent(UObject* Parent, UMaterialExpression* Expression, const TSharedPtr<FJsonObject>& Json) {
@@ -230,6 +268,16 @@ UMaterialExpression* IMaterialGraph::CreateEmptyExpression(FUObjectExport* Expor
 			}
 		}
 
+		/* A named reroute carries a wire and a name, and only the wire has to survive the port */
+		if (UMaterialExpression* Substitute = CreateNamedRerouteSubstitute(Export)) {
+			return Substitute;
+		}
+
+		/* Local position was a material function before it was a node, and still is one */
+		if (UMaterialExpression* Substitute = CreateLocalPositionSubstitute(Export)) {
+			return Substitute;
+		}
+
 		return OnMissingNodeClass(Export, Container);
 	}
 
@@ -278,8 +326,7 @@ static float GetLinearColorComponent(const FLinearColor& Color, const int32 Comp
 	}
 }
 
-/*
- * MaterialExpressionConvert arrived in 5.6. All it does is shuffle input components into output
+/* MaterialExpressionConvert arrived in 5.6. All it does is shuffle input components into output
  * components, and UMaterialExpressionConvert::Compile emits exactly that shuffle: a component mask
  * per mapped component, a constant for every output component no mapping writes to, and a chain of
  * appends joining them into the output's vector. Older engines get the same graph spelled out with
@@ -287,8 +334,7 @@ static float GetLinearColorComponent(const FLinearColor& Color, const int32 Comp
  *
  * The node has several outputs and the nodes replacing it have one each, so the root of every
  * output is registered with the property serializer, which moves each incoming connection onto the
- * root belonging to the output it asked for.
- */
+ * root belonging to the output it asked for. */
 UMaterialExpression* IMaterialGraph::CreateConvertSubstitute(FUObjectExport* Export) {
 	UObject* Parent = Export->Parent;
 	const TSharedPtr<FJsonObject> Properties = Export->GetProperties();
@@ -509,6 +555,282 @@ bool IMaterialGraph::IsConvertSubstitute(UMaterialExpression* Expression) const 
 	return Expression != nullptr && GetPropertySerializer()->ConvertOutputRoots.Contains(Expression);
 }
 
+/* Local Position ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
+static const TCHAR* LocalPositionType = TEXT("MaterialExpressionLocalPosition");
+
+/* The function the node was made out of, which every engine this runs on already ships */
+static const TCHAR* LocalPositionFunctionPath = TEXT("/Engine/Functions/Engine_MaterialFunctions02/WorldPositionOffset/LocalPosition.LocalPosition");
+static const TCHAR* LocalPositionExcludingOffsetsOutput = TEXT("Local Position (Excluding Offsets)");
+
+/* Where an output of that name sits on the node, asked of the node rather than counted on */
+static int32 FindOutputIndexByName(const UMaterialExpression* Expression, const FString& Name) {
+	for (int32 Index = 0; Index < Expression->Outputs.Num(); Index++) {
+		if (OutputNameToString(Expression->Outputs[Index].OutputName) == Name) {
+			return Index;
+		}
+	}
+
+	return INDEX_NONE;
+}
+
+static void ReadEditorPosition(const TSharedPtr<FJsonObject>& Properties, int32& OutX, int32& OutY) {
+	if (!Properties.IsValid()) {
+		return;
+	}
+
+	Properties->TryGetNumberField(TEXT("MaterialExpressionEditorX"), OutX);
+	Properties->TryGetNumberField(TEXT("MaterialExpressionEditorY"), OutY);
+}
+
+/* MaterialExpressionLocalPosition is a node put around something the engine had already been
+ * shipping as a material function for years, and that function is still sitting in the same place
+ * on every version this runs on, both of its outputs included. So the node goes back to being a
+ * call to it.
+ *
+ * Shader Offsets is what picks between the two outputs. Included is the function's first output
+ * and needs nothing further. Excluded is its second, and the node it is replacing had one output
+ * that everything reading it recorded as index 0, so a reroute is put on the second output and
+ * handed out in the node's place: whatever was reading index 0 keeps reading index 0 and gets the
+ * offsets excluded value.
+ *
+ * Matched on the type string, so an engine that has the class of its own never comes here. */
+UMaterialExpression* IMaterialGraph::CreateLocalPositionSubstitute(FUObjectExport* Export) {
+	if (Export->GetType() != FName(LocalPositionType)) {
+		return nullptr;
+	}
+
+	UMaterialFunctionInterface* Function = LoadObjectByPath<UMaterialFunctionInterface>(LocalPositionFunctionPath);
+
+	/* Without the function there is nothing to build out of, so it goes back to being reported
+	 * missing like any other node this engine has no answer for */
+	if (Function == nullptr) {
+		return nullptr;
+	}
+
+	UObject* Parent = Export->Parent;
+	const TSharedPtr<FJsonObject> Properties = Export->GetProperties();
+
+	int32 EditorX = 0;
+	int32 EditorY = 0;
+	ReadEditorPosition(Properties, EditorX, EditorY);
+
+	UMaterialExpressionMaterialFunctionCall* Call = NewObject<UMaterialExpressionMaterialFunctionCall>(
+		Parent,
+		UMaterialExpressionMaterialFunctionCall::StaticClass(),
+		MakeUniqueObjectName(Parent, UMaterialExpressionMaterialFunctionCall::StaticClass(), *(Export->GetName().ToString() + TEXT("_Function"))),
+		RF_Transactional
+	);
+
+	/* Fills in the call's inputs and outputs off the function, which is what names them */
+	Call->MaterialFunction = Function;
+	Call->UpdateFromFunctionResource();
+
+	Call->MaterialExpressionEditorX = EditorX;
+	Call->MaterialExpressionEditorY = EditorY;
+
+	/* Local Origin has no equivalent on the function, so a node asking for anything but the
+	 * instance position comes out reading the instance position and says so */
+	FString LocalOrigin;
+
+	if (Properties.IsValid() && Properties->TryGetStringField(TEXT("LocalOrigin"), LocalOrigin) && !LocalOrigin.Contains(TEXT("Instance"))) {
+		GLog->Log(*FString::Printf(TEXT("Reflection: \"%s\" wanted local position origin %s, which the engine function has no output for"), *Export->GetName().ToString(), *LocalOrigin));
+	}
+
+	FString IncludedOffsets;
+
+	const bool bExcludeOffsets = Properties.IsValid()
+		&& Properties->TryGetStringField(TEXT("IncludedOffsets"), IncludedOffsets)
+		&& IncludedOffsets.Contains(TEXT("ExcludeOffsets"));
+
+	if (!bExcludeOffsets) {
+		return Call;
+	}
+
+	const int32 ExcludingOffsetsOutput = FindOutputIndexByName(Call, LocalPositionExcludingOffsetsOutput);
+
+	if (ExcludingOffsetsOutput == INDEX_NONE) {
+		GLog->Log(*FString::Printf(TEXT("Reflection: the engine's LocalPosition function has no \"%s\" output, so \"%s\" reads the offsets included one"), LocalPositionExcludingOffsetsOutput, *Export->GetName().ToString()));
+
+		return Call;
+	}
+
+	/* The call is the extra node here, so it is parented on the way past. The reroute handed back
+	 * is parented by the caller like any other expression an export resolves to. */
+	AddExpressionToParent(Parent, Call);
+
+	/* Sat to the left of where the node was, leaving the reroute to land on the original spot when
+	 * the export's own editor position is read onto it */
+	Call->MaterialExpressionEditorX = EditorX - 200;
+
+	UMaterialExpressionReroute* Reroute = NewObject<UMaterialExpressionReroute>(
+		Parent,
+		UMaterialExpressionReroute::StaticClass(),
+		Export->GetName(),
+		RF_Transactional
+	);
+
+	Reroute->Input.Expression = Call;
+	Reroute->Input.OutputIndex = ExcludingOffsetsOutput;
+	Reroute->Desc = LocalPositionExcludingOffsetsOutput;
+
+	return Reroute;
+}
+
+/* Named Reroutes ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+
+static const TCHAR* NamedRerouteDeclarationType = TEXT("MaterialExpressionNamedRerouteDeclaration");
+static const TCHAR* NamedRerouteUsageType = TEXT("MaterialExpressionNamedRerouteUsage");
+
+/* The name a declaration goes by in the graph, which is what a usage is reading when it names it */
+static FString GetNamedRerouteName(const TSharedPtr<FJsonObject>& Properties) {
+	FString Name;
+
+	if (Properties.IsValid()) {
+		Properties->TryGetStringField(TEXT("Name"), Name);
+	}
+
+	return Name;
+}
+
+/* A usage and its declaration are paired by guid rather than by a wire, so DeclarationGuid against
+ * the declaration's VariableGuid is the link that is still there when the object reference is not. */
+static UMaterialExpression* FindNamedRerouteDeclarationByGuid(FUObjectExportContainer* Container, const TSharedPtr<FJsonObject>& UsageProperties) {
+	FString DeclarationGuid;
+
+	if (!UsageProperties->TryGetStringField(TEXT("DeclarationGuid"), DeclarationGuid) || DeclarationGuid.IsEmpty()) {
+		return nullptr;
+	}
+
+	for (FUObjectExport* Export : Container->Exports) {
+		if (Export->GetType() != FName(NamedRerouteDeclarationType)) {
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject> Properties = Export->GetProperties();
+		FString VariableGuid;
+
+		if (Properties.IsValid() && Properties->TryGetStringField(TEXT("VariableGuid"), VariableGuid) && VariableGuid == DeclarationGuid) {
+			return Export->Get<UMaterialExpression>();
+		}
+	}
+
+	return nullptr;
+}
+
+/* Named reroutes arrived in 5.0. A declaration is a reroute with a name on it, and a usage is a
+ * read of that name from anywhere else in the graph, the two joined by a guid instead of a wire.
+ * Both collapse onto the plain reroute, which every engine has: what a named reroute adds over one
+ * is a way to carry a wire across the graph without drawing it, and that is presentation.
+ *
+ * The declaration keeps its own connection for free. Its input is spelled Input on both classes,
+ * so the property serializer wires it without being told. The usage has no input to fill in, only
+ * a declaration to find, which is what ResolveNamedRerouteUsages does once the graph is built.
+ *
+ * Matched on the type string rather than gated on a version: an engine either has the class or it
+ * does not, and the ones that do never reach here. */
+UMaterialExpression* IMaterialGraph::CreateNamedRerouteSubstitute(FUObjectExport* Export) {
+	const FName Type = Export->GetType();
+
+	const bool bIsDeclaration = Type == FName(NamedRerouteDeclarationType);
+	const bool bIsUsage = Type == FName(NamedRerouteUsageType);
+
+	if (!bIsDeclaration && !bIsUsage) {
+		return nullptr;
+	}
+
+	const TSharedPtr<FJsonObject> Properties = Export->GetProperties();
+
+	UMaterialExpressionReroute* Reroute = NewObject<UMaterialExpressionReroute>(
+		Export->Parent,
+		UMaterialExpressionReroute::StaticClass(),
+		Export->GetName(),
+		RF_Transactional
+	);
+
+	if (bIsDeclaration) {
+		/* Nothing else carries the name once the class is gone, and a graph full of anonymous
+		 * reroutes is not one anybody can read */
+		const FString Name = GetNamedRerouteName(Properties);
+
+		if (!Name.IsEmpty()) {
+			Reroute->Desc = Name;
+		}
+	} else {
+		/* The declaration may not have an object yet, so the wire waits for the whole container */
+		PendingNamedRerouteUsages.Add({ Reroute, Properties });
+	}
+
+	GLog->Log(*FString::Printf(TEXT("Reflection: Rebuilt %s \"%s\" as a Reroute"), *Type.ToString(), *Export->GetName().ToString()));
+
+	return Reroute;
+}
+
+void IMaterialGraph::ResolveNamedRerouteUsages(FUObjectExportContainer* Container) {
+	for (const FPendingNamedRerouteUsage& Pending : PendingNamedRerouteUsages) {
+		if (Pending.Usage == nullptr || !Pending.Properties.IsValid()) {
+			continue;
+		}
+
+		UMaterialExpression* Declaration = nullptr;
+
+		/* The reference to the declaration, for the exports that still carry one */
+		const TSharedPtr<FJsonObject>* DeclarationObject;
+
+		if (Pending.Properties->TryGetObjectField(TEXT("Declaration"), DeclarationObject)) {
+			FString ObjectName;
+
+			if ((*DeclarationObject)->TryGetStringField(TEXT("ObjectName"), ObjectName)) {
+				Declaration = Container->Find<UMaterialExpression>(GetExportNameOfSubobject(ObjectName));
+			}
+		}
+
+		/* Otherwise the guid, which is the link the pair is really kept by */
+		if (Declaration == nullptr) {
+			Declaration = FindNamedRerouteDeclarationByGuid(Container, Pending.Properties);
+		}
+
+		/* A usage whose declaration is nowhere in this graph is left unconnected, which is the
+		 * same thing an unresolved reference leaves behind everywhere else */
+		if (Declaration == nullptr) {
+			GLog->Log(*FString::Printf(TEXT("Reflection: Named reroute usage \"%s\" names a declaration this graph does not have"), *Pending.Usage->GetName()));
+
+			continue;
+		}
+
+		Pending.Usage->Input.Expression = Declaration;
+		Pending.Usage->Input.OutputIndex = 0;
+
+		/* Reads the same name it points at, so both ends of the pair say so */
+		Pending.Usage->Desc = Declaration->Desc;
+	}
+
+	PendingNamedRerouteUsages.Empty();
+}
+
+/* The first connection written on an export, which for a switch is the branch its own class lists
+ * first. Matched by shape: an expression input is the one property carrying an Expression, and the
+ * classes this is reached for are the ones with no properties here to name. */
+static TSharedPtr<FJsonObject> FindFirstExpressionInput(const TSharedPtr<FJsonObject>& Properties) {
+	if (!Properties.IsValid()) {
+		return nullptr;
+	}
+
+	for (const auto& Pair : Properties->Values) {
+		if (!Pair.Value.IsValid() || Pair.Value->Type != EJson::Object) {
+			continue;
+		}
+
+		const TSharedPtr<FJsonObject> Value = Pair.Value->AsObject();
+
+		if (Value.IsValid() && Value->HasField(TEXT("Expression"))) {
+			return Value;
+		}
+	}
+
+	return nullptr;
+}
+
 /* ReSharper disable once CppMemberFunctionMayBeConst */
 UMaterialExpression* IMaterialGraph::OnMissingNodeClass(FUObjectExport* Export, FUObjectExportContainer* Container) {
 	/* Get variables from the export data */
@@ -554,11 +876,45 @@ UMaterialExpression* IMaterialGraph::OnMissingNodeClass(FUObjectExport* Export, 
 	);
 
 	/* Put a reroute in place of the missing node */
-	return NewObject<UMaterialExpression>(
+	UMaterialExpressionReroute* Reroute = NewObject<UMaterialExpressionReroute>(
 		Parent,
 		UMaterialExpressionReroute::StaticClass(),
 		Name
 	);
+
+	/* A switch picks one of its branches, and which one is a decision this engine has no class to
+	 * make, so the first branch is carried through the reroute. A switch dropped outright takes
+	 * everything hanging off it with it, where the first branch is the one the node itself reads
+	 * when nothing tells it otherwise, and leaves a graph that still resolves. The comment above
+	 * stays either way, so the node is still reported missing rather than quietly stood in for. */
+	if (Type.ToString().Contains(TEXT("Switch"))) {
+		if (const TSharedPtr<FJsonObject> FirstInput = FindFirstExpressionInput(Properties)) {
+			PendingSwitchPassthroughs.Add({ Reroute, FirstInput });
+		}
+	}
+
+	return Reroute;
+}
+
+void IMaterialGraph::ResolveSwitchPassthroughs(FUObjectExportContainer* Container) {
+	for (const FPendingSwitchPassthrough& Pending : PendingSwitchPassthroughs) {
+		if (Pending.Reroute == nullptr || !Pending.ExpressionInput.IsValid()) {
+			continue;
+		}
+
+		UMaterialExpression* Source = Container->Find<UMaterialExpression>(GetExpressionName(Pending.ExpressionInput.Get()));
+
+		if (Source == nullptr) {
+			continue;
+		}
+
+		Pending.Reroute->Input = PopulateExpressionInput(Pending.ExpressionInput.Get(), Source);
+
+		/* The branch can come off a rebuilt convert node, whose outputs live on separate roots */
+		RemapConvertOutput(Pending.Reroute->Input);
+	}
+
+	PendingSwitchPassthroughs.Empty();
 }
 
 void IMaterialGraph::SpawnMaterialDataMissingNotification() const {

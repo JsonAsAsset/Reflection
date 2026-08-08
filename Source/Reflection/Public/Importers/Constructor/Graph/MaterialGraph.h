@@ -11,6 +11,7 @@ class UMaterialFunction;
 #endif
 
 class UMaterialExpressionComponentMask;
+class UMaterialExpressionReroute;
 
 /*
  * Material Graph Handler
@@ -56,6 +57,38 @@ protected:
 	};
 
 	TArray<FPendingConvertInput> PendingConvertInputs;
+
+	/* MaterialExpressionLocalPosition rebuilt as the engine function it predates ~~~~~~~~~~ */
+	UMaterialExpression* CreateLocalPositionSubstitute(FUObjectExport* Export);
+
+	/* Named reroutes (5.0) rebuilt out of the plain reroute every engine has ~~~~~~~~~~~~ */
+	UMaterialExpression* CreateNamedRerouteSubstitute(FUObjectExport* Export);
+	void ResolveNamedRerouteUsages(FUObjectExportContainer* Container);
+
+	/* A reroute standing in for a named reroute usage. A usage holds no input of its own, it names
+	 * the declaration it reads, so the connection is made once every export in the graph has an
+	 * object to point at. */
+	struct FPendingNamedRerouteUsage {
+		UMaterialExpressionReroute* Usage;
+		TSharedPtr<FJsonObject> Properties;
+	};
+
+	TArray<FPendingNamedRerouteUsage> PendingNamedRerouteUsages;
+
+	/* Holds a parameter reading custom primitive data to the slots this engine has ~~~~~~~~~ */
+	static void ClampCustomPrimitiveDataIndex(UMaterialExpression* Expression);
+
+	/* Carries a missing switch's first branch through the reroute standing in for it ~~~~~~~ */
+	void ResolveSwitchPassthroughs(FUObjectExportContainer* Container);
+
+	/* The reroute left behind for a switch class this engine does not have, with the connection
+	 * it is to carry. Read after the whole container is built, like the ones above. */
+	struct FPendingSwitchPassthrough {
+		UMaterialExpressionReroute* Reroute;
+		TSharedPtr<FJsonObject> ExpressionInput;
+	};
+
+	TArray<FPendingSwitchPassthrough> PendingSwitchPassthroughs;
 
 public:
 	UMaterialExpression* OnMissingNodeClass(FUObjectExport* Export, FUObjectExportContainer* Container);

@@ -301,6 +301,16 @@ inline FName StringToName(const FString& String) {
 #endif
 }
 
+/* FExpressionOutput spelled its name as an FString until 4.19 and as an FName after. Overloads
+ * rather than a version branch: the compiler already knows which one this engine has. */
+inline FString OutputNameToString(const FString& Name) {
+	return Name;
+}
+
+inline FString OutputNameToString(const FName Name) {
+	return Name.ToString();
+}
+
 /* FString grew the Left/Right/Mid Inline family in 4.24. A free function rather than a shim on the
  * type, so one spelling covers every version: before 4.24 the truncation is a plain reassignment. */
 inline void LeftInline(FString& String, const int32 Count) {

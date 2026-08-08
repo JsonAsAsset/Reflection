@@ -14,11 +14,46 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #endif
 #include "Engine/Log.h"
+#include "Framework/Docking/TabManager.h"
+
+/*
+ * Whether the editor has a Content Browser open to jump to.
+ *
+ * Asked only on the versions that need it. When SyncBrowserToAssets finds no browser it summons
+ * one, and up to 4.25 that lands in FTabManager::InvokeTab, which uses whatever InvokeTab_Internal
+ * returns without checking it first: 4.23 dereferences null outright and 4.25 trips a check. 4.26
+ * split the null-safe TryInvokeTab out and routed InvokeTab through it. Nothing on this side can
+ * reach the engine's summon path, so the jump is given up instead of taking the editor with it.
+ *
+ * FContentBrowserSingleton registers its browsers as the nomad tabs ContentBrowserTab1 through
+ * MAX_CONTENT_BROWSERS, which is 4 on every version this branch covers.
+ */
+#if UE4_25_BELOW
+inline bool HasLiveContentBrowser() {
+	for (int32 BrowserIndex = 1; BrowserIndex <= 4; ++BrowserIndex) {
+		const FTabId TabId = FTabId(*FString::Printf(TEXT("ContentBrowserTab%d"), BrowserIndex));
+
+		if (FGlobalTabmanager::Get()->FindExistingLiveTab(TabId).IsValid()) {
+			return true;
+		}
+	}
+
+	return false;
+}
+#endif
 
 inline void BrowseToAsset(UObject* Asset) {
 	if (Asset == nullptr) {
 		return;
 	}
+
+#if UE4_25_BELOW
+	if (!HasLiveContentBrowser()) {
+		UE_LOG(LogReflection, Verbose, TEXT("No Content Browser open, skipping the jump to \"%s\""), *Asset->GetName());
+
+		return;
+	}
+#endif
 
 	/* Browse to newly added Asset in the Content Browser.
 	 *

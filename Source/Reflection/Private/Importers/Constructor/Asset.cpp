@@ -161,11 +161,61 @@ template bool FAssetUtilities::ConstructAsset<UCurveLinearColor>(const FString& 
 template bool FAssetUtilities::ConstructAsset<UTextureLightProfile>(const FString&, const FString&, const FString&, TObjectPtr<UTextureLightProfile>&, bool&);
 template bool FAssetUtilities::ConstructAsset<UFontFace>(const FString&, const FString&, const FString&, TObjectPtr<UFontFace>&, bool&);
 
+namespace {
+	/* Paths with an import open further down the stack, innermost last. */
+	TArray<FString> GAssetsUnderConstruction;
+
+	/* Marks a path as being built for as long as the call constructing it is running, and reports
+	 * whether that call is the one that opened it. */
+	struct FConstructionScope {
+		explicit FConstructionScope(const FString& InPath)
+			: Path(InPath)
+			, bOwned(!GAssetsUnderConstruction.Contains(InPath))
+		{
+			if (bOwned) {
+				GAssetsUnderConstruction.Add(Path);
+			}
+		}
+
+		~FConstructionScope() {
+			if (bOwned) {
+				GAssetsUnderConstruction.Remove(Path);
+			}
+		}
+
+		FString Path;
+		bool bOwned;
+	};
+}
+
 /* Importing assets from Cloud */
 template <typename T>
 bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPath, const FString& Type, TObjectPtr<T>& OutObject, bool& bSuccess) {
 	if (Type.IsEmpty()) {
 		return false;
+	}
+
+	/* References run both ways between materials and the functions they call, so a reference met
+	 * partway through an import can name an asset whose import is already open further down the
+	 * stack. Building it a second time is what breaks: the second pass empties the expression list
+	 * and rebuilds the same expression names under the same outer, and NewObject on a name already
+	 * taken destructs whatever holds it and constructs the replacement in that same allocation.
+	 * The pass still running below is left holding those pointers, and finishes by walking freed
+	 * memory: a virtual call on a dead vtable as soon as anything traces an input.
+	 *
+	 * The asset itself exists by this point, since it is created before its graph is filled in, so
+	 * what is in memory is what the reference wants. It is handed back half built and the import
+	 * that owns it finishes it. */
+	const FConstructionScope ConstructionScope(Path);
+
+	if (!ConstructionScope.bOwned) {
+		FString InFlightPath = RealPath;
+		FRRedirects::Redirect(InFlightPath);
+
+		OutObject = LoadObjectByPath<T>(InFlightPath);
+		bSuccess = OutObject != nullptr;
+
+		return true;
 	}
 
 	/* Every path out of here is a request. With no Cloud to answer them, each reference would sit
