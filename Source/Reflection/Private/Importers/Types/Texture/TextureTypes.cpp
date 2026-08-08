@@ -46,7 +46,7 @@ bool FTextureTypes::RequiresRawMipData(const FString& Type, const bool bIsVector
 }
 
 bool FTextureTypes::IsVectorDisplacementMap(const TSharedPtr<FJsonObject>& Export) {
-	const TSharedPtr<FJsonObject>* Properties;
+	const TSharedPtr<FJsonObject>* Properties = nullptr;
 	if (!Export.IsValid() || !Export->TryGetObjectField(TEXT("Properties"), Properties)) {
 		return false;
 	}

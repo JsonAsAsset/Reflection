@@ -159,12 +159,15 @@ inline void HarvestAndTagConnectedStateMachineNodes(const FString& StartKey, con
 #if !UE4_25_BELOW
 /* Stores a pin binding on a node.
  *
- * 5.3 moved the map off the node into an instanced binding object, leaving PropertyBindings behind
+ * 5.4 moved the map off the node into an instanced binding object, leaving PropertyBindings behind
  * as PropertyBindings_DEPRECATED. The replacement lives in UAnimGraphNodeBinding_Base, which sits
  * in the module's Private folder with no public way to add an entry, so the map is reached through
- * reflection instead. The struct stored in it is the same FAnimGraphNodePropertyBinding either way. */
+ * reflection instead. The struct stored in it is the same FAnimGraphNodePropertyBinding either way.
+ *
+ * 5.3 and below still keep PropertyBindings on the node itself, public and undeprecated, so there
+ * the map is simply written to. */
 inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, const FAnimGraphNodePropertyBinding& PropertyBinding) {
-#if (ENGINE_MAJOR_VERSION >= 5 && ENGINE_MINOR_VERSION >= 3)
+#if UE5_4_BEYOND
 	/* Taken by reflection so the private binding type never has to be named */
 	const FObjectProperty* BindingProperty = CastField<FObjectProperty>(Node->GetClass()->FindPropertyByName(TEXT("Binding")));
 	if (!BindingProperty) return false;

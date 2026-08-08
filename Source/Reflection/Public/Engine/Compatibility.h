@@ -137,6 +137,14 @@
 	#define UE5_2_BEYOND 0
 #endif
 
+/* 5.4 is where UToolMenu grew SetStyleSet and UAnimBlueprint started naming its own pin binding
+ * class. Both are only reachable from that version on. */
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 4
+	#define UE5_4_BEYOND 1
+#else
+	#define UE5_4_BEYOND 0
+#endif
+
 /* 4.25 is where properties stopped being UObjects (UProperty -> FProperty) */
 #if ENGINE_UE4 && ENGINE_MINOR_VERSION <= 24
 	#define UE4_24_BELOW 1

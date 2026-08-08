@@ -92,7 +92,13 @@ void UReflectionToolbar::Register() {
 		FReflectionStyle::EnsureEmbeddedToolbarStyleRegistered();
 
 		UToolMenu* EmbeddedToolbar = UToolMenus::Get()->RegisterMenu(EmbeddedToolbarName, NAME_None, EMultiBoxType::SlimHorizontalToolBar);
+
+		/* Pointing the menu at Reflection's own style set is a 5.4 luxury. Below that the set is
+		 * private and always the app style, which is where EnsureEmbeddedToolbarStyleRegistered
+		 * has just put the style, so the name alone is enough to find it. */
+#if UE5_4_BEYOND
 		EmbeddedToolbar->SetStyleSet(&FReflectionStyle::Get());
+#endif
 		EmbeddedToolbar->StyleName = FReflectionStyle::GetEmbeddedToolbarStyleName();
 
 		FToolMenuSection& EmbeddedSection = EmbeddedToolbar->FindOrAddSection("ReflectionEmbeddedSection");

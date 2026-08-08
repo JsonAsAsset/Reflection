@@ -76,6 +76,20 @@ void FReflectionStyle::EnsureEmbeddedToolbarStyleRegistered() {
 
 	StyleInstance->Set(GetEmbeddedToolbarStyleName(), EmbeddedToolbarStyle);
 	StyleInstance->Set(TEXT("CalloutToolbar"), FAppStyle::Get().GetWidgetStyle<FToolBarStyle>("CalloutToolbar"));
+
+#if !UE5_4_BEYOND
+	/* Before 5.4 a UToolMenu keeps its style set to itself: the member is private, only UToolMenus
+	 * is a friend, and there is no setter. Whatever the menu is handed, it looks its style name up
+	 * in FCoreStyle::Get(), which in an editor build is the app style. So the style goes in there
+	 * as well, under the same name, and the menu finds it without ever being told where to look.
+	 * Its copy above stays put so Get() keeps answering for it either way.
+	 *
+	 * The cast holds because the app style is always an FSlateStyleSet in the editor: the editor's
+	 * own FStarshipEditorStyle::FStyle derives from it, and this module only builds for the editor. */
+	if (FSlateStyleSet* AppStyleSet = static_cast<FSlateStyleSet*>(const_cast<ISlateStyle*>(FSlateStyleRegistry::FindSlateStyle(FAppStyle::GetAppStyleSetName())))) {
+		AppStyleSet->Set(GetEmbeddedToolbarStyleName(), EmbeddedToolbarStyle);
+	}
+#endif
 }
 #endif
 

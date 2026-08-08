@@ -553,7 +553,7 @@ bool FTextureCreator::HasSingleMip(const TSharedPtr<FJsonObject>& Export) {
 }
 
 TSharedPtr<FJsonObject> FTextureCreator::GetProperties(const TSharedPtr<FJsonObject>& Export) {
-	const TSharedPtr<FJsonObject>* Properties;
+	const TSharedPtr<FJsonObject>* Properties = nullptr;
 
 	if (Export.IsValid() && Export->TryGetObjectField(TEXT("Properties"), Properties)) {
 		return *Properties;
