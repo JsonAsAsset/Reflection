@@ -49,9 +49,20 @@ T* LoadObjectByPath(const FString& Path) {
 		return Cast<T>(ResolveRedirector(Found));
 	}
 
+	const FString PackageName = FPackageName::ObjectPathToPackageName(Path);
+
+	/* DoesPackageExist asserts rather than answering when it dislikes what it is handed: a name it
+	 * cannot convert trips an ensure, and one that converts but belongs to no mounted content root
+	 * reaches a Fatal log through LongPackageNameToFilename. Paths get here from Cloud responses
+	 * and from json exports, so what arrives is not this plugin's to trust. Resolving the filename
+	 * first is the same question asked in a form that returns false instead. */
+	if (FString Unused; !FPackageName::TryConvertLongPackageNameToFilename(PackageName, Unused)) {
+		return nullptr;
+	}
+
 	/* Not in memory and no file to read it out of, so there is nothing to load and no reason to
 	 * have the loader say so twice */
-	if (!FPackageName::DoesPackageExist(FPackageName::ObjectPathToPackageName(Path))) {
+	if (!FPackageName::DoesPackageExist(PackageName)) {
 		return nullptr;
 	}
 

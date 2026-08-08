@@ -44,8 +44,8 @@ void TToolClearImportData::Execute() {
 		}
 
 		if (const UStaticMesh* StaticMesh = Cast<UStaticMesh>(Asset)) {
-	#if UE4_27_AND_UE5
-			/* Direct member access was deprecated in 5.7; the accessor arrived in 4.27 */
+	#if ENGINE_UE5
+			/* UStaticMesh only grew the accessor in 5.0, unlike USkeletalMesh which has had it since 4.27 */
 			StaticMesh->GetAssetImportData()->SourceData.SourceFiles.Empty();
 	#else
 			StaticMesh->AssetImportData->SourceData.SourceFiles.Empty();
