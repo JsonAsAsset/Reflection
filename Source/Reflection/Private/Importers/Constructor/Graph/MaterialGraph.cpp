@@ -158,18 +158,18 @@ void IMaterialGraph::SetExpressionParent(UObject* Parent, UMaterialExpression* E
 void IMaterialGraph::AddExpressionToParent(UObject* Parent, UMaterialExpression* Expression) {
 	/* Comments are added differently */
 	if (UMaterialExpressionComment* Comment = Cast<UMaterialExpressionComment>(Expression)) {
-		/* In Unreal Engine 5, we have to get the expression collection to add the comment */
-#if ENGINE_UE5
+		/* From 5.1 on, we have to get the expression collection to add the comment */
+#if UE5_1_BEYOND
 		if (UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(Parent)) MaterialFunction->GetExpressionCollection().AddComment(Comment);
 		if (UMaterial* Material = Cast<UMaterial>(Parent)) Material->GetExpressionCollection().AddComment(Comment);
 #else
-		/* In Unreal Engine 4, we have to get the EditorComments array to add the comment */
+		/* On 5.0 and UE4, we have to get the EditorComments array to add the comment */
 		if (UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(Parent)) MaterialFunction->FunctionEditorComments.Add(Comment);
 		if (UMaterial* Material = Cast<UMaterial>(Parent)) Material->EditorComments.Add(Comment);
 #endif
 	} else {
-		/* Adding expressions is different between UE4 and UE5 */
-#if ENGINE_UE5
+		/* Adding expressions is different from 5.1 on */
+#if UE5_1_BEYOND
 		if (UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(Parent)) {
 			MaterialFunction->GetExpressionCollection().AddExpression(Expression);
 		}
@@ -203,7 +203,8 @@ UMaterialExpression* IMaterialGraph::CreateEmptyExpression(FUObjectExport* Expor
 	UObject* Parent = Export->Parent;
 
 	if (!Class) {
-#if ENGINE_UE5
+		/* FLinkerLoad::FindNewPathNameForClass does not exist before 5.1 */
+#if UE5_1_BEYOND
 		TArray<FString> Redirects = TArray {
 			FLinkerLoad::FindNewPathNameForClass("/Script/InterchangeImport." + Type.ToString(), false),
 			FLinkerLoad::FindNewPathNameForClass("/Script/Landscape." + Type.ToString(), false)

@@ -26,6 +26,12 @@
 #include "Utilities/Dialog.h"
 #include "Widgets/Layout/SBox.h"
 
+/* Every menu type below comes from here. Later engines drag it in behind one of the includes
+ * above, 5.0 does not, so name it rather than depend on the shared PCH's include graph. */
+#if !UE4_23_BELOW
+#include "ToolMenus.h"
+#endif
+
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
  * which is where the multi box builders used to come in from */
 #if UE4_25_BELOW
@@ -228,8 +234,9 @@ void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
 			)
 		),
-		TAttribute<FText>::CreateStatic(&GetCloudButtonLabel),
-		TAttribute<FText>::CreateStatic(&GetCloudButtonTooltip),
+		/* CreateStatic is 5.1+; Create takes the same plain function pointer on every version */
+		TAttribute<FText>::Create(&GetCloudButtonLabel),
+		TAttribute<FText>::Create(&GetCloudButtonTooltip),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Cloud")),
 		EUserInterfaceActionType::Button
 	));

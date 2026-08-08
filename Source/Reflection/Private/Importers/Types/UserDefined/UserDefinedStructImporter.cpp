@@ -130,7 +130,7 @@ void IUserDefinedStructImporter::ImportPropertyIntoStruct(UUserDefinedStruct* Us
 
     /* Get the default value as a string */
     FString DefaultValue;
-#if ENGINE_UE5
+#if UE5_1_BEYOND
     Property->ExportTextItem_Direct(DefaultValue, PropertyValue, nullptr, UserDefinedStruct, 0);
 #else
     Property->ExportText_Direct(DefaultValue, PropertyValue, nullptr, UserDefinedStruct, 0);

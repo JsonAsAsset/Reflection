@@ -40,7 +40,7 @@ void TToolAnimationData::Process(UObject* Object, const TArray<TSharedPtr<FJsonV
 			FText::FromString("Reflected Animation Data: " + AnimSequence->GetName()),
 			FText::FromString(AnimSequence->GetName()),
 			3.5f,
-			FAppStyle::GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
+			FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
 			SNotificationItem::CS_Success,
 			false,
 			310.0f

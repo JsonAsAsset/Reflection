@@ -28,6 +28,16 @@
 #include "Materials/MaterialExpressionUtils.h"
 #endif
 
+/* UMaterial only routes its expressions through an expression collection from 5.1 on;
+ * before that they sit in the editor-only Expressions array directly */
+inline void AddStubExpression(UMaterial* Material, UMaterialExpression* Expression) {
+#if UE5_1_BEYOND
+	Material->GetExpressionCollection().AddExpression(Expression);
+#else
+	Material->Expressions.Add(Expression);
+#endif
+}
+
 inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 	UMaterial* Material = MaterialImporter->GetTypedAsset<UMaterial>();
 	int32 x = 0, y = 0;
@@ -38,7 +48,7 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 		x -= 16*8*2;
 		FExpressionInput* AttributeInput = Material->GetExpressionInputForProperty(EMaterialProperty::MP_MaterialAttributes);
 		UMaterialExpressionSetMaterialAttributes* setAttrNode = NewObject<UMaterialExpressionSetMaterialAttributes>(Material);
-		Material->GetExpressionCollection().AddExpression(setAttrNode);
+		AddStubExpression(Material, setAttrNode);
 		setAttrNode->MaterialExpressionEditorX = x;
 		setAttrNode->MaterialExpressionEditorY = 0;
 		AttributeInput->Expression = setAttrNode;
@@ -99,7 +109,7 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 	clamp->MaterialExpressionEditorY = 0;
 	clamp->MinDefault = 0.0f;
 	clamp->MaxDefault = 1.0f;
-	Material->GetExpressionCollection().AddExpression(clamp);
+	AddStubExpression(Material, clamp);
 	matInput->Expression = clamp;
 
 	FUObjectExportContainer ParamContainer;
@@ -148,14 +158,14 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 					&& paramValuesPtr[ValueIndex]->TryGetNumber(value)
 					) {
 					UMaterialExpressionScalarParameter* param = NewObject<UMaterialExpressionScalarParameter>(Material);
-					Material->GetExpressionCollection().AddExpression(param);
+					AddStubExpression(Material, param);
 					param->ParameterName = FName(paramName);
 					param->MaterialExpressionEditorX = x;
 					param->MaterialExpressionEditorY = y;
 					param->DefaultValue = value;
 
 					UMaterialExpressionAdd* newAdd = NewObject<UMaterialExpressionAdd>(Material);
-					Material->GetExpressionCollection().AddExpression(newAdd);
+					AddStubExpression(Material, newAdd);
 					newAdd->MaterialExpressionEditorX = x + 16 * 8 * 2;
 					newAdd->MaterialExpressionEditorY = y;
 					newAdd->A.Connect(0, param);
@@ -210,14 +220,14 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 					&& value->Get()->TryGetNumberField(TEXT("A"), a)
 					) {
 					UMaterialExpressionVectorParameter* param = NewObject<UMaterialExpressionVectorParameter>(Material);
-					Material->GetExpressionCollection().AddExpression(param);
+					AddStubExpression(Material, param);
 					param->ParameterName = FName(paramName);
 					param->MaterialExpressionEditorX = x;
 					param->MaterialExpressionEditorY = y;
 					param->DefaultValue = FLinearColor(r, g, b, a);
 
 					UMaterialExpressionAdd* newAdd = NewObject<UMaterialExpressionAdd>(Material);
-					Material->GetExpressionCollection().AddExpression(newAdd);
+					AddStubExpression(Material, newAdd);
 					newAdd->MaterialExpressionEditorX = x + 16 * 8 * 2;
 					newAdd->MaterialExpressionEditorY = y;
 					newAdd->A.Connect(0, param);
@@ -282,7 +292,7 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 				}
 				if (tex) {
 					UMaterialExpressionTextureSampleParameter2D* param = NewObject<UMaterialExpressionTextureSampleParameter2D>(Material);
-					Material->GetExpressionCollection().AddExpression(param);
+					AddStubExpression(Material, param);
 					param->ParameterName = FName(paramName);
 					param->MaterialExpressionEditorX = x;
 					param->MaterialExpressionEditorY = y;
@@ -293,7 +303,7 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 					param->SamplerType = param->GetSamplerTypeForTexture(tex);
 #endif
 					UMaterialExpressionAdd* newAdd = NewObject<UMaterialExpressionAdd>(Material);
-					Material->GetExpressionCollection().AddExpression(newAdd);
+					AddStubExpression(Material, newAdd);
 					newAdd->MaterialExpressionEditorX = x + 16 * 8 * 2;
 					newAdd->MaterialExpressionEditorY = y;
 					newAdd->A.Connect(0, param);
@@ -337,13 +347,13 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 					) {
 
 					UMaterialExpressionConstant* constVal = NewObject<UMaterialExpressionConstant>(Material);
-					Material->GetExpressionCollection().AddExpression(constVal);
+					AddStubExpression(Material, constVal);
 					constVal->MaterialExpressionEditorX = x;
 					constVal->MaterialExpressionEditorY = y;
 					constVal->R = 1.0f;
 
 					UMaterialExpressionStaticSwitchParameter* param = NewObject<UMaterialExpressionStaticSwitchParameter>(Material);
-					Material->GetExpressionCollection().AddExpression(param);
+					AddStubExpression(Material, param);
 					param->A.Connect(0, constVal);
 					param->B.Connect(0, constVal);
 					param->ParameterName = FName(paramName);
@@ -352,7 +362,7 @@ inline void CreateStubs(IMaterialImporter* MaterialImporter) {
 					param->DefaultValue = value;
 
 					UMaterialExpressionAdd* newAdd = NewObject<UMaterialExpressionAdd>(Material);
-					Material->GetExpressionCollection().AddExpression(newAdd);
+					AddStubExpression(Material, newAdd);
 					newAdd->MaterialExpressionEditorX = x + 16 * 8 * 2;
 					newAdd->MaterialExpressionEditorY = y;
 					newAdd->A.Connect(0, param);

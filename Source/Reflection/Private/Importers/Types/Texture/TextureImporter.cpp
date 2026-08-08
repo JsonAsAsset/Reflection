@@ -29,7 +29,7 @@ template class ITextureImporter<UTextureLightProfile>;
 
 template <typename AssetType>
 bool ITextureImporter<AssetType>::Import() {
-	TObjectPtr<AssetType> Texture;
+	TObjectPtr<AssetType> Texture = nullptr;
 	DownloadWrapper<AssetType>(Texture, GetAssetType(), GetAssetName(), GetPackage()->GetPathName());
 
 	return true;

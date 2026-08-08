@@ -54,7 +54,12 @@ bool IMaterialInstanceConstantImporter::Import() {
 	}
 
 	/* ~~~~~~~~~ STATIC PARAMETERS ~~~~~~~~~~~ */
-#if UE5_2_BEYOND || UE4_27_BELOW
+/* 5.1 is the one version that hangs the static parameter set off editor-only data. Every other
+ * version - 5.0 included, which has no GetEditorOnlyData at all - builds a set up front and
+ * pushes it through UpdateStaticPermutation. */
+#define MIC_STATICS_VIA_EDITOR_ONLY (UE5_1_BEYOND && !UE5_2_BEYOND)
+
+#if !MIC_STATICS_VIA_EDITOR_ONLY
 	FStaticParameterSet NewStaticParameterSet; /* Unreal Engine 5.2/4.26 and beyond have a different method */
 #endif
 
@@ -78,13 +83,11 @@ bool IMaterialInstanceConstantImporter::Import() {
 		);
 
 		StaticSwitchParameters.Add(Parameter);
-#if UE5_1_BELOW
+#if MIC_STATICS_VIA_EDITOR_ONLY
 		MaterialInstanceConstant->GetEditorOnlyData()->StaticParameters.StaticSwitchParameters.Add(Parameter);
-#endif
-		
-#if UE5_2_BEYOND || UE4_27_BELOW
+#else
 		/* Unreal Engine 5.2/4.26 and beyond have a different method */
-		NewStaticParameterSet.StaticSwitchParameters.Add(Parameter); 
+		NewStaticParameterSet.StaticSwitchParameters.Add(Parameter);
 #endif
 	}
 
@@ -111,11 +114,9 @@ bool IMaterialInstanceConstantImporter::Import() {
 		);
 
 		StaticSwitchMaskParameters.Add(Parameter);
-#if UE5_1_BELOW
+#if MIC_STATICS_VIA_EDITOR_ONLY
 		MaterialInstanceConstant->GetEditorOnlyData()->StaticParameters.StaticComponentMaskParameters.Add(Parameter);
-#endif
-		
-#if UE5_2_BEYOND || UE4_27_BELOW
+#else
 		NewStaticParameterSet.
 		/* EditorOnly is needed on 5.2+ */
 		#if UE5_2_BEYOND
@@ -125,7 +126,7 @@ bool IMaterialInstanceConstantImporter::Import() {
 #endif
 	}
 
-#if UE5_2_BEYOND || UE4_27_BELOW
+#if !MIC_STATICS_VIA_EDITOR_ONLY
 	FMaterialUpdateContext MaterialUpdateContext(FMaterialUpdateContext::EOptions::Default & ~FMaterialUpdateContext::EOptions::RecreateRenderStates);
 
 	MaterialInstanceConstant->UpdateStaticPermutation(NewStaticParameterSet, &MaterialUpdateContext);

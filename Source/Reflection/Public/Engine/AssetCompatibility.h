@@ -41,19 +41,20 @@ inline void SetAssetImportData(USkeletalMesh* InMesh, UAssetImportData* AssetImp
 #endif
 }
 
+/* FAssetData kept the flat FName fields through 5.0; AssetClassPath/GetObjectPathString are 5.1+ */
 inline FName GetAssetDataClass(const FAssetData& AssetData) {
-#if ENGINE_UE4
-	return AssetData.AssetClass;
-#else
+#if UE5_1_BEYOND
 	return AssetData.AssetClassPath.GetAssetName();
+#else
+	return AssetData.AssetClass;
 #endif
 }
 
 inline FString GetAssetObjectPath(const FAssetData& AssetData) {
-#if ENGINE_UE4
-	return AssetData.ObjectPath.ToString();
-#else
+#if UE5_1_BEYOND
 	return AssetData.GetObjectPathString();
+#else
+	return AssetData.ObjectPath.ToString();
 #endif
 }
 

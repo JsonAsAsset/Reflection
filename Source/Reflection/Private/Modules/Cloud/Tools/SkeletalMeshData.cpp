@@ -23,7 +23,9 @@
 
 #include "Engine/SkeletalMeshSocket.h"
 
-#if ENGINE_UE5
+/* The skinned-asset split that created this header landed in 5.1; before that the types it
+ * carries (FSkeletalMaterial and friends) still come in with SkeletalMesh.h */
+#if UE5_1_BEYOND
 #include "Engine/SkinnedAssetCommon.h"
 #endif
 
@@ -191,7 +193,7 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 				FText::FromString("Reflected Skeletal Mesh Data: " + SkeletalMesh->GetName()),
 				FText::FromString(SkeletalMesh->GetName()),
 				3.5f,
-				FAppStyle::GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
+				FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
 				SNotificationItem::CS_Success,
 				false,
 				310.0f

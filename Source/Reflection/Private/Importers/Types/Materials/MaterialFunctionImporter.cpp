@@ -25,7 +25,7 @@ bool IMaterialFunctionImporter::Import() {
 	UMaterialFunction* MaterialFunction = Create<UMaterialFunction>();
 
 	/* Empty all expressions, we create them */
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 	MaterialFunction->GetExpressionCollection().Empty();
 #else
 	MaterialFunction->FunctionExpressions.Empty();

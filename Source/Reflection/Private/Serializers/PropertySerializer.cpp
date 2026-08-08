@@ -182,7 +182,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 				FString PackagePath;
 				FString AssetName;
 				PathString.Split(".", &PackagePath, &AssetName);
-				TObjectPtr<UObject> T;
+				TObjectPtr<UObject> T = nullptr;
 
 				FString PropertyClassName = SoftObjectProperty->PropertyClass->GetName();
 				
@@ -428,7 +428,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 					FString PackagePath;
 					FString AssetName;
 					PathString.Split(".", &PackagePath, &AssetName);
-					TObjectPtr<UObject> T;
+					TObjectPtr<UObject> T = nullptr;
 
 					FString PropertyClassName = "DataAsset";
 				

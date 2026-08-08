@@ -38,7 +38,7 @@ bool IMaterialImporter::Import() {
 	UMaterial* Material = Create<UMaterial>();
 
 	/* Clear any default expressions the engine adds */
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 	Material->GetExpressionCollection().Empty();
 #else
 	Material->Expressions.Empty();
@@ -72,7 +72,7 @@ bool IMaterialImporter::Import() {
 	/* Iterate through all the expressions, and set properties */
 	PropagateExpressions(ExpressionContainer);
 
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 	UMaterialEditorOnlyData* EditorOnlyData = Material->GetEditorOnlyData();
 #else
 	UMaterial* EditorOnlyData = Material;
@@ -141,7 +141,7 @@ bool IMaterialImporter::Import() {
 		int ShadingModelField;
 		
 		if (ShadingModelsPtr->Get()->TryGetNumberField(TEXT("ShadingModelField"), ShadingModelField)) {
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 			Material->GetShadingModels().SetShadingModelField(ShadingModelField);
 #else
 			/* Not to sure what to do in UE4, no function exists to override it. */

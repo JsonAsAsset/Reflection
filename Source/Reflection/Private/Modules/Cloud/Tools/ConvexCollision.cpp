@@ -105,7 +105,7 @@ void TToolConvexCollision::Process(UObject* Object, const TArray<TSharedPtr<FJso
 			FText::FromString("Reflected SM Data: " + StaticMesh->GetName()),
 			FText::FromString(StaticMesh->GetName()),
 			3.5f,
-			FAppStyle::GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
+			FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
 			SNotificationItem::CS_Success,
 			false,
 			310.0f

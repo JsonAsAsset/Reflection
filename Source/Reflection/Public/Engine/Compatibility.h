@@ -502,8 +502,9 @@ inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 #endif
 	}
 
+	/* These two only grew accessors in 5.1; 5.0 and below still expose the member directly */
 	if (UVolumeTexture* VolumeTexture = Cast<UVolumeTexture>(Texture)) {
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 		return VolumeTexture->GetPlatformData();
 #else
 		return VolumeTexture->PlatformData;
@@ -512,7 +513,7 @@ inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 
 	/* Derives from UTexture rather than UTexture2D, so the cast above never catches it */
 	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 		return Texture2DArray->GetPlatformData();
 #else
 		return Texture2DArray->PlatformData;
@@ -539,8 +540,9 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 #endif
 	}
 
+	/* As above: accessors are 5.1+, the raw member is what 5.0 and below have */
 	if (UVolumeTexture* VolumeTexture = Cast<UVolumeTexture>(Texture)) {
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 		VolumeTexture->SetPlatformData(PlatformData);
 #else
 		VolumeTexture->PlatformData = PlatformData;
@@ -548,7 +550,7 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 	}
 
 	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
-#if ENGINE_UE5
+#if UE5_1_BEYOND
 		Texture2DArray->SetPlatformData(PlatformData);
 #else
 		Texture2DArray->PlatformData = PlatformData;

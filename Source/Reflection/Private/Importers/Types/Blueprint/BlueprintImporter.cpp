@@ -13,10 +13,6 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 
-#if ENGINE_UE5
-#include "MVVM/ViewModels/ObjectBindingModel.h"
-#endif
-
 #include "Engine/SCS_Node.h"
 #include "Importers/Types/Blueprint/BlueprintUtilities.h"
 #include "Importers/Types/Blueprint/BlueprintVariables.h"

@@ -46,7 +46,7 @@ void TToolFontData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 			FText::FromString("Reflected Data: " + FontFace->GetName()),
 			FText::FromString(FontFace->GetName()),
 			3.5f,
-			FAppStyle::GetBrush("ClassIcon.FontFace"),
+			FAppStyle::Get().GetBrush("ClassIcon.FontFace"),
 			SNotificationItem::CS_Success,
 			false,
 			310.0f

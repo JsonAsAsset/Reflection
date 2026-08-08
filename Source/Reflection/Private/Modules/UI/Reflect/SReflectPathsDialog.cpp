@@ -123,7 +123,7 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 		.AutoHeight()
 		[
 			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+			.BorderImage(FAppStyle::Get().GetBrush("ToolPanel.GroupBorder"))
 			.Padding(FMargin(8.0f, 6.0f))
 			[
 				SNew(SHorizontalBox)
@@ -166,7 +166,7 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 		.Padding(FMargin(8.0f, 6.0f))
 		[
 			SNew(SBorder)
-			.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+			.BorderImage(FAppStyle::Get().GetBrush("ToolPanel.GroupBorder"))
 			.Padding(FMargin(2.0f))
 			[
 				SAssignNew(ListView, SListView<TSharedPtr<FString>>)
