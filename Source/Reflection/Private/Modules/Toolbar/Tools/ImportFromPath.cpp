@@ -36,9 +36,15 @@ void TToolImportFromPath::Execute() {
 	int32 Reflected = 0;
 	const int32 Attempted = Paths.Num();
 
-	for (const FString& Path : Paths) {
-		if (Import(Path)) {
-			Reflected++;
+	{
+		/* Wraps the whole run, the way the folder tool does: the jump is then made from here,
+		 * once every import and every scope inside them is finished with */
+		const FScopedBrowseToAsset BrowseScope;
+
+		for (const FString& Path : Paths) {
+			if (Import(Path)) {
+				Reflected++;
+			}
 		}
 	}
 
