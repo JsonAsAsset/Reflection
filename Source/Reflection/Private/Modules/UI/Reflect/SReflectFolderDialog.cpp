@@ -76,16 +76,17 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 					.OnTextCommitted(this, &SReflectFolderDialog::OnFolderCommitted)
 				]
 
+				/* Next to the box it acts on */
 				+ SHorizontalBox::Slot()
 				.AutoWidth()
 				.VAlign(VAlign_Center)
 				.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
 				[
 					SNew(SButton)
-					.Text(LOCTEXT("UseSelected", "Use Selected"))
-					.ToolTipText(this, &SReflectFolderDialog::GetSelectedFolderTooltip)
-					.IsEnabled(this, &SReflectFolderDialog::HasSelectedFolder)
-					.OnClicked(this, &SReflectFolderDialog::OnUseSelectedFolderClicked)
+					.Text(LOCTEXT("Find", "Find"))
+					.ToolTipText(LOCTEXT("FindTooltip", "Ask Cloud what is under that folder"))
+					.IsEnabled(this, &SReflectFolderDialog::CanFind)
+					.OnClicked(this, &SReflectFolderDialog::OnFindClicked)
 				]
 			]
 		]
@@ -121,16 +122,16 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		[
 			SNew(SHorizontalBox)
 
-			/* Find sits away from the other two: it fills the list rather than acting on it */
+			/* Away from the other two: it fills the box rather than acting on what is in it */
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
 			[
 				SNew(SButton)
-				.Text(LOCTEXT("Find", "Find"))
-				.ToolTipText(LOCTEXT("FindTooltip", "Ask Cloud what is under that folder"))
-				.IsEnabled(this, &SReflectFolderDialog::CanFind)
-				.OnClicked(this, &SReflectFolderDialog::OnFindClicked)
+				.Text(LOCTEXT("UseSelected", "Use Selected"))
+				.ToolTipText(this, &SReflectFolderDialog::GetSelectedFolderTooltip)
+				.IsEnabled(this, &SReflectFolderDialog::HasSelectedFolder)
+				.OnClicked(this, &SReflectFolderDialog::OnUseSelectedFolderClicked)
 			]
 
 			+ SHorizontalBox::Slot()
