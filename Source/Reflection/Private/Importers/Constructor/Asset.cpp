@@ -26,10 +26,20 @@ UPackage* FAssetUtilities::CreateAssetPackage(const FString& Path) {
 	UPackage* Package = CreatePackage(
 		/* 4.25, 4.26.0 and below need an Outer */
 #if UE4_25_BELOW || (UE4_26_0)
-		nullptr, 
+		nullptr,
 #endif
 		*Path);
 	Package->FullyLoad();
+
+	/* Reflected assets land in folders this project has never had, and the Content Browser builds
+	 * its folder tree from the asset registry's cached paths: a folder it has not been told about
+	 * cannot be navigated to, which is what stops the jump at the end of an import.
+	 *
+	 * Told here rather than at the jump because being told is not the same as being ready. The
+	 * browser builds the folder on a tick of its own, and doing it now gives it the whole length
+	 * of the import to get there instead of no time at all. */
+	IAssetRegistry& AssetRegistry = FModuleManager::LoadModuleChecked<FAssetRegistryModule>("AssetRegistry").Get();
+	AssetRegistry.AddPath(FPackageName::GetLongPackagePath(Path));
 
 	return Package;
 }
@@ -155,6 +165,13 @@ template bool FAssetUtilities::ConstructAsset<UFontFace>(const FString&, const F
 template <typename T>
 bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPath, const FString& Type, TObjectPtr<T>& OutObject, bool& bSuccess) {
 	if (Type.IsEmpty()) {
+		return false;
+	}
+
+	/* Every path out of here is a request. With no Cloud to answer them, each reference would sit
+	 * on a connection that is never going to be made, behind a scope announcing it, and end up
+	 * exactly where it started. */
+	if (!Cloud::Status::IsOpened()) {
 		return false;
 	}
 

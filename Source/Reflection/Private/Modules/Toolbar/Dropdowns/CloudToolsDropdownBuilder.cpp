@@ -16,8 +16,8 @@
 #include "Modules/Cloud/Tools/WidgetAnimations.h"
 
 void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
-	/* Everything in here works off whatever is selected in the content browser. Fetching by path
-	 * doesn't, so it lives on its own toolbar button rather than pretending to belong. */
+	/* Everything in here works off whatever is selected in the content browser. Reflecting by path
+	 * or by folder doesn't, so those live on the reflect button instead. */
 	MenuBuilder.BeginSection("ReflectionCloudSection", FText::FromString("Selected Assets"));
 
 	TArray<TSelectedAssetsBase*> Tools;

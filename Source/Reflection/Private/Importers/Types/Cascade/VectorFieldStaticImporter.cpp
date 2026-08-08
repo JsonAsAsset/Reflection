@@ -7,7 +7,6 @@
 
 #include "Engine/Log.h"
 #include "Modules/Cloud/Cloud.h"
-#include "Settings/ReflectionSettings.h"
 
 UObject* IVectorFieldStaticImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UVectorFieldStatic>(GetPackage(), UVectorFieldStatic::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
@@ -52,9 +51,8 @@ bool IVectorFieldStaticImporter::Import() {
 }
 
 bool IVectorFieldStaticImporter::DownloadVolumeData(const int32 ExpectedSize, TArray<uint8>& OutData) const {
-	const UReflectionSettings* Settings = GetSettings();
-
-	if (!Settings->EnableCloudServer) {
+	/* The volume only ever comes down from Cloud, so there is nothing to wait on while it is down */
+	if (!Cloud::Status::IsOpened()) {
 		return false;
 	}
 

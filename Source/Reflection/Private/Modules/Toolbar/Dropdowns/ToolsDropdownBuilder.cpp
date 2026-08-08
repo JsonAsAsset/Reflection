@@ -17,6 +17,8 @@
 #include "Utilities/Dialog.h"
 
 void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
+	MenuBuilder.BeginSection("ReflectionAssetToolsSection", FText::FromString("Tools"));
+
 	MenuBuilder.AddSubMenu(
 		FText::FromString("Asset Tools"),
 		FText::FromString("Tools bundled"),
@@ -85,4 +87,6 @@ void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 		false,
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "DeveloperTools.MenuIcon")
 	);
+
+	MenuBuilder.EndSection();
 }

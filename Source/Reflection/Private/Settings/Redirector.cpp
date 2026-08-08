@@ -18,11 +18,6 @@ bool FRRedirector::IsEnabled() const {
 		}
 	}
 
-	/* If there are specific profiles that go with this redirector, and the cloud is disabled, don't use any. */
-	if (!GetSettings()->EnableCloudServer && Profiles.Num() > 0) {
-		bIsEnabled = false;
-	}
-	
 	return bIsEnabled;
 }
 

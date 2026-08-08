@@ -14,9 +14,6 @@
 #include "Modules/Cloud/Remote.h"
 
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications, bool bUseRelativePath) {
-	/* One jump for the whole set, made once the blocking scope below has closed */
-	const FScopedBrowseToAsset BrowseScope;
-
 	/* Importers resolve references through the Cloud while they deserialize, and those requests
 	 * have nowhere to put a callback, so they get waited on. The scope is what keeps the editor
 	 * drawn and cancellable for as long as this import needs the Cloud. */

@@ -22,6 +22,19 @@
 
 #endif
 
+/*
+ * Which way the reflect button goes in.
+ *
+ * On, it asks for asset paths and Cloud fetches the exports behind them. Off, it opens a file
+ * dialog and imports the json picked off disk.
+ *
+ * Only the way in changes. Cloud is compiled in either way, its tools and menu entries work the
+ * same, and references still resolve through it while it is running.
+ */
+#ifndef REFLECTION_CLOUD_SERVER
+#define REFLECTION_CLOUD_SERVER 1
+#endif
+
 #if ENGINE_MAJOR_VERSION == 5
 	#define ENGINE_UE5 1
 #else

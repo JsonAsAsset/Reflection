@@ -2,8 +2,10 @@
 
 #include "Modules/Toolbar/Toolbar.h"
 
+#include "Reflection.h"
 #include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
+#include "Utilities/Process.h"
 
 #include "Modules/UI/StyleModule.h"
 #include "Importers/Constructor/ImportJob.h"
@@ -19,7 +21,6 @@
 #include "Modules/Toolbar/Dropdowns/GeneralDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/DonateDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ParentDropdownBuilder.h"
-#include "Modules/Toolbar/Dropdowns/ReflectFromPathDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
 #include "Utilities/Dialog.h"
@@ -33,20 +34,28 @@
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;
 
-/* Reflecting by path starts from the path alone, so the button can go straight to the prompt
- * without any of the selection or Cloud readiness dance the reflect button does */
-static void ReflectFromPath() {
-	TToolImportFromPath Tool;
-	Tool.Execute();
+/* The button is a readout, not a switch: nothing about it turns the Cloud on or off, because
+ * whether the app is running is not this editor's decision to make. Pressed while it is down, the
+ * useful thing to do is say where to get one. */
+static void CloudButtonPressed() {
+	if (!Cloud::Status::IsOpened()) {
+		LaunchURL(GitHub::README::Cloud);
+	}
 }
 
-static bool CanReflectFromPath() {
+static FText GetCloudButtonLabel() {
+	return Cloud::Status::IsOpened() ? FText::FromString("On") : FText::FromString("Off");
+}
+
+static FText GetCloudButtonTooltip() {
+	return Cloud::Status::IsOpened()
+		? FText::FromString("Cloud is running.")
+		: FText::FromString("Cloud isn't running. Click to read how to set one up.");
+}
+
+/* The dropdown is only worth opening when there is something behind it */
+static bool CanOpenCloudMenu() {
 	return Cloud::Status::IsOpened();
-}
-
-/* Reflection ships no artwork for this one, so the editor's own path icon stands in */
-static FSlateIcon GetReflectFromPathIcon() {
-	return FSlateIcon(FAppStyle::GetAppStyleSetName(), "ContentBrowser.AssetTreeFolderOpen");
 }
 
 #if ENGINE_UE5
@@ -207,23 +216,14 @@ void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 		"ReflectionCloud",
 		FToolUIActionChoice(
 			FUIAction(
-				FExecuteAction::CreateLambda([this] {
-					UReflectionSettings* Settings = GetSettings();
-					
-					Settings->EnableCloudServer = !Settings->EnableCloudServer;
-					SavePluginSettings(Settings);
-				}),
+				FExecuteAction::CreateStatic(&CloudButtonPressed),
 				FCanExecuteAction(),
 				FGetActionCheckState(),
 				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
 			)
 		),
-		TAttribute<FText>::CreateLambda([this] {
-			const UReflectionSettings* Settings = GetSettings();
-			
-			return Settings->EnableCloudServer ? FText::FromString("On") : FText::FromString("Off");
-		}),
-		FText::FromString(""),
+		TAttribute<FText>::CreateStatic(&GetCloudButtonLabel),
+		TAttribute<FText>::CreateStatic(&GetCloudButtonTooltip),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Cloud")),
 		EUserInterfaceActionType::Button
 	));
@@ -235,46 +235,11 @@ void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 		"ReflectionCloudMenu",
 		FUIAction(
 			FExecuteAction(),
-			FCanExecuteAction::CreateLambda([] {
-				return GetSettings()->EnableCloudServer;
-			}),
+			FCanExecuteAction::CreateStatic(&CanOpenCloudMenu),
 			FGetActionCheckState(),
 			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
 		),
 		FOnGetContent::CreateStatic(&CreateCloudMenuDropdown),
-		FText::FromString(""),
-		FText::FromString(""),
-		FSlateIcon(),
-		true
-	));
-
-	/* Opens the path prompt straight away: nothing needs to be selected for it */
-	Section.AddEntry(FToolMenuEntry::InitToolBarButton(
-		"ReflectionCloudFromPath",
-		FToolUIActionChoice(
-			FUIAction(
-				FExecuteAction::CreateStatic(&ReflectFromPath),
-				FCanExecuteAction::CreateStatic(&CanReflectFromPath),
-				FGetActionCheckState(),
-				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
-			)
-		),
-		FText::FromString(""),
-		FText::FromString("Reflect an asset out of Cloud by its path, with nothing selected"),
-		GetReflectFromPathIcon(),
-		EUserInterfaceActionType::Button
-	));
-
-	/* Menu dropdown */
-	const FToolMenuEntry FromPathMenuButton = Section.AddEntry(FToolMenuEntry::InitComboButton(
-		"ReflectionCloudFromPathMenu",
-		FUIAction(
-			FExecuteAction(),
-			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
-			FGetActionCheckState(),
-			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
-		),
-		FOnGetContent::CreateStatic(&CreateReflectFromPathMenuDropdown),
 		FText::FromString(""),
 		FText::FromString(""),
 		FSlateIcon(),
@@ -319,32 +284,21 @@ void UReflectionToolbar::UE4Register(FToolBarBuilder& Builder) {
 void UReflectionToolbar::UE4CloudRegister(FToolBarBuilder& Builder) {
 	Builder.AddToolBarButton(
 		FUIAction(
-			FExecuteAction::CreateLambda([this] {
-				UReflectionSettings* Settings = GetSettings();
-						
-				Settings->EnableCloudServer = !Settings->EnableCloudServer;
-				SavePluginSettings(Settings);
-			}),
+			FExecuteAction::CreateStatic(&CloudButtonPressed),
 			FCanExecuteAction(),
 			FGetActionCheckState(),
 			FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
 		),
 		NAME_None,
-		TAttribute<FText>::Create([this] {
-			const UReflectionSettings* Settings = GetSettings();
-			
-			return Settings->EnableCloudServer ? FText::FromString("On") : FText::FromString("Off");
-		}),
-		FText::FromString(""),
+		TAttribute<FText>::Create(&GetCloudButtonLabel),
+		TAttribute<FText>::Create(&GetCloudButtonTooltip),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Cloud"))
 	);
 
 	Builder.AddComboButton(
 		FUIAction(
 			FExecuteAction(),
-			FCanExecuteAction::CreateLambda([] {
-				return GetSettings()->EnableCloudServer;
-			}),
+			FCanExecuteAction::CreateStatic(&CanOpenCloudMenu),
 			FGetActionCheckState(),
 			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
 		),
@@ -355,33 +309,6 @@ void UReflectionToolbar::UE4CloudRegister(FToolBarBuilder& Builder) {
 		true
 	);
 
-	/* Opens the path prompt straight away: nothing needs to be selected for it */
-	Builder.AddToolBarButton(
-		FUIAction(
-			FExecuteAction::CreateStatic(&ReflectFromPath),
-			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
-			FGetActionCheckState(),
-			FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
-		),
-		NAME_None,
-		FText::FromString(""),
-		FText::FromString("Reflect an asset out of Cloud by its path, with nothing selected"),
-		GetReflectFromPathIcon()
-	);
-
-	Builder.AddComboButton(
-		FUIAction(
-			FExecuteAction(),
-			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
-			FGetActionCheckState(),
-			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
-		),
-		FOnGetContent::CreateStatic(&CreateReflectFromPathMenuDropdown),
-		FText::FromString(""),
-		FText::FromString(""),
-		GetReflectFromPathIcon(),
-		true
-	);
 }
 #endif
 
@@ -423,22 +350,14 @@ void UReflectionToolbar::WaitForCloudTimerCallback() {
 	if (WaitingForCloud.IsValid()) {
 		CloudDotCount = (CloudDotCount + 1) % 4;
 
-		FString Dots;
-		for (int32 i = 0; i < CloudDotCount; ++i) {
-			Dots += TEXT(".");
-		}
-
+		/* Appended rather than formatted: no dots leaves an FString that never allocated, and the
+		 * pointer %s gets out of one of those is null, which prints as "(null)" once every four
+		 * ticks */
 		WaitingForCloud.Pin()->SetText(
-			FText::FromString(FString::Printf(TEXT("Establishing Cloud%s"), *Dots))
+			FText::FromString(TEXT("Establishing Cloud") + FString::ChrN(CloudDotCount, TEXT('.')))
 		);
 	}
 	
-	if (!GetSettings()->EnableCloudServer) {
-		CancelWaitForCloudTimer();
-
-		return;
-	}
-
 	/* The Cloud was running when the wait started, so it going away now means it stopped or
 	 * restarted underneath us. Dropping the wait without saying so looks exactly like the reflect
 	 * button doing nothing at all. */
@@ -474,18 +393,18 @@ void UReflectionToolbar::CancelWaitForCloudTimer() {
 }
 
 void UReflectionToolbar::IsFitToFunction(TFunction<void(bool)> OnResponse) {
-	const UReflectionSettings* Settings = GetSettings();
-
-	if (!Settings->EnableCloudServer) {
+	/* A json file is imported from disk whether or not Cloud is up, so nothing has to be running
+	 * for the run to go ahead. Cloud still answers references while it is open. */
+	if (!REFLECTION_CLOUD_SERVER) {
 		OnResponse(true);
-		
+
 		return;
 	}
 
-	Cloud::Status::Check(Settings,[this, OnResponse](const bool bStatusOk) {
+	Cloud::Status::Check([this, OnResponse](const bool bStatusOk) {
 		if (!bStatusOk) {
 			OnResponse(false);
-			
+
 			return;
 		}
 
@@ -521,6 +440,16 @@ void UReflectionToolbar::Import() {
 
 	CancelWaitForCloudTimer();
 
+	/* A path is the direct way in, and having to export a json first to import something Cloud
+	 * could have fetched is a step that does not need to exist. Built the other way, the file on
+	 * disk is what is being imported, so the file dialog is the way in. */
+	if (REFLECTION_CLOUD_SERVER) {
+		TToolImportFromPath Tool;
+		Tool.Execute();
+
+		return;
+	}
+
 	/* Dialog for a JSON File */
 	const TArray<FString> OutFileNames = OpenFileDialog("Select a JSON File", "JSON Files|*.json");
 	if (OutFileNames.Num() == 0) {
@@ -532,7 +461,7 @@ void UReflectionToolbar::Import() {
 }
 
 void UReflectionToolbar::HandleCloudWaiting() {
-	if (!Cloud::Status::ShouldWaitUntilInitialized(GetSettings()) || WaitingForCloud.IsValid()) return;
+	if (!Cloud::Status::ShouldWaitUntilInitialized() || WaitingForCloud.IsValid()) return;
 	
 	WaitingForCloud =
 		AppendNotificationWithHandler(
@@ -579,14 +508,6 @@ TSharedRef<SWidget> UReflectionToolbar::CreateCloudMenuDropdown() {
 	for (const TSharedRef<IParentDropdownBuilder>& Dropdown : Dropdowns) {
 		Dropdown->Build(MenuBuilder);
 	}
-
-	return MenuBuilder.MakeWidget();
-}
-
-TSharedRef<SWidget> UReflectionToolbar::CreateReflectFromPathMenuDropdown() {
-	FMenuBuilder MenuBuilder(false, nullptr);
-
-	IReflectFromPathDropdownBuilder().Build(MenuBuilder);
 
 	return MenuBuilder.MakeWidget();
 }

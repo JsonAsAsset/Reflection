@@ -12,7 +12,6 @@
 #include "Framework/Application/SlateApplication.h"
 #include "Styling/CoreStyle.h"
 #include "Widgets/SBoxPanel.h"
-#include "Widgets/SNullWidget.h"
 #include "Widgets/SWindow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
@@ -66,12 +65,25 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 			[
 				SNew(SHorizontalBox)
 
+				/* Fills the box, so it sits on the side the folder comes in from */
+				+ SHorizontalBox::Slot()
+				.AutoWidth()
+				.VAlign(VAlign_Center)
+				.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
+				[
+					SNew(SButton)
+					.Text(LOCTEXT("UseSelected", "Use Selected"))
+					.ToolTipText(this, &SReflectFolderDialog::GetSelectedFolderTooltip)
+					.IsEnabled(this, &SReflectFolderDialog::HasSelectedFolder)
+					.OnClicked(this, &SReflectFolderDialog::OnUseSelectedFolderClicked)
+				]
+
 				+ SHorizontalBox::Slot()
 				.FillWidth(1.0f)
 				.VAlign(VAlign_Center)
 				[
 					SAssignNew(FolderBox, SEditableTextBox)
-					.HintText(LOCTEXT("FolderHint", "/Game/Path/To/Folder"))
+					.HintText(LOCTEXT("FolderHint", "/Game/Folder"))
 					.ToolTipText(LOCTEXT("FolderTooltip", "A folder of the game files, in either form: /Game/Foo or the way Cloud spells it."))
 					.OnTextCommitted(this, &SReflectFolderDialog::OnFolderCommitted)
 				]
@@ -92,14 +104,6 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		]
 
 		/* What was found ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-		+ SVerticalBox::Slot()
-		.AutoHeight()
-		.Padding(FMargin(8.0f, 6.0f, 8.0f, 0.0f))
-		[
-			SNew(STextBlock)
-			.Text(this, &SReflectFolderDialog::GetStatusText)
-		]
-
 		+ SVerticalBox::Slot()
 		.FillHeight(1.0f)
 		.Padding(FMargin(8.0f, 6.0f))
@@ -122,40 +126,24 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		[
 			SNew(SHorizontalBox)
 
-			/* Away from the other two: it fills the box rather than acting on what is in it */
+			/* Under the list it counts, on the same line as the button it qualifies */
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.VAlign(VAlign_Center)
+			[
+				SNew(STextBlock)
+				.Text(this, &SReflectFolderDialog::GetStatusText)
+			]
+
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("UseSelected", "Use Selected"))
-				.ToolTipText(this, &SReflectFolderDialog::GetSelectedFolderTooltip)
-				.IsEnabled(this, &SReflectFolderDialog::HasSelectedFolder)
-				.OnClicked(this, &SReflectFolderDialog::OnUseSelectedFolderClicked)
-			]
-
-			+ SHorizontalBox::Slot()
-			.FillWidth(1.0f)
-			[
-				SNullWidget::NullWidget
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
+			.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
 			[
 				SNew(SButton)
 				.Text(this, &SReflectFolderDialog::GetReflectText)
 				.IsEnabled(this, &SReflectFolderDialog::CanReflect)
 				.OnClicked(this, &SReflectFolderDialog::OnReflectClicked)
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("Cancel", "Cancel"))
-				.OnClicked(this, &SReflectFolderDialog::OnCancelClicked)
 			]
 		]
 	];
@@ -205,14 +193,6 @@ FReply SReflectFolderDialog::OnUseSelectedFolderClicked() {
 FReply SReflectFolderDialog::OnReflectClicked() {
 	Accepted = true;
 
-	if (ParentWindow.IsValid()) {
-		ParentWindow->RequestDestroyWindow();
-	}
-
-	return FReply::Handled();
-}
-
-FReply SReflectFolderDialog::OnCancelClicked() {
 	if (ParentWindow.IsValid()) {
 		ParentWindow->RequestDestroyWindow();
 	}

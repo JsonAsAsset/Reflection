@@ -39,10 +39,10 @@ void Cloud::Status::IsReady(TFunction<void(bool)> OnResponse) {
 	);
 }
 
-void Cloud::Status::Check(const UReflectionSettings* Settings,TFunction<void(bool)> OnResponse) {
+void Cloud::Status::Check(TFunction<void(bool)> OnResponse) {
 	RemoveNotification(CloudNotification);
 
-	if (Settings->EnableCloudServer && !IsOpened()) {
+	if (!IsOpened()) {
 		CloudNotification = AppendNotificationWithHandler(
 			FText::FromString("No Active Cloud Instance"),
 			FText::FromString("Read documentation on how to start one."),
@@ -69,6 +69,6 @@ void Cloud::Status::Check(const UReflectionSettings* Settings,TFunction<void(boo
 	});
 }
 
-bool Cloud::Status::ShouldWaitUntilInitialized(const UReflectionSettings* Settings) {
-	return Settings->EnableCloudServer && IsOpened();
+bool Cloud::Status::ShouldWaitUntilInitialized() {
+	return IsOpened();
 }

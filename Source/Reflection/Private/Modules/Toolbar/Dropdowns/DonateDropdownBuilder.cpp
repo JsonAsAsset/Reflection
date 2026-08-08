@@ -8,7 +8,6 @@
 #include "Utilities/Process.h"
 
 void IDonateDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
-	MenuBuilder.EndSection();
 	MenuBuilder.BeginSection("ReflectionSupportSection", FText::FromString("Support"));
 	
 	MenuBuilder.AddMenuEntry(

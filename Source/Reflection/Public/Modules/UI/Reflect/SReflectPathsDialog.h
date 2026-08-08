@@ -29,9 +29,7 @@ public:
 
 private:
 	FReply OnAddClicked();
-	FReply OnRemoveClicked();
 	FReply OnReflectClicked();
-	FReply OnCancelClicked();
 
 	void OnPathCommitted(const FText& NewText, ETextCommit::Type CommitType);
 
@@ -41,14 +39,16 @@ private:
 	/* One entry per path, ignoring blanks and anything already queued */
 	void AddPaths(const FString& Text);
 
+	/* Takes one entry back out, from the cross on its own row */
+	FReply RemovePath(TSharedPtr<FString> Path);
+
 	bool CanAdd() const;
-	bool CanRemove() const;
 	bool CanReflect() const;
 
 	FText GetStatusText() const;
 	FText GetReflectText() const;
 
-	TSharedRef<ITableRow> GenerateRow(TSharedPtr<FString> Path, const TSharedRef<STableViewBase>& OwnerTable) const;
+	TSharedRef<ITableRow> GenerateRow(TSharedPtr<FString> Path, const TSharedRef<STableViewBase>& OwnerTable);
 
 	TSharedPtr<SWindow> ParentWindow;
 	TSharedPtr<SEditableTextBox> PathBox;

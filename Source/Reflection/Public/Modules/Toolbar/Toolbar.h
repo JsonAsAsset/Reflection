@@ -52,13 +52,12 @@ public:
 	/* Checks if Reflection is fit to function, then called Import */
 	void ImportAction();
 
-	/* Opens a JSON file dialog */
+	/* Asks for asset paths, or for a JSON file when bypassed */
 	void Import();
-	
+
 	/* UI Display ~~~~~~~~~~~~~~ */
 	static TSharedRef<SWidget> CreateMenuDropdown();
 	static TSharedRef<SWidget> CreateCloudMenuDropdown();
-	static TSharedRef<SWidget> CreateReflectFromPathMenuDropdown();
 
 	static bool IsToolBarVisible();
 

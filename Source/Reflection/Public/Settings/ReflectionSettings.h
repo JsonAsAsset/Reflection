@@ -48,16 +48,14 @@ class REFLECTION_API UReflectionSettings : public UDeveloperSettings {
 public:
 	UReflectionSettings();
 
-public:
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRSettings AssetSettings;
+	virtual FText GetSectionText() const override;
 
+public:
 	UPROPERTY(EditAnywhere, Config, Category = Redirectors, meta = (TitleProperty = "Name"))
 	TArray<FRRedirector> Redirectors;
 
-	/* Retrieves assets from an API and imports references directly into your project. */
-	UPROPERTY()
-	bool EnableCloudServer = true;
+	UPROPERTY(EditAnywhere, Config, Category = Settings)
+	FRSettings AssetSettings;
 
 	/* Enables experimental/developing features. Features may not work as intended. */
 	UPROPERTY(EditAnywhere, Config, DisplayName = "Experiments", Category = Settings, AdvancedDisplay)

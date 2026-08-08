@@ -37,10 +37,25 @@ inline UObject* ResolveRedirector(UObject* Object) {
 }
 
 /* Loads an asset by package path, following any redirector left behind by a rename. Every load
- * the importer does by path goes through here, so none of them can hand back a redirector. */
+ * the importer does by path goes through here, so none of them can hand back a redirector.
+ *
+ * Null is an answer rather than a failure here: this is also how the importer asks whether an
+ * asset exists yet, and most of the time it does not. Asking the loader that question costs a
+ * failed package load and two warnings apiece, so the cheap answers are given first. */
 template <typename T>
 T* LoadObjectByPath(const FString& Path) {
-	return Cast<T>(ResolveRedirector(StaticLoadObject(T::StaticClass(), nullptr, *Path)));
+	/* Already in memory, including a package this session created and never saved */
+	if (UObject* Found = FindObject<UObject>(nullptr, *Path)) {
+		return Cast<T>(ResolveRedirector(Found));
+	}
+
+	/* Not in memory and no file to read it out of, so there is nothing to load and no reason to
+	 * have the loader say so twice */
+	if (!FPackageName::DoesPackageExist(FPackageName::ObjectPathToPackageName(Path))) {
+		return nullptr;
+	}
+
+	return Cast<T>(ResolveRedirector(StaticLoadObject(T::StaticClass(), nullptr, *Path, nullptr, LOAD_NoWarn | LOAD_Quiet)));
 }
 
 inline void SavePackage(UPackage* Package) {

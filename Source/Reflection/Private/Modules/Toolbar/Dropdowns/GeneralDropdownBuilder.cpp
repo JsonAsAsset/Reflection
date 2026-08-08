@@ -5,16 +5,19 @@
 #include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
 
+#include "Modules/Metadata.h"
 #include "Modules/UI/SupportedAssets/SupportedAssetsTab.h"
 
 void IGeneralDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
+	MenuBuilder.BeginSection("ReflectionPluginSection", FText::FromString(FRMetadata::Version));
+
 	MenuBuilder.AddMenuEntry(
 		FText::FromString("Supported Assets"),
 		FText::FromString("Every asset type Reflection can build"),
 #if ENGINE_UE5
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Help"),
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.Tabs.ContentBrowser"),
 #else
-		FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.BspMode"),
+		FSlateIcon(FEditorStyle::GetStyleSetName(), "LevelEditor.Tabs.ContentBrowser"),
 #endif
 		FUIAction(
 			FExecuteAction::CreateLambda([]() {
@@ -25,8 +28,8 @@ void IGeneralDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	);
 
 	MenuBuilder.AddMenuEntry(
-		FText::FromString("Plugin Settings"),
-		FText::FromString("Navigate to Plugin Settings"),
+		FText::FromString("Settings"),
+		FText::FromString("Navigate to Settings"),
 #if ENGINE_UE5
 		FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Settings"),
 #else
@@ -39,4 +42,6 @@ void IGeneralDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 		),
 		NAME_None
 	);
+
+	MenuBuilder.EndSection();
 }

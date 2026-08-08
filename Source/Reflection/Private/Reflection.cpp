@@ -18,8 +18,10 @@
 #include "Modules/UI/Validation/ValidationTab.h"
 #include "Modules/Toolbar/Toolbar.h"
 #include "Engine/EngineUtilities.h"
+#include "Modules/Cloud/Cloud.h"
 
 #include "Logging/LogVerbosity.h"
+#include "JsonGlobals.h"
 #include "Settings/Runtime.h"
 /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
@@ -29,6 +31,11 @@
 
 void FReflectionModule::StartupModule() {
 	LogHttp.SetVerbosity(ELogVerbosity::Error);
+
+	/* Exports are read by asking for fields that may not be there, which is how the reader tells
+	 * an absent one from an empty one. Json warns on every miss, so one import can bury the log
+	 * in complaints about something working as intended. */
+	LogJson.SetVerbosity(ELogVerbosity::NoLogging);
 
 	FRMetadata::Initialize();
 	

@@ -32,10 +32,10 @@ public:
 		static void IsReady(TFunction<void(bool)> OnResponse);
 
 		/* If the app is not ready or not opened, show the user a notification */
-		static void Check(const UReflectionSettings* Settings, TFunction<void(bool)> OnResponse);
+		static void Check(TFunction<void(bool)> OnResponse);
 
 		/* Should we wait until the app is initialized? */
-		static bool ShouldWaitUntilInitialized(const UReflectionSettings* Settings);
+		static bool ShouldWaitUntilInitialized();
 	};
 
 public:

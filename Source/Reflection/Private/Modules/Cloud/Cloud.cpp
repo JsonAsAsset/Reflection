@@ -6,7 +6,6 @@
 #include "HttpModule.h"
 #include "TimerManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
-#include "Settings/ReflectionSettings.h"
 #include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
 #include "Modules/Cloud/Remote.h"
@@ -239,14 +238,6 @@ bool Cloud::EnsureMetadataBlocking() {
 }
 
 void Cloud::Update(TFunction<void(bool)> OnResponse) {
-	UReflectionSettings* MutableSettings = GetSettings();
-
-	if (!MutableSettings->EnableCloudServer) {
-		OnResponse(false);
-
-		return;
-	}
-
 	Get(MetadataURL, {}, {}, [OnResponse](const TSharedPtr<FJsonObject>& MetadataResponse) {
 		if (!MetadataResponse.IsValid()) {
 			OnResponse(false);

@@ -72,7 +72,7 @@ template <class T>
 TObjectPtr<T> IImporter::DownloadWrapper(TObjectPtr<T> InObject, FString Type, const FString Name, const FString Path) {
     const UReflectionSettings* Settings = GetSettings();
 
-    if (Settings->EnableCloudServer && (
+    if ((
         InObject == nullptr ||
             (Settings->AssetSettings.Texture.ReflectExistingTextures && Type == "Texture2D")
         )

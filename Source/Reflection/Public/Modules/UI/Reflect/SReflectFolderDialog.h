@@ -29,7 +29,6 @@ private:
 	FReply OnFindClicked();
 	FReply OnUseSelectedFolderClicked();
 	FReply OnReflectClicked();
-	FReply OnCancelClicked();
 
 	void OnFolderCommitted(const FText& NewText, ETextCommit::Type CommitType);
 

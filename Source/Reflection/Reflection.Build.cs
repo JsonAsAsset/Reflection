@@ -7,8 +7,14 @@ using UnrealBuildTool;
 public class Reflection : ModuleRules {
 	public Reflection(ReadOnlyTargetRules Target) : base(Target)  {
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
-		
+
 		var bIsLinux = Target.Platform == UnrealTargetPlatform.Linux;
+
+		/* Which way the reflect button goes in: Cloud paths, or a json file picked off disk. Set
+		 * this to false for the file dialog. Nothing else about Cloud changes. */
+		var bCloudServer = true;
+
+		PublicDefinitions.Add("REFLECTION_CLOUD_SERVER=" + (bCloudServer ? "1" : "0"));
 
 #if UE_5_0_OR_LATER
 	    /* Unreal Engine 5 and later */

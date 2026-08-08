@@ -13,8 +13,8 @@
 #include "Widgets/SWindow.h"
 #include "Widgets/Input/SButton.h"
 #include "Widgets/Input/SEditableTextBox.h"
+#include "Widgets/Images/SImage.h"
 #include "Widgets/Layout/SBorder.h"
-#include "Widgets/Layout/SBox.h"
 #include "Widgets/Text/STextBlock.h"
 #include "Widgets/Views/STableRow.h"
 
@@ -81,7 +81,7 @@ static bool IsPathList(const FString& Text) {
 
 bool SReflectPathsDialog::Open(TArray<FString>& OutPaths) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
-		.Title(LOCTEXT("Title", "Reflect From Path"))
+		.Title(LOCTEXT("Title", "Reflection"))
 		.ClientSize(FVector2D(720.0f, 480.0f))
 		.SupportsMinimize(false)
 		.SupportsMaximize(false);
@@ -133,7 +133,7 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 				.VAlign(VAlign_Center)
 				[
 					SAssignNew(PathBox, SEditableTextBox)
-					.HintText(LOCTEXT("PathHint", "/Game/Path/To/Asset"))
+					.HintText(LOCTEXT("PathHint", "/Game/Asset"))
 					.ToolTipText(LOCTEXT("PathTooltip", "An asset path, in either form. A copied reference or several paths at once are fine."))
 					.OnTextCommitted(this, &SReflectPathsDialog::OnPathCommitted)
 				]
@@ -171,7 +171,7 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 			[
 				SAssignNew(ListView, SListView<TSharedPtr<FString>>)
 				.ListItemsSource(&Rows)
-				.SelectionMode(ESelectionMode::Multi)
+				.SelectionMode(ESelectionMode::None)
 				.OnGenerateRow(this, &SReflectPathsDialog::GenerateRow)
 			]
 		]
@@ -182,36 +182,10 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 		.HAlign(HAlign_Right)
 		.Padding(FMargin(8.0f, 0.0f, 8.0f, 8.0f))
 		[
-			SNew(SHorizontalBox)
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("Remove", "Remove"))
-				.ToolTipText(LOCTEXT("RemoveTooltip", "Take the selected paths back out of the queue"))
-				.IsEnabled(this, &SReflectPathsDialog::CanRemove)
-				.OnClicked(this, &SReflectPathsDialog::OnRemoveClicked)
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
-			[
-				SNew(SButton)
-				.Text(this, &SReflectPathsDialog::GetReflectText)
-				.IsEnabled(this, &SReflectPathsDialog::CanReflect)
-				.OnClicked(this, &SReflectPathsDialog::OnReflectClicked)
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			[
-				SNew(SButton)
-				.Text(LOCTEXT("Cancel", "Cancel"))
-				.OnClicked(this, &SReflectPathsDialog::OnCancelClicked)
-			]
+			SNew(SButton)
+			.Text(this, &SReflectPathsDialog::GetReflectText)
+			.IsEnabled(this, &SReflectPathsDialog::CanReflect)
+			.OnClicked(this, &SReflectPathsDialog::OnReflectClicked)
 		]
 	];
 
@@ -240,28 +214,9 @@ FReply SReflectPathsDialog::OnAddClicked() {
 	return FReply::Handled();
 }
 
-FReply SReflectPathsDialog::OnRemoveClicked() {
-	for (const TSharedPtr<FString>& Selected : ListView->GetSelectedItems()) {
-		Rows.Remove(Selected);
-	}
-
-	ListView->ClearSelection();
-	ListView->RequestListRefresh();
-
-	return FReply::Handled();
-}
-
 FReply SReflectPathsDialog::OnReflectClicked() {
 	Accepted = true;
 
-	if (ParentWindow.IsValid()) {
-		ParentWindow->RequestDestroyWindow();
-	}
-
-	return FReply::Handled();
-}
-
-FReply SReflectPathsDialog::OnCancelClicked() {
 	if (ParentWindow.IsValid()) {
 		ParentWindow->RequestDestroyWindow();
 	}
@@ -300,13 +255,19 @@ void SReflectPathsDialog::AddPaths(const FString& Text) {
 	}
 }
 
+FReply SReflectPathsDialog::RemovePath(TSharedPtr<FString> Path) {
+	Rows.Remove(Path);
+
+	if (ListView.IsValid()) {
+		ListView->RequestListRefresh();
+	}
+
+	return FReply::Handled();
+}
+
 /* State ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 bool SReflectPathsDialog::CanAdd() const {
 	return PathBox.IsValid() && !PathBox->GetText().ToString().TrimStartAndEnd().IsEmpty();
-}
-
-bool SReflectPathsDialog::CanRemove() const {
-	return ListView.IsValid() && ListView->GetNumItemsSelected() > 0;
 }
 
 bool SReflectPathsDialog::CanReflect() const {
@@ -329,15 +290,36 @@ FText SReflectPathsDialog::GetReflectText() const {
 	return FText::Format(LOCTEXT("ReflectCountFmt", "Reflect {0}"), FText::AsNumber(Rows.Num()));
 }
 
-TSharedRef<ITableRow> SReflectPathsDialog::GenerateRow(TSharedPtr<FString> Path, const TSharedRef<STableViewBase>& OwnerTable) const {
+TSharedRef<ITableRow> SReflectPathsDialog::GenerateRow(TSharedPtr<FString> Path, const TSharedRef<STableViewBase>& OwnerTable) {
 	return SNew(STableRow<TSharedPtr<FString>>, OwnerTable)
 		[
-			SNew(SBox)
-			.Padding(FMargin(8.0f, 2.0f))
+			SNew(SHorizontalBox)
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
 			.VAlign(VAlign_Center)
+			.Padding(FMargin(8.0f, 2.0f))
 			[
 				SNew(STextBlock)
 				.Text(FText::FromString(Path.IsValid() ? *Path : FString()))
+			]
+
+			/* The only way back out of the queue, so it sits on the entry it removes */
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(4.0f, 2.0f, 4.0f, 2.0f))
+			[
+				SNew(SButton)
+				.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+				.ContentPadding(FMargin(2.0f))
+				.ToolTipText(LOCTEXT("RemoveTooltip", "Take this path back out of the queue"))
+				.OnClicked(this, &SReflectPathsDialog::RemovePath, Path)
+				[
+					SNew(SImage)
+					.Image(FAppStyle::Get().GetBrush("Icons.X"))
+					.ColorAndOpacity(FSlateColor::UseForeground())
+				]
 			]
 		];
 }

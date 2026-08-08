@@ -10,19 +10,18 @@
 #include "Modules/Cloud/Remote.h"
 #include "Modules/UI/Reflect/SReflectPathsDialog.h"
 #include "Engine/EngineUtilities.h"
-#include "Utilities/AssetPaths.h"
 #include "Utilities/Dialog.h"
 
 void TToolImportFromPath::Execute() {
 	if (!Cloud::Status::IsOpened()) {
-		SpawnPrompt("Reflect From Path", "Cloud isn't running, so there is nowhere to fetch from.");
+		SpawnPrompt("Reflection", "Cloud isn't running, so there is nowhere to fetch from.");
 
 		return;
 	}
 
 	/* Nothing here goes through the reflect button, so this is where the project name gets fetched */
 	if (!Cloud::EnsureMetadataBlocking()) {
-		SpawnPrompt("Reflect From Path", "Cloud didn't say which project it has loaded, so paths can't be resolved.");
+		SpawnPrompt("Reflection", "Cloud didn't say which project it has loaded, so paths can't be resolved.");
 
 		return;
 	}
@@ -36,15 +35,9 @@ void TToolImportFromPath::Execute() {
 	int32 Reflected = 0;
 	const int32 Attempted = Paths.Num();
 
-	{
-		/* Wraps the whole run, the way the folder tool does: the jump is then made from here,
-		 * once every import and every scope inside them is finished with */
-		const FScopedBrowseToAsset BrowseScope;
-
-		for (const FString& Path : Paths) {
-			if (Import(Path)) {
-				Reflected++;
-			}
+	for (const FString& Path : Paths) {
+		if (Import(Path)) {
+			Reflected++;
 		}
 	}
 
@@ -79,9 +72,6 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 	if (PackagePath.IsEmpty()) {
 		return false;
 	}
-
-	/* Outlives the blocking scope on purpose, so the jump lands after the progress dialog closes */
-	const FScopedBrowseToAsset BrowseScope;
 
 	/* Reached straight off a menu click, so nothing here has a continuation to hand a callback to.
 	 * The scope is what keeps the editor drawn and cancellable while the requests run. */

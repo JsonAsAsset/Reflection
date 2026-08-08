@@ -16,7 +16,7 @@ struct GitHub {
     struct README {
         static inline FString Link = URL + "?tab=readme-ov-file#asset-types";
         static inline FString AssetTypes = Link + "#asset-types";
-        static inline FString Cloud = Link + "#cloud";
+        static inline FString Cloud = URL + "#cloud";
     };
 };
 
