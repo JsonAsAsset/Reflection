@@ -34,6 +34,10 @@ void TToolImportFolder::Execute() {
 	int32 Reflected = 0;
 	int32 Attempted = 0;
 	bool Cancelled = false; {
+		/* A folder is a lot of assets, and being walked through every one of them is no use.
+		 * Nesting this over the whole run leaves the browser on the last one instead. */
+		const FScopedBrowseToAsset BrowseScope;
+
 		/* Import opens a scope of its own per asset, which is what the dialog ends up showing.
 		 * This one is here to own the Cancel button for the whole run rather than for one asset. */
 		const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "ReflectingFolder", "Reflecting folder"));

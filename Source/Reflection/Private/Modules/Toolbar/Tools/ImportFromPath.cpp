@@ -74,6 +74,9 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 		return false;
 	}
 
+	/* Outlives the blocking scope on purpose, so the jump lands after the progress dialog closes */
+	const FScopedBrowseToAsset BrowseScope;
+
 	/* Reached straight off a menu click, so nothing here has a continuation to hand a callback to.
 	 * The scope is what keeps the editor drawn and cancellable while the requests run. */
 	const FBlockingRequestScope BlockingScope(FText::Format(

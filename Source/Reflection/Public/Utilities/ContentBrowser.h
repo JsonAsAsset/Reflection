@@ -15,12 +15,60 @@
 #endif
 #include "Engine/Log.h"
 
+/* Holds the Content Browser still for the length of a reflect.
+ *
+ * Every asset a reflect creates asks to be jumped to, and a reflect creates every reference it
+ * reaches, so an asset with a lot of them drags the browser through its whole dependency tree and
+ * finishes wherever the last reference happened to land. */
+namespace PendingBrowse {
+	inline int32 Depth = 0;
+
+	/* References are created while their parent is still deserializing, so the parent is the last
+	 * to ask, which is the one worth keeping */
+	inline TWeakObjectPtr<UObject> Target;
+}
+
 inline void BrowseToAsset(UObject* Asset) {
+	if (Asset == nullptr) {
+		return;
+	}
+
+	if (PendingBrowse::Depth > 0) {
+		PendingBrowse::Target = Asset;
+
+		return;
+	}
+
 	/* Browse to newly added Asset in the Content Browser */
 	const TArray<FAssetData>& Assets = { Asset };
 	const FContentBrowserModule& ContentBrowserModule = FModuleManager::Get().LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 	ContentBrowserModule.Get().SyncBrowserToAssets(Assets);
 }
+
+/* Marks a whole reflect, so the one jump it earns happens when it is over.
+ *
+ * Declare it before the FBlockingRequestScope of the same operation: the jump then happens once
+ * that scope has closed, rather than into a Content Browser sitting behind a progress dialog. */
+struct FScopedBrowseToAsset {
+	FScopedBrowseToAsset() {
+		PendingBrowse::Depth++;
+	}
+
+	~FScopedBrowseToAsset() {
+		/* Reflects nest, and only the outermost one is finished */
+		if (--PendingBrowse::Depth > 0) {
+			return;
+		}
+
+		UObject* Target = PendingBrowse::Target.Get();
+		PendingBrowse::Target.Reset();
+
+		BrowseToAsset(Target);
+	}
+
+	FScopedBrowseToAsset(const FScopedBrowseToAsset&) = delete;
+	FScopedBrowseToAsset& operator=(const FScopedBrowseToAsset&) = delete;
+};
 
 /* Get the asset currently selected in the Content Browser. */
 template <typename T>
