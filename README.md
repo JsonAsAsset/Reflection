@@ -14,17 +14,13 @@
   <h3 align="center">Reflection</h3>
 
   <p align="center">
+    Reconstruction Toolkit for Unreal Engine
+    <br />
     <a href="#table-of-contents"><strong>Explore the docs »</strong></a>
   </p>
 </div>
 
 <div align="center">
-
-[![Unreal Engine 5 Supported)](https://img.shields.io/badge/5.0+-black?logo=unrealengine&style=for-the-badge&labelColor=grey)](#installation)
-
-[![Unreal Engine 4.26.0 Supported)](https://img.shields.io/badge/4.26.0-black?logo=unrealengine&style=for-the-badge&labelColor=grey)](#installation)
-[![Unreal Engine 4.26.2 Supported)](https://img.shields.io/badge/4.26.2-black?logo=unrealengine&style=for-the-badge&labelColor=grey)](#installation)
-[![Unreal Engine 4.27.2 Supported)](https://img.shields.io/badge/4.27.2-black?logo=unrealengine&style=for-the-badge&labelColor=grey)](#installation)
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
 [![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
