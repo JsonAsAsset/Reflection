@@ -26,10 +26,10 @@ inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const F
 }
 
 inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
-	const FString& ProfileName = GReflectionRuntime.Profile.Name;
+	const FString& ProjectName = GReflectionRuntime.Profile.ProjectName;
 
-	if (!ProfileName.IsEmpty()) {
-		ObjectPath = ObjectPath.Replace(*(ProfileName + "/Content"), TEXT("/Game"));
+	if (!ProjectName.IsEmpty()) {
+		ObjectPath = ObjectPath.Replace(*(ProjectName + "/Content"), TEXT("/Game"));
 	}
 	
 	FString FullPath = ObjectPath; 

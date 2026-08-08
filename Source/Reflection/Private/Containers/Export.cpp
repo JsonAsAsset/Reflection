@@ -13,10 +13,10 @@ FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex) {
 	ObjectPath = PackageIndex.GetString("ObjectPath");
 	ObjectPath.Split(".", &ObjectPath, nullptr);
 
-	const FString& ProfileName = GReflectionRuntime.Profile.Name;
+	const FString& ProjectName = GReflectionRuntime.Profile.ProjectName;
 
-	if (!ProfileName.IsEmpty()) {
-		ObjectPath = ObjectPath.Replace(*(ProfileName + "/Content"), TEXT("/Game"));
+	if (!ProjectName.IsEmpty()) {
+		ObjectPath = ObjectPath.Replace(*(ProjectName + "/Content"), TEXT("/Game"));
 	}
 
 	ObjectPath = ObjectPath.Replace(TEXT("Engine/Content"), TEXT("/Engine"));

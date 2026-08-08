@@ -13,7 +13,7 @@
 #include "Utilities/JsonHelpers.h"
 #include "Modules/Cloud/Remote.h"
 
-bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications) {
+bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications, bool bUseRelativePath) {
 	/* Importers resolve references through the Cloud while they deserialize, and those requests
 	 * have nowhere to put a callback, so they get waited on. The scope is what keeps the editor
 	 * drawn and cancellable for as long as this import needs the Cloud. */
@@ -31,13 +31,13 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 			if (Export->GetType() != "BlueprintGeneratedClass") continue;
 		}
 		
-		if (IImporter* Importer = ReadExportAndImport(Container, Export, File, HideNotifications)) OutImporter = Importer;
+		if (IImporter* Importer = ReadExportAndImport(Container, Export, File, HideNotifications, bUseRelativePath)) OutImporter = Importer;
 	}
 
 	return true;
 }
 
-IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container, FUObjectExport* Export, FString File, const bool HideNotifications) {
+IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container, FUObjectExport* Export, FString File, const bool HideNotifications, bool bUseRelativePath) {
 	const FString Type = Export->GetType().ToString();
 	FString Name = Export->GetName().ToString();
 
@@ -56,8 +56,10 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	const bool InheritsDataAsset = Class->IsChildOf(UDataAsset::StaticClass());
 	if (!CanImport(Type, false, Class)) return nullptr;
 
-	/* Convert from relative path to full path */
-	if (FPaths::IsRelative(File)) File = FPaths::ConvertRelativePathToFull(File);
+	if (bUseRelativePath) {
+		/* Convert from relative path to full path */
+		if (FPaths::IsRelative(File)) File = FPaths::ConvertRelativePathToFull(File);
+	}
 
 	FString FailureReason;
 	UPackage* LocalPackage = FAssetUtilities::CreateAssetPackage(Name, File, FailureReason);

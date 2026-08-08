@@ -21,6 +21,10 @@ void TSelectedAssetsBase::Execute() {
 		return;
 	}
 
+	/* Reached straight off the Cloud menu, never through the reflect button, so the project name
+	 * the exports get resolved against is fetched here */
+	Cloud::EnsureMetadataBlocking();
+
 	TArray<FAssetData> AssetDataList = GetAssetsInSelectedFolder();
 
 	/* One selected asset is a more specific request than the folder it happens to sit in */

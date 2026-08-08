@@ -35,14 +35,14 @@ UPackage* FAssetUtilities::CreateAssetPackage(const FString& Path) {
 }
 
 UPackage* FAssetUtilities::CreateAssetPackage(const FString& Name, const FString& OutputPath, FString& FailureReason) {
-	const FString& ProfileName = GReflectionRuntime.Profile.Name;
+	const FString& ProjectName = GReflectionRuntime.Profile.ProjectName;
 
 	FString ModifiablePath = OutputPath;
 
 	/* References Automatically Formatted */
 	if (!ModifiablePath.StartsWith("/Game/") && !ModifiablePath.StartsWith("/Plugins/") && ModifiablePath.Contains("/Content/")) {
-		if (!ProfileName.IsEmpty()) {
-			ModifiablePath = ModifiablePath.Replace(*(ProfileName + "/Content"), TEXT("/Game"));
+		if (!ProjectName.IsEmpty()) {
+			ModifiablePath = ModifiablePath.Replace(*(ProjectName + "/Content"), TEXT("/Game"));
 			ModifiablePath.Split(*(GReflectionRuntime.ExportDirectory.Path + "/"), nullptr, &ModifiablePath, ESearchCase::IgnoreCase, ESearchDir::FromStart);
 			ModifiablePath.Split("/", &ModifiablePath, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 			ModifiablePath += "/";

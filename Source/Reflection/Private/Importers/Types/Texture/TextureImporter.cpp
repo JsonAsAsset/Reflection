@@ -8,6 +8,7 @@
 
 #include "Engine/TextureLightProfile.h"
 #include "Engine/EngineUtilities.h"
+#include "Engine/Log.h"
 #include "HttpModule.h"
 #include "Interfaces/IHttpResponse.h"
 #include "Modules/Cloud/Cloud.h"
@@ -98,21 +99,16 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 		Path.Split(".", &PackagePath, &AssetName);
 	}
 
-	FRRedirects::Redirect(PackagePath);
+	/* Where an asset lands is one decision, made in one place: the redirects, the plugin whatever
+	 * root it names, and the paths that arrive relative to the export directory */
+	FString FailureReason;
+	UPackage* Package = FAssetUtilities::CreateAssetPackage(AssetName, PackagePath, FailureReason);
 
-	/* Missing Plugin: Create it */
-	if (!PackagePath.StartsWith("/Game/") && !PackagePath.StartsWith("/Engine/")) {
-		FString PluginName;
-		PackagePath.Split("/", nullptr, &PluginName, ESearchCase::IgnoreCase, ESearchDir::FromStart);
-		PluginName.Split("/", &PluginName, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromStart);
+	if (Package == nullptr) {
+		UE_LOG(LogReflection, Error, TEXT("No package for \"%s\": %s"), *Path, *FailureReason);
 
-		if (GetPlugin(PluginName) == nullptr) {
-			CreatePlugin(PluginName);
-		}
+		return false;
 	}
-
-	UPackage* Package = FAssetUtilities::CreateAssetPackage(*PackagePath);
-	Package->FullyLoad();
 
 	const bool UseRawMipData = FTextureTypes::RequiresRawMipData(Type, FTextureTypes::IsVectorDisplacementMap(Export));
 

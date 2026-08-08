@@ -8,8 +8,8 @@
 #include "Importers/Types/Texture/TextureTypes.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
+#include "Modules/UI/Reflect/SReflectPathsDialog.h"
 #include "Engine/EngineUtilities.h"
-#include "Settings/Runtime.h"
 #include "Utilities/AssetPaths.h"
 #include "Utilities/Dialog.h"
 
@@ -20,42 +20,26 @@ void TToolImportFromPath::Execute() {
 		return;
 	}
 
-	/* The path is usually already on the clipboard, straight out of the asset it was copied from */
-	FString Paths = GetClipboard();
-	if (!Paths.Contains(TEXT("/"))) {
-		Paths.Empty();
-	}
+	/* Nothing here goes through the reflect button, so this is where the project name gets fetched */
+	if (!Cloud::EnsureMetadataBlocking()) {
+		SpawnPrompt("Reflect From Path", "Cloud didn't say which project it has loaded, so paths can't be resolved.");
 
-	/* The example writes itself out of whatever profile Cloud has loaded */
-	const FString ProfileName = GReflectionRuntime.Profile.Name.IsEmpty()
-		? TEXT("Project")
-		: GReflectionRuntime.Profile.Name;
-
-	if (!SpawnTextEntryPrompt(
-		TEXT("Reflect From Path"),
-		FString::Printf(TEXT("One asset path per line, as Cloud knows it:\n\n%s/Content/Path/To/Asset"), *ProfileName),
-		Paths)) {
 		return;
 	}
 
-	TArray<FString> Lines;
-	Paths.ParseIntoArrayLines(Lines);
+	TArray<FString> Paths;
+
+	if (!SReflectPathsDialog::Open(Paths)) {
+		return;
+	}
 
 	int32 Reflected = 0;
-	int32 Attempted = 0;
+	const int32 Attempted = Paths.Num();
 
-	for (const FString& Line : Lines) {
-		if (Line.TrimStartAndEnd().IsEmpty()) continue;
-
-		Attempted++;
-
-		if (Import(Line)) {
+	for (const FString& Path : Paths) {
+		if (Import(Path)) {
 			Reflected++;
 		}
-	}
-
-	if (Attempted == 0) {
-		return;
 	}
 
 	const bool Successful = Reflected == Attempted;
@@ -79,6 +63,7 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 	/* Cloud cuts everything from the first dot, so an export name or an extension makes no
 	 * difference to it, and the editor path below has to be cut the same way to match */
 	int32 Dot;
+
 	if (PackagePath.FindChar(TEXT('.'), Dot)) {
 		PackagePath.LeftInline(Dot);
 	}
@@ -117,19 +102,16 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 		return false;
 	}
 
-	/* Where it lands in the editor */
-	const FString ObjectPath = ToEditorPackagePath(PackagePath);
-
 	FString AssetName;
-	ObjectPath.Split(TEXT("/"), nullptr, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+	PackagePath.Split(TEXT("/"), nullptr, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 
 	if (FTextureTypes::IsSupported(Type)) {
 		UTexture* Texture = nullptr;
 
-		return FTextureImport::FromCloud(ObjectPath + "." + AssetName, PackagePath, Texture);
+		return FTextureImport::FromCloud(PackagePath + "." + AssetName, PackagePath, Texture);
 	}
 
 	IImporter* OutImporter = nullptr;
 
-	return IImportReader::ReadExportsAndImport(Exports, ObjectPath, OutImporter);
+	return IImportReader::ReadExportsAndImport(Exports, PackagePath, OutImporter, false, false);
 }

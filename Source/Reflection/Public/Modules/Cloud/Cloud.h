@@ -39,7 +39,17 @@ public:
 	};
 
 public:
+	static inline FString MetadataURL = TEXT("/api/metadata");
+
 	static void Update(TFunction<void(bool)> OnResponse);
+
+	/* Fills the runtime in from Cloud's metadata if it isn't there yet, and says whether the
+	 * project name ended up set.
+	 *
+	 * Turning a Cloud path into an editor path needs that name, and the tools reached straight off
+	 * a menu never pass through the reflect button that fetches it, so they ask here first. Costs
+	 * one request per session. */
+	static bool EnsureMetadataBlocking();
 
 	/* Export Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
@@ -61,6 +71,17 @@ public:
 		 * encoding. False when the Cloud couldn't produce the payload, which it says by answering
 		 * with json instead. */
 		static bool GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData);
+	};
+
+	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+public:
+	static inline FString FolderPathsURL = TEXT("/api/folder/paths");
+
+	class REFLECTION_API Folder {
+	public:
+		/* Every asset path the Cloud has under Path, subfolders included, in the form the export
+		 * endpoint takes back. Empty when the Cloud has nothing there. */
+		static TArray<FString> GetPathsBlocking(const FString& Path);
 	};
 
 	/* Requests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

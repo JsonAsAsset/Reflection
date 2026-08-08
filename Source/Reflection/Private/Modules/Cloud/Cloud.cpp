@@ -175,7 +175,69 @@ bool Cloud::Export::GetBinaryBlocking(const FString& Path, const FString& Conten
 	return OutData.Num() > 0;
 }
 
+/* Folders ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+TArray<FString> Cloud::Folder::GetPathsBlocking(const FString& Path) {
+	TArray<FString> Paths;
+
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(FolderPathsURL, { { TEXT("path"), Path } });
+	if (!Response.IsValid() || !Response->HasField(TEXT("paths"))) {
+		return Paths;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Value : Response->GetArrayField(TEXT("paths"))) {
+		FString AssetPath;
+
+		if (Value.IsValid() && Value->TryGetString(AssetPath) && !AssetPath.IsEmpty()) {
+			Paths.Add(AssetPath);
+		}
+	}
+
+	return Paths;
+}
+
 /* Metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+static void ApplyMetadata(const TSharedPtr<FJsonObject>& MetadataResponse) {
+	/* The project the files came out of, which is what every Cloud path is spelled with */
+	if (MetadataResponse->HasField(TEXT("name"))) {
+		GReflectionRuntime.Profile.ProjectName = MetadataResponse->GetStringField(TEXT("name"));
+	}
+
+	if (MetadataResponse->HasField(TEXT("major_version"))) {
+		const int MajorVersion = MetadataResponse->GetIntegerField(TEXT("major_version"));
+
+		GReflectionRuntime.MajorVersion = MajorVersion;
+	}
+
+	if (MetadataResponse->HasField(TEXT("minor_version"))) {
+		const int MinorVersion = MetadataResponse->GetIntegerField(TEXT("minor_version"));
+
+		GReflectionRuntime.MinorVersion = MinorVersion;
+	}
+
+	if (MetadataResponse->HasField(TEXT("profile"))) {
+		const auto Profile = MetadataResponse->GetObjectField(TEXT("profile"));
+
+		GReflectionRuntime.Profile.Name = Profile->GetStringField(TEXT("name"));
+	}
+}
+
+bool Cloud::EnsureMetadataBlocking() {
+	if (!GReflectionRuntime.Profile.ProjectName.IsEmpty()) {
+		return true;
+	}
+
+	const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "AskingCloudMetadata", "Asking Cloud which project it has loaded"));
+
+	const TSharedPtr<FJsonObject> Response = GetBlocking(MetadataURL);
+	if (!Response.IsValid()) {
+		return false;
+	}
+
+	ApplyMetadata(Response);
+
+	return !GReflectionRuntime.Profile.ProjectName.IsEmpty();
+}
+
 void Cloud::Update(TFunction<void(bool)> OnResponse) {
 	UReflectionSettings* MutableSettings = GetSettings();
 
@@ -185,32 +247,14 @@ void Cloud::Update(TFunction<void(bool)> OnResponse) {
 		return;
 	}
 
-	Get("/api/metadata", {}, {}, [MutableSettings, OnResponse](const TSharedPtr<FJsonObject>& MetadataResponse) {
+	Get(MetadataURL, {}, {}, [OnResponse](const TSharedPtr<FJsonObject>& MetadataResponse) {
 		if (!MetadataResponse.IsValid()) {
 			OnResponse(false);
 
 			return;
 		}
 
-		if (MetadataResponse->HasField(TEXT("major_version"))) {
-			const int MajorVersion = MetadataResponse->GetIntegerField(TEXT("major_version"));
-
-			GReflectionRuntime.MajorVersion = MajorVersion;
-		}
-
-		if (MetadataResponse->HasField(TEXT("minor_version"))) {
-			const int MinorVersion = MetadataResponse->GetIntegerField(TEXT("minor_version"));
-
-			GReflectionRuntime.MinorVersion = MinorVersion;
-		}
-
-		if (MetadataResponse->HasField(TEXT("profile"))) {
-			const auto Profile = MetadataResponse->GetObjectField(TEXT("profile"));
-
-			GReflectionRuntime.Profile.Name = Profile->GetStringField(TEXT("name"));
-		}
-
-		SavePluginSettings(MutableSettings);
+		ApplyMetadata(MetadataResponse);
 
 		OnResponse(true);
 	});

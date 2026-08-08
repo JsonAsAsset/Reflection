@@ -58,6 +58,7 @@ public:
 	/* UI Display ~~~~~~~~~~~~~~ */
 	static TSharedRef<SWidget> CreateMenuDropdown();
 	static TSharedRef<SWidget> CreateCloudMenuDropdown();
+	static TSharedRef<SWidget> CreateReflectFromPathMenuDropdown();
 
 	static bool IsToolBarVisible();
 

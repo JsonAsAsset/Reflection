@@ -6,7 +6,12 @@
 #include "Engine/DeveloperSettings.h"
 
 struct FRCloudProfile {
+	/* What the profile is called in Cloud, which is whatever the user named it */
 	FString Name;
+
+	/* The project the profile's files came out of ("FortniteGame"), which is what package paths
+	 * are spelled with. Nothing like the name above, and the only one of the two paths care. */
+	FString ProjectName;
 };
 
 struct FRRuntime {

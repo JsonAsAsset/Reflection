@@ -6,7 +6,6 @@
 
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Tools/ToolRegistry.h"
-#include "Modules/Toolbar/Tools/ImportFromPath.h"
 
 /* Every tool registers from its own header, so including them is what puts them in the menu */
 #include "Modules/Cloud/Tools/AnimationData.h"
@@ -17,30 +16,8 @@
 #include "Modules/Cloud/Tools/WidgetAnimations.h"
 
 void ICloudToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
-	/* Everything in the section below works off whatever is selected in the content browser.
-	 * Fetching by path doesn't, so it sits on its own rather than pretending to belong. */
-	MenuBuilder.BeginSection("ReflectionCloudReflectSection", FText::FromString("Reflection"));
-
-	MenuBuilder.AddMenuEntry(
-		FText::FromString("Reflect"),
-		FText::FromString("Reflect an asset out of Cloud by its path, with nothing selected"),
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "ContentBrowser.AssetTreeFolderOpen"),
-
-		FUIAction(
-			FExecuteAction::CreateLambda([] {
-				TToolImportFromPath* Tool = new TToolImportFromPath();
-				Tool->Execute();
-			}),
-
-			FCanExecuteAction::CreateLambda([] {
-				return Cloud::Status::IsOpened();
-			})
-		),
-		NAME_None
-	);
-
-	MenuBuilder.EndSection();
-
+	/* Everything in here works off whatever is selected in the content browser. Fetching by path
+	 * doesn't, so it lives on its own toolbar button rather than pretending to belong. */
 	MenuBuilder.BeginSection("ReflectionCloudSection", FText::FromString("Selected Assets"));
 
 	TArray<TSelectedAssetsBase*> Tools;

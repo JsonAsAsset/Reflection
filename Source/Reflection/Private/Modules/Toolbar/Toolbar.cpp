@@ -10,6 +10,7 @@
 #include "Importers/Constructor/ImportReader.h"
 #include "Modules/Metadata.h"
 #include "Modules/Cloud/Cloud.h"
+#include "Modules/Toolbar/Tools/ImportFromPath.h"
 #if ENGINE_UE5
 #include "Modules/Toolbar/Dropdowns/ValidationDropdownBuilder.h"
 #endif
@@ -18,6 +19,7 @@
 #include "Modules/Toolbar/Dropdowns/GeneralDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/DonateDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ParentDropdownBuilder.h"
+#include "Modules/Toolbar/Dropdowns/ReflectFromPathDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
 #include "Utilities/Dialog.h"
@@ -30,6 +32,22 @@
 #endif
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;
+
+/* Reflecting by path starts from the path alone, so the button can go straight to the prompt
+ * without any of the selection or Cloud readiness dance the reflect button does */
+static void ReflectFromPath() {
+	TToolImportFromPath Tool;
+	Tool.Execute();
+}
+
+static bool CanReflectFromPath() {
+	return Cloud::Status::IsOpened();
+}
+
+/* Reflection ships no artwork for this one, so the editor's own path icon stands in */
+static FSlateIcon GetReflectFromPathIcon() {
+	return FSlateIcon(FAppStyle::GetAppStyleSetName(), "ContentBrowser.AssetTreeFolderOpen");
+}
 
 #if ENGINE_UE5
 /* Reflection ships no validation artwork, so the editor's own stands in */
@@ -229,6 +247,39 @@ void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 		FSlateIcon(),
 		true
 	));
+
+	/* Opens the path prompt straight away: nothing needs to be selected for it */
+	Section.AddEntry(FToolMenuEntry::InitToolBarButton(
+		"ReflectionCloudFromPath",
+		FToolUIActionChoice(
+			FUIAction(
+				FExecuteAction::CreateStatic(&ReflectFromPath),
+				FCanExecuteAction::CreateStatic(&CanReflectFromPath),
+				FGetActionCheckState(),
+				FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
+			)
+		),
+		FText::FromString(""),
+		FText::FromString("Reflect an asset out of Cloud by its path, with nothing selected"),
+		GetReflectFromPathIcon(),
+		EUserInterfaceActionType::Button
+	));
+
+	/* Menu dropdown */
+	const FToolMenuEntry FromPathMenuButton = Section.AddEntry(FToolMenuEntry::InitComboButton(
+		"ReflectionCloudFromPathMenu",
+		FUIAction(
+			FExecuteAction(),
+			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
+			FGetActionCheckState(),
+			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
+		),
+		FOnGetContent::CreateStatic(&CreateReflectFromPathMenuDropdown),
+		FText::FromString(""),
+		FText::FromString(""),
+		FSlateIcon(),
+		true
+	));
 #endif
 }
 #endif
@@ -301,6 +352,34 @@ void UReflectionToolbar::UE4CloudRegister(FToolBarBuilder& Builder) {
 		FText::FromString(FRMetadata::Version),
 		FText::FromString(""),
 		FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), FName("Toolbar.Cloud")),
+		true
+	);
+
+	/* Opens the path prompt straight away: nothing needs to be selected for it */
+	Builder.AddToolBarButton(
+		FUIAction(
+			FExecuteAction::CreateStatic(&ReflectFromPath),
+			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
+			FGetActionCheckState(),
+			FIsActionButtonVisible::CreateStatic(&IsToolBarVisible)
+		),
+		NAME_None,
+		FText::FromString(""),
+		FText::FromString("Reflect an asset out of Cloud by its path, with nothing selected"),
+		GetReflectFromPathIcon()
+	);
+
+	Builder.AddComboButton(
+		FUIAction(
+			FExecuteAction(),
+			FCanExecuteAction::CreateStatic(&CanReflectFromPath),
+			FGetActionCheckState(),
+			FIsActionButtonVisible::CreateStatic(IsToolBarVisible)
+		),
+		FOnGetContent::CreateStatic(&CreateReflectFromPathMenuDropdown),
+		FText::FromString(""),
+		FText::FromString(""),
+		GetReflectFromPathIcon(),
 		true
 	);
 }
@@ -500,6 +579,14 @@ TSharedRef<SWidget> UReflectionToolbar::CreateCloudMenuDropdown() {
 	for (const TSharedRef<IParentDropdownBuilder>& Dropdown : Dropdowns) {
 		Dropdown->Build(MenuBuilder);
 	}
+
+	return MenuBuilder.MakeWidget();
+}
+
+TSharedRef<SWidget> UReflectionToolbar::CreateReflectFromPathMenuDropdown() {
+	FMenuBuilder MenuBuilder(false, nullptr);
+
+	IReflectFromPathDropdownBuilder().Build(MenuBuilder);
 
 	return MenuBuilder.MakeWidget();
 }

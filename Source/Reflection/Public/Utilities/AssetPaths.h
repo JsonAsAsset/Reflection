@@ -11,11 +11,11 @@
 inline FString ToEditorPackagePath(const FString& InPath) {
 	FString Path = InPath;
 
-	const FString& ProfileName = GReflectionRuntime.Profile.Name;
+	const FString& ProjectName = GReflectionRuntime.Profile.ProjectName;
 
-	if (!ProfileName.IsEmpty()) {
-		Path = Path.Replace(*(ProfileName + "/Content/"), TEXT("/Game/"));
-		Path = Path.Replace(*(ProfileName + "/Plugins"), TEXT(""));
+	if (!ProjectName.IsEmpty()) {
+		Path = Path.Replace(*(ProjectName + "/Content/"), TEXT("/Game/"));
+		Path = Path.Replace(*(ProjectName + "/Plugins"), TEXT(""));
 		Path = Path.Replace(TEXT("/Content/"), TEXT("/"));
 	}
 
