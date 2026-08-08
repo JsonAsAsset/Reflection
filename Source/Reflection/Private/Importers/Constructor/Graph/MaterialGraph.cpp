@@ -148,6 +148,11 @@ void IMaterialGraph::ClampCustomPrimitiveDataIndex(UMaterialExpression* Expressi
 		return;
 	}
 
+	/* Custom primitive data arrives in 4.23, and the count that bounds an index into it arrives
+	 * with it. Before that there is no property below to find and no number to hold one to, so
+	 * this is the one part of the check that has to be asked of the engine version rather than of
+	 * the object: the count is a constant on a type that is not there to name. */
+#if !UE4_22_BELOW
 	const FBoolProperty* UsesCustomData = FindFProperty<FBoolProperty>(Expression->GetClass(), TEXT("bUseCustomPrimitiveData"));
 
 	if (UsesCustomData == nullptr || !UsesCustomData->GetPropertyValue_InContainer(Expression)) {
@@ -175,6 +180,7 @@ void IMaterialGraph::ClampCustomPrimitiveDataIndex(UMaterialExpression* Expressi
 		TEXT("Reflection: \"%s\" reads custom primitive data %lld, which this engine stops at %lld"),
 		*Expression->GetName(), Index, LastIndex
 	));
+#endif
 }
 
 void IMaterialGraph::SetExpressionParent(UObject* Parent, UMaterialExpression* Expression, const TSharedPtr<FJsonObject>& Json) {

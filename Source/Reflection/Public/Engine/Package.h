@@ -51,12 +51,20 @@ T* LoadObjectByPath(const FString& Path) {
 
 	const FString PackageName = FPackageName::ObjectPathToPackageName(Path);
 
-	/* DoesPackageExist asserts rather than answering when it dislikes what it is handed: a name it
-	 * cannot convert trips an ensure, and one that converts but belongs to no mounted content root
-	 * reaches a Fatal log through LongPackageNameToFilename. Paths get here from Cloud responses
-	 * and from json exports, so what arrives is not this plugin's to trust. Resolving the filename
-	 * first is the same question asked in a form that returns false instead. */
-	if (FString Unused; !FPackageName::TryConvertLongPackageNameToFilename(PackageName, Unused)) {
+	/* DoesPackageExist asserts rather than answering when it dislikes what it is handed, in two
+	 * separate ways: a name holding a character a package name cannot hold trips its ensure, and
+	 * one that reads as a package but belongs to no mounted content root reaches a Fatal log
+	 * through LongPackageNameToFilename.
+	 *
+	 * IsValidLongPackageName is the same pair of questions asked in a form that answers false. It
+	 * covers the characters, '.' and ':' and '\' among them, which is what a subobject path still
+	 * carries when it gets this far, and it covers the roots. Read only roots are left out on
+	 * purpose: /Config is a valid root by that list and has no content path to resolve to, which
+	 * is the Fatal.
+	 *
+	 * Paths arrive here off Cloud responses and out of json exports, so none of this is under the
+	 * plugin's control and none of it is worth trusting. */
+	if (!FPackageName::IsValidLongPackageName(PackageName, /*bIncludeReadOnlyRoots=*/false)) {
 		return nullptr;
 	}
 
