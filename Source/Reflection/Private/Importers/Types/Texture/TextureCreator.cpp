@@ -2,7 +2,6 @@
 
 #include "Importers/Types/Texture/TextureCreator.h"
 
-#include "Engine/Texture2DArray.h"
 #include "Engine/TextureCube.h"
 #include "Engine/TextureLightProfile.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -22,9 +21,11 @@ bool FTextureCreator::Create(const FString& Type, const TSharedPtr<FJsonObject>&
 		return CreateTexture2D<UTextureLightProfile>(OutTexture, Data, Export);
 	}
 
+#if !UE4_23_BELOW
 	if (Type == TEXT("Texture2DArray")) {
 		return CreateTexture2DArray(OutTexture, Data, Export);
 	}
+#endif
 
 	if (Type == TEXT("TextureCube")) {
 		return CreateTextureCube(OutTexture, Data, Export);
@@ -142,6 +143,7 @@ bool FTextureCreator::CreateTexture2D(UTexture*& OutTexture, TArray<uint8>& Data
 	return true;
 }
 
+#if !UE4_23_BELOW
 bool FTextureCreator::CreateTexture2DArray(UTexture*& OutTexture2DArray, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export) {
 	if (!RequireRawMipData(TEXT("An array"))) {
 		return false;
@@ -174,6 +176,7 @@ bool FTextureCreator::CreateTexture2DArray(UTexture*& OutTexture2DArray, TArray<
 
 	return true;
 }
+#endif
 
 bool FTextureCreator::CreateTextureCube(UTexture*& OutTextureCube, TArray<uint8>& Data, const TSharedPtr<FJsonObject>& Export) {
 	if (!RequireRawMipData(TEXT("A cube"))) {

@@ -64,7 +64,7 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 	int32 Dot;
 
 	if (PackagePath.FindChar(TEXT('.'), Dot)) {
-		PackagePath.LeftInline(Dot);
+		LeftInline(PackagePath, Dot);
 	}
 
 	PackagePath.TrimStartAndEndInline();

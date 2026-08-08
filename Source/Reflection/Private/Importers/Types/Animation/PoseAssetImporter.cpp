@@ -283,7 +283,7 @@ TMap<FName, FTransform> IPoseAssetImporter::GetCookedReferencePose() const {
 	/* Cloud cuts the export index off itself, but the path has to match what it indexes on */
 	int32 Dot;
 	if (SkeletonPath.FindLastChar(TEXT('.'), Dot)) {
-		SkeletonPath.LeftInline(Dot);
+		LeftInline(SkeletonPath, Dot);
 	}
 
 	const FBlockingRequestScope BlockingScope(FText::Format(

@@ -15,12 +15,10 @@
 /* Compiles an experimental version of Reflection */
 #ifndef REFLECTION_EXPERIMENTAL
 #define REFLECTION_EXPERIMENTAL 0
+#endif
 
-#include "Engine/Texture2DArray.h"
 #include "Engine/TextureCube.h"
 #include "Engine/VolumeTexture.h"
-
-#endif
 
 /*
  * Which way the reflect button goes in.
@@ -172,6 +170,14 @@
 	#define UE5_1_BELOW 0
 #endif
 
+/* UTexture2DArray is a 4.24 class. On 4.23 the type does not exist under any spelling, so the
+ * array paths are compiled out rather than shimmed, and the importer reports the type as one it
+ * cannot make. Gated here rather than with the other texture includes at the top of the file
+ * because the version macros are only defined above this point. */
+#if !UE4_23_BELOW
+#include "Engine/Texture2DArray.h"
+#endif
+
 /*
  * Properties were UObjects until 4.25 moved them onto FField, renaming UProperty to FProperty
  * and the whole U*Property family with it. Reflection is written against the 4.25+ spelling,
@@ -292,6 +298,16 @@ inline FName StringToName(const FString& String) {
 	return FName(*String);
 #else
 	return FName(String);
+#endif
+}
+
+/* FString grew the Left/Right/Mid Inline family in 4.24. A free function rather than a shim on the
+ * type, so one spelling covers every version: before 4.24 the truncation is a plain reassignment. */
+inline void LeftInline(FString& String, const int32 Count) {
+#if UE4_23_BELOW
+	String = String.Left(Count);
+#else
+	String.LeftInline(Count);
 #endif
 }
 
@@ -512,6 +528,7 @@ inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 	}
 
 	/* Derives from UTexture rather than UTexture2D, so the cast above never catches it */
+#if !UE4_23_BELOW
 	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
 #if UE5_1_BEYOND
 		return Texture2DArray->GetPlatformData();
@@ -519,6 +536,7 @@ inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 		return Texture2DArray->PlatformData;
 #endif
 	}
+#endif
 
 	return nullptr;
 }
@@ -549,6 +567,7 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 #endif
 	}
 
+#if !UE4_23_BELOW
 	if (UTexture2DArray* Texture2DArray = Cast<UTexture2DArray>(Texture)) {
 #if UE5_1_BEYOND
 		Texture2DArray->SetPlatformData(PlatformData);
@@ -556,6 +575,7 @@ inline void SetPlatformData(UTexture* Texture, FTexturePlatformData* PlatformDat
 		Texture2DArray->PlatformData = PlatformData;
 #endif
 	}
+#endif
 }
 
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),

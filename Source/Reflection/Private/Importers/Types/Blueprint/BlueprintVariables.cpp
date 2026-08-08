@@ -34,7 +34,7 @@ namespace {
 		if ((*Reference)->TryGetStringField(TEXT("ObjectPath"), ObjectPath) && !ObjectPath.Contains(TEXT("/Script/"))) {
 			int32 Dot;
 			if (ObjectPath.FindLastChar(TEXT('.'), Dot)) {
-				ObjectPath.LeftInline(Dot);
+				LeftInline(ObjectPath, Dot);
 			}
 
 			if (T* Loaded = LoadObjectByPath<T>(ObjectPath + TEXT(".") + Name.ToString())) {

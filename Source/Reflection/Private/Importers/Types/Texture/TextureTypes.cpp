@@ -5,7 +5,10 @@
 const TArray<FString>& FTextureTypes::All() {
 	static const TArray<FString> Types = {
 		TEXT("Texture2D"),
+		/* UTexture2DArray is 4.24 and up, so 4.23 has nothing to build one with */
+#if !UE4_23_BELOW
 		TEXT("Texture2DArray"),
+#endif
 		TEXT("TextureCube"),
 		TEXT("VolumeTexture"),
 		TEXT("TextureRenderTarget2D"),
