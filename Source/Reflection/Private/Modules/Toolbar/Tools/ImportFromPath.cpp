@@ -54,6 +54,7 @@ void TToolImportFromPath::Execute() {
 		true,
 		310.0f
 	);
+
 	FImportIssues::Finish();
 }
 
