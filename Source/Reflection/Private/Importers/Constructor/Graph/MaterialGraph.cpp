@@ -55,6 +55,31 @@ TSharedPtr<FJsonObject> IMaterialGraph::FindMaterialData(const FString& Type, FU
 	return EditorOnlyData->GetObjectField(TEXT("Properties"));
 }
 
+/* A null in the expression list is a node the export never carried. */
+bool IMaterialGraph::HasNullExpressions(const TSharedPtr<FJsonObject>& Properties) {
+	const TArray<TSharedPtr<FJsonValue>>* Expressions = nullptr;
+	const TSharedPtr<FJsonObject>* ExpressionCollection;
+
+	/* 5.1 moved the list into a collection of its own */
+	if (Properties->TryGetObjectField(TEXT("ExpressionCollection"), ExpressionCollection)) {
+		(*ExpressionCollection)->TryGetArrayField(TEXT("Expressions"), Expressions);
+	} else {
+		Properties->TryGetArrayField(TEXT("Expressions"), Expressions);
+	}
+
+	if (Expressions == nullptr) {
+		return false;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Expression : *Expressions) {
+		if (!Expression.IsValid() || Expression->IsNull()) {
+			return true;
+		}
+	}
+
+	return false;
+}
+
 void IMaterialGraph::ConstructExpressions(FUObjectExportContainer* Container) {
 	/* Go through each expression, and create the expression */
 	for (FUObjectExport* Export : Container->Exports) {
@@ -927,6 +952,14 @@ void IMaterialGraph::ReportMaterialDataMissing() const {
 		EImportIssue::Data,
 		TEXT("The export carries no material data"),
 		TEXT("Nothing was there to build a graph from - see the requirements for Materials on GitHub.")
+	);
+}
+
+void IMaterialGraph::ReportNullExpressions() const {
+	FImportIssues::Report(
+		EImportIssue::Data,
+		TEXT("The export's expression list has holes in it"),
+		TEXT("Some of the nodes this material is built from were not in the export, so there is no graph here to rebuild.")
 	);
 }
 

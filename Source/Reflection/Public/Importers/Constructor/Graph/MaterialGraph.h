@@ -22,6 +22,9 @@ protected:
 	/* Find Material's Data, and creates a container of material nodes */
 	TSharedPtr<FJsonObject> FindMaterialData(const FString& Type, FUObjectExportContainer* Container);
 
+	/* Whether the expression list has slots the export carried no node for */
+	static bool HasNullExpressions(const TSharedPtr<FJsonObject>& Properties);
+
 	/* Functions to Handle Expressions */
 	static void SetExpressionParent(UObject* Parent, UMaterialExpression* Expression, const TSharedPtr<FJsonObject>& Json);
 	static void AddExpressionToParent(UObject* Parent, UMaterialExpression* Expression);
@@ -93,6 +96,7 @@ protected:
 public:
 	UMaterialExpression* OnMissingNodeClass(FUObjectExport* Export, FUObjectExportContainer* Container);
 	void ReportMaterialDataMissing() const;
+	void ReportNullExpressions() const;
 	void ReportCreatedStubs() const;
 
 #if ENGINE_UE4

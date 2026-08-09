@@ -195,7 +195,10 @@ void IUserDefinedStructImporter::AddMemberToStruct(UUserDefinedStruct* UserDefin
         }
 
         Variable.ToolTip = Metadata->ToolTip;
+
+#if ENGINE_UE5
         Variable.MetaData = Metadata->MetaData;
+#endif
     }
 
     FStructureEditorUtils::GetVarDesc(UserDefinedStruct).Add(Variable);

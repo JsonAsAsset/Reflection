@@ -48,6 +48,13 @@ bool IMaterialImporter::Import() {
 	FUObjectExportContainer* ExpressionContainer = new FUObjectExportContainer();
 	TSharedPtr<FJsonObject> Props = FindMaterialData(GetAssetType(), ExpressionContainer);
 
+	/* Whatever would be built out of a list with holes in it is not this material */
+	if (HasNullExpressions(Props)) {
+		ReportNullExpressions();
+
+		return false;
+	}
+
 	/* Map out each expression for easier access */
 	ConstructExpressions(ExpressionContainer);
 
