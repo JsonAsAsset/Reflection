@@ -40,13 +40,10 @@ bool IAnimationBlueprintImporter::Import() {
 			/* Something of that name is there but isn't an animation blueprint, so it can neither be reused nor
 			 * created over. Bail rather than let the assert take the editor down. */
 			if (!AnimBlueprint) {
-				AppendNotification(
-					FText::FromString("Asset Name Already Taken"),
-					FText::FromString(FString::Printf(TEXT("'%s' already exists and is not an Animation Blueprint. Rename or delete it before reflecting."), *GetAssetName())),
-					3.0f,
-					SNotificationItem::CS_Fail,
-					true,
-					350.0f
+				FImportIssues::Report(
+					EImportIssue::Failed,
+					TEXT("The asset name is already taken"),
+					FString::Printf(TEXT("'%s' already exists and is not an Animation Blueprint. Rename or delete it before reflecting."), *GetAssetName())
 				);
 
 				return false;

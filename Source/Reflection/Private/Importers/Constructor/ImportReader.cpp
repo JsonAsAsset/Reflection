@@ -2,6 +2,7 @@
 
 #include "Importers/Constructor/ImportReader.h"
 
+#include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/Importer.h"
 #include "Importers/Constructor/TemplatedImporter.h"
 #include "Importers/Types/DataAssetImporter.h"
@@ -94,15 +95,7 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 
 	if (LocalPackage == nullptr) {
-		AppendNotification(
-			FText::FromString("Failed: " + Type),
-			FText::FromString(FailureReason),
-			4.0f,
-			FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + Type)), TEXT("ClassThumbnail")),
-			SNotificationItem::CS_Fail,
-			false,
-			350.0f
-		);
+		FImportIssues::ReportFor(Name, FString(), Type, EImportIssue::Failed, TEXT("Couldn't create a package for this asset"), FailureReason);
 
 		return nullptr;
 	}
@@ -128,13 +121,22 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	Export->Package = LocalPackage;
 	Importer->Initialize(Export, Container);
 
+	/* Everything the import reports from here on belongs to this asset, including its references */
+	const FImportIssueScope IssueScope(Name, LocalPackage->GetName(), Type);
+
 	/* Import the asset ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 	bool Successful = false; {
 		try {
 			Successful = Importer->Import();
 		} catch (const char* Exception) {
 			UE_LOG(LogReflection, Error, TEXT("Importer exception: %s"), *FString(Exception));
+
+			FImportIssues::Report(EImportIssue::Failed, TEXT("The importer threw partway through"), FString(Exception));
 		}
+	}
+
+	if (!Successful) {
+		FImportIssues::Report(EImportIssue::Failed, TEXT("The importer couldn't build this asset"));
 	}
 
 	if (HideNotifications) {
@@ -147,27 +149,16 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		Type.Split("GeneratedClass", &ClassIconType, nullptr);
 	}
 
+	/* Failures are on the Reflection Errors window rather than on a notification that expires */
 	if (Successful) {
 		UE_LOG(LogReflection, Log, TEXT("Successfully reflected \"%s\" as \"%s\""), *Name, *Type);
 
-		/* Successful Notification */
 		AppendNotification(
 			FText::FromString("Reflected: " + Name),
 			FText::FromString(Type),
 			2.0f,
 			FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + ClassIconType)), TEXT("ClassThumbnail")),
 			SNotificationItem::CS_Success,
-			false,
-			350.0f
-		);
-	} else {
-		/* Failed Notification */
-		AppendNotification(
-			FText::FromString("Failed: " + Name),
-			FText::FromString(Type),
-			2.0f,
-			FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + ClassIconType)), TEXT("ClassThumbnail")),
-			SNotificationItem::CS_Fail,
 			false,
 			350.0f
 		);

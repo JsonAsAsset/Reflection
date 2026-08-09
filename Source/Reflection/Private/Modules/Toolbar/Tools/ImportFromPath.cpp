@@ -3,6 +3,7 @@
 #include "Modules/Toolbar/Tools/ImportFromPath.h"
 
 #include "Containers/Export.h"
+#include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Types/Texture/TextureImporter.h"
 #include "Importers/Types/Texture/TextureTypes.h"
@@ -35,6 +36,8 @@ void TToolImportFromPath::Execute() {
 	int32 Reflected = 0;
 	const int32 Attempted = Paths.Num();
 
+	FImportIssues::Begin();
+
 	for (const FString& Path : Paths) {
 		if (Import(Path)) {
 			Reflected++;
@@ -51,6 +54,7 @@ void TToolImportFromPath::Execute() {
 		true,
 		310.0f
 	);
+	FImportIssues::Finish();
 }
 
 bool TToolImportFromPath::Import(const FString& InPath) {

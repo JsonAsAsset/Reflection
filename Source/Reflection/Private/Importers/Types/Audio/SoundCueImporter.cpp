@@ -10,13 +10,17 @@ UObject* ISoundCueImporter::CreateAsset(UObject* CreatedAsset) {
 
 bool ISoundCueImporter::Import() {
 	USoundCue* SoundCue = Create<USoundCue>();
-	
+
+	if (!SoundCue) {
+		return false;
+	}
+
 	SoundCue->PreEditChange(nullptr);
-	
+
 	/* Start importing nodes ~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-	if (SoundCue) {
+	{
 		TMap<FString, USoundNode*> SoundCueNodes;
-		
+
 		ConstructNodes(SoundCue, SoundCueNodes);
 		SetupNodes(SoundCue, SoundCueNodes);
 	}

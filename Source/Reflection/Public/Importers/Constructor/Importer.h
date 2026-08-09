@@ -14,6 +14,7 @@
 #include "TypesHelper.h"
 
 #include "Registry/RegistrationInfo.h"
+#include "ImportIssues.h"
 #include "Styling/SlateIconFinder.h"
 #include "Importers/Constructor/Asset.h"
 #include "Engine/Package.h"
@@ -86,32 +87,22 @@ TObjectPtr<T> IImporter::DownloadWrapper(TObjectPtr<T> InObject, FString Type, c
             FString NewPath = Path;
             FRRedirects::Reverse(NewPath);
             
-            /* Try importing the asset */
-            if (FAssetUtilities::ConstructAsset(FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), Type, InObject, DownloadStatus)) {
-                const FText AssetNameText = FText::FromString(Name);
-                const FSlateBrush* IconBrush = FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + Type)), TEXT("ClassThumbnail"));
+            /* Try importing the asset, saying only the success out loud */
+            if (FAssetUtilities::ConstructAsset(FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), Type, InObject, DownloadStatus) && DownloadStatus) {
+                AppendNotification(
+                    FText::FromString(Name),
+                    FText::FromString(Type),
+                    2.0f,
+                    FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + Type)), TEXT("ClassThumbnail")),
+                    SNotificationItem::CS_Success,
+                    false,
+                    310.0f
+                );
+            }
 
-                if (DownloadStatus) {
-                    AppendNotification(
-                        AssetNameText,
-                        FText::FromString(Type),
-                        2.0f,
-                        IconBrush,
-                        SNotificationItem::CS_Success,
-                        false,
-                        310.0f
-                    );
-                } else {
-                    AppendNotification(
-                        AssetNameText,
-                        FText::FromString(Type),
-                        5.0f,
-                        IconBrush,
-                        SNotificationItem::CS_Fail,
-                        true,
-                        310.0f
-                    );
-                }
+            /* In neither the project nor anywhere Cloud could reach */
+            if (InObject == nullptr) {
+                FImportIssues::ReportUnresolvedReference(Type, Name, Path);
             }
         }
     }

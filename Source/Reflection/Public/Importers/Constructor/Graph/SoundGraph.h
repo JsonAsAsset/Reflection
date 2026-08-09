@@ -12,8 +12,11 @@ public:
 	static void ConnectEdGraphNode(UEdGraphNode* NodeToConnect, UEdGraphNode* NodeToConnectTo, int Pin);
 	static void ConnectSoundNode(const USoundNode* NodeToConnect, const USoundNode* NodeToConnectTo, int Pin);
 
-	/* Creates an empty USoundNode */
+	/* Creates an empty USoundNode, null when this engine has no class for the type */
 	static USoundNode* CreateEmptyNode(FName Name, FName Type, USoundCue* SoundCue);
+
+	/* Points out, once a session, that the project never configured its sound groups */
+	static void NotifySoundGroupsUnconfigured();
 
 	void ConstructNodes(USoundCue* SoundCue, TMap<FString, USoundNode*>& OutNodes);
 	void SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoundNode*> SoundCueNodes);

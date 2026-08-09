@@ -16,12 +16,21 @@ public:
 	virtual bool Import() override;
 
 protected:
-	FUObjectExport* CookedStructMetaData = new FUObjectExport();
+	/* What the cooked metadata export carries for one member */
+	struct FMemberMetaData {
+		FString DisplayName;
+		FString ToolTip;
+		TMap<FName, FString> MetaData;
+	};
+
 	TSharedPtr<FJsonObject> DefaultProperties;
 
 	FEdGraphPinType ResolvePropertyPinType(const TSharedPtr<FJsonObject>& PropertyJsonObject);
-	void ImportPropertyIntoStruct(UUserDefinedStruct* UserDefinedStruct, const TSharedPtr<FJsonObject>& PropertyJsonObject);
 	UObject* LoadObjectFromJsonReference(const TSharedPtr<FJsonObject>& ParentJsonObject, const FString& ReferenceKey);
+
+	void ReadCookedMetaData(TMap<FName, FString>& OutStructMetaData, TMap<FString, FMemberMetaData>& OutMemberMetaData) const;
+	void AddMemberToStruct(UUserDefinedStruct* UserDefinedStruct, const TSharedPtr<FJsonObject>& PropertyJsonObject, const TMap<FString, FMemberMetaData>& MemberMetaData);
+	void ApplyDefaultValues(UUserDefinedStruct* UserDefinedStruct);
 };
 
 REGISTER_IMPORTER(IUserDefinedStructImporter, {

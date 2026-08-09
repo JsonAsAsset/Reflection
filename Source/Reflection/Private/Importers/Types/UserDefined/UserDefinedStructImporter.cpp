@@ -1,11 +1,10 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-/* TODO: Rewrite */
-
 #include "Importers/Types/UserDefined/UserDefinedStructImporter.h"
 
 #include "UserDefinedStructure/UserDefinedStructEditorData.h"
 #include "Kismet2/StructureEditorUtils.h"
+#include "UObject/StructOnScope.h"
 #include "Utilities/JsonHelpers.h"
 #include "Internationalization/Regex.h"
 
@@ -36,13 +35,34 @@ static const TMap<FString, EPinContainerType> ContainerTypeMap = {
 };
 
 UObject* IUserDefinedStructImporter::CreateAsset(UObject* CreatedAsset) {
-    return IImporter::CreateAsset(FStructureEditorUtils::CreateUserDefinedStruct(GetPackage(), *GetAssetName(), RF_Standalone | RF_Public | RF_Transactional));
+    /* What FStructureEditorUtils::CreateUserDefinedStruct does, minus the placeholder bool it adds
+     * on the way out. Adding that member compiles the struct and reinstances everything that
+     * depends on it, all to describe a member the import removes again a moment later. */
+    UUserDefinedStruct* UserDefinedStruct = NewObject<UUserDefinedStruct>(GetPackage(), *GetAssetName(), RF_Standalone | RF_Public | RF_Transactional);
+
+    UserDefinedStruct->EditorData = NewObject<UUserDefinedStructEditorData>(UserDefinedStruct, NAME_None, RF_Transactional);
+    UserDefinedStruct->Guid = FGuid::NewGuid();
+    UserDefinedStruct->SetMetaData(TEXT("BlueprintType"), TEXT("true"));
+    UserDefinedStruct->Bind();
+    UserDefinedStruct->StaticLink(true);
+    UserDefinedStruct->Status = UDSS_Error;
+
+    return IImporter::CreateAsset(UserDefinedStruct);
 }
 
 bool IUserDefinedStructImporter::Import() {
     UUserDefinedStruct* UserDefinedStruct = Create<UUserDefinedStruct>();
 
-    DefaultProperties = GetAssetData()->GetObjectField(TEXT("DefaultProperties"));
+    if (UserDefinedStruct == nullptr) {
+        return false;
+    }
+
+    if (GetAssetData()->HasTypedField<EJson::Object>(TEXT("DefaultProperties"))) {
+        DefaultProperties = GetAssetData()->GetObjectField(TEXT("DefaultProperties"));
+    } else {
+        DefaultProperties = MakeShared<FJsonObject>();
+    }
+
     GetObjectSerializer()->DeserializeObjectProperties(KeepPropertiesShared(GetAssetData(),
     {
         "Guid",
@@ -50,137 +70,201 @@ bool IUserDefinedStructImporter::Import() {
     }), UserDefinedStruct);
 
     /* Struct Metadata [Editor Only Data] */
-    CookedStructMetaData = GetContainer()->FindByType(FString("StructCookedMetaData"));
-    
-    if (CookedStructMetaData && CookedStructMetaData->Has("StructMetaData")) {
-        TArray<FUObjectJsonValueExport> ObjectMetaData = CookedStructMetaData->GetObject("StructMetaData").GetArray("ObjectMetaData");
+    TMap<FName, FString> StructMetaData;
+    TMap<FString, FMemberMetaData> MemberMetaData;
 
-        for (FUObjectJsonValueExport& ObjectMetadataValue : ObjectMetaData) {
-            FString MetadataKey = ObjectMetadataValue.GetString("Key");
-            FString MetadataValue = ObjectMetadataValue.GetString("Value");
+    ReadCookedMetaData(StructMetaData, MemberMetaData);
 
-            UserDefinedStruct->SetMetaData(FName(*MetadataKey), *MetadataValue);
+    for (const TPair<FName, FString>& Entry : StructMetaData) {
+        UserDefinedStruct->SetMetaData(Entry.Key, *Entry.Value);
 
-            /* Tooltip is a part of EditorData */
-            if (MetadataKey == TEXT("Tooltip")) {
-                FStructureEditorUtils::ChangeTooltip(UserDefinedStruct, MetadataValue);
-            }
+        /* Tooltip is a part of EditorData, and every compile writes it back over the metadata */
+        if (Entry.Key == TEXT("Tooltip")) {
+            FStructureEditorUtils::ChangeTooltip(UserDefinedStruct, Entry.Value);
         }
     }
-    
-    /* Remove default variable */
-    FStructureEditorUtils::GetVarDesc(UserDefinedStruct).Pop();
 
-    const TArray<TSharedPtr<FJsonValue>> ChildProperties = GetAssetData()->GetArrayField(TEXT("ChildProperties"));
-    
-    for (const auto& Property : ChildProperties) {
-        const TSharedPtr<FJsonObject>& PropertyObject = Property->AsObject();
-        
-        ImportPropertyIntoStruct(UserDefinedStruct, PropertyObject);
+    FStructureEditorUtils::ModifyStructData(UserDefinedStruct);
+
+    if (GetAssetData()->HasTypedField<EJson::Array>(TEXT("ChildProperties"))) {
+        for (const TSharedPtr<FJsonValue>& Property : GetAssetData()->GetArrayField(TEXT("ChildProperties"))) {
+            const TSharedPtr<FJsonObject>& PropertyObject = Property->AsObject();
+
+            if (!PropertyObject.IsValid()) continue;
+
+            AddMemberToStruct(UserDefinedStruct, PropertyObject, MemberMetaData);
+        }
     }
+
+    /* One compile for the whole layout. Compiling per member reinstances every struct and
+     * blueprint downstream of this one once per member, which for a folder of structs that
+     * reference each other runs into the hundreds of reinstanced copies. */
+    FStructureEditorUtils::OnStructureChanged(UserDefinedStruct, FStructureEditorUtils::EStructureEditorChangeInfo::AddedVariable);
+
+    ApplyDefaultValues(UserDefinedStruct);
+
+    /* Defaults only reach the struct's default instance through a compile, and this one reuses the
+     * properties the last compile built rather than rebuilding them */
+    FStructureEditorUtils::OnStructureChanged(UserDefinedStruct, FStructureEditorUtils::EStructureEditorChangeInfo::DefaultValueChanged);
 
     /* Handle edit changes, and add it to the content browser */
     return OnAssetCreation(UserDefinedStruct);
 }
 
-void IUserDefinedStructImporter::ImportPropertyIntoStruct(UUserDefinedStruct* UserDefinedStruct, const TSharedPtr<FJsonObject> &PropertyJsonObject) {
-    const FString Name = PropertyJsonObject->GetStringField(TEXT("Name"));
-    const FString Type = PropertyJsonObject->GetStringField(TEXT("Type"));
+void IUserDefinedStructImporter::ReadCookedMetaData(TMap<FName, FString>& OutStructMetaData, TMap<FString, FMemberMetaData>& OutMemberMetaData) const {
+    const FUObjectExport* CookedStructMetaData = GetContainer()->FindByType(FString("StructCookedMetaData"));
 
-    FString FieldDisplayName = Name;
-    FGuid FieldGuid;
-
-    FRegexMatcher RegexMatcher(PropertyNameRegexPattern, Name);
-    
-    if (RegexMatcher.FindNext()) {
-        /* Import properties keeping GUID if present */
-        FieldDisplayName = RegexMatcher.GetCaptureGroup(1);
-        FieldGuid = StringToGuid(RegexMatcher.GetCaptureGroup(3));
-    } else {
-        CastChecked<UUserDefinedStructEditorData>(UserDefinedStruct->EditorData)->GenerateUniqueNameIdForMemberVariable();
-        FieldGuid = FGuid::NewGuid();
-    }
-
-    FStructVariableDescription Variable; {
-        Variable.VarName = *Name;
-        Variable.FriendlyName = FieldDisplayName;
-        Variable.VarGuid = FieldGuid;
-
-        Variable.SetPinType(ResolvePropertyPinType(PropertyJsonObject));
-    }
-
-    FStructureEditorUtils::GetVarDesc(UserDefinedStruct).Add(Variable);
-    FStructureEditorUtils::OnStructureChanged(UserDefinedStruct, FStructureEditorUtils::EStructureEditorChangeInfo::AddedVariable);
-
-    const TSharedPtr<FJsonValue>& PropertyJsonValue = DefaultProperties->Values.FindChecked(StringToJsonKey(Name));
-
-    FProperty* Property = FindFProperty<FProperty>(UserDefinedStruct, *Name);
-
-    if (Property == nullptr) {
+    /* Metadata sits under Properties like any other export's, so it is not reachable off the root */
+    if (CookedStructMetaData->IsJsonInvalid() || !CookedStructMetaData->Has(TEXT("Properties")) || !CookedStructMetaData->HasProperty("StructMetaData")) {
         return;
     }
 
-    /* DefaultProperties ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-    FStructOnScope StructScope(UserDefinedStruct);
-    uint8* InstanceMemory = StructScope.GetStructMemory();
+    const FUObjectJsonValueExport StructMetaData = CookedStructMetaData->GetPropertiesAsValue().GetObject("StructMetaData");
 
-    /* Get Property Value and deserialize the values */
-    void* PropertyValue = Property->ContainerPtrToValuePtr<void>(InstanceMemory);
-    GetPropertySerializer()->DeserializePropertyValue(Property, PropertyJsonValue.ToSharedRef(), PropertyValue);
+    if (StructMetaData.Has("ObjectMetaData")) {
+        const FUObjectJsonValueExport ObjectMetaData = StructMetaData.GetObject("ObjectMetaData");
 
-    /* Get the default value as a string */
-    FString DefaultValue;
-#if UE5_1_BEYOND
-    Property->ExportTextItem_Direct(DefaultValue, PropertyValue, nullptr, UserDefinedStruct, 0);
-#else
-    Property->ExportText_Direct(DefaultValue, PropertyValue, nullptr, UserDefinedStruct, 0);
-#endif
+        if (ObjectMetaData.Has("ObjectMetaData")) {
+            for (const FUObjectJsonValueExport& Entry : ObjectMetaData.GetArray("ObjectMetaData")) {
+                OutStructMetaData.Add(FName(*Entry.GetString("Key")), Entry.GetString("Value"));
+            }
+        }
+    }
 
-    /* Update the variable */
-    FStructureEditorUtils::ChangeVariableDefaultValue(UserDefinedStruct, Variable.VarGuid, DefaultValue);
+    if (!StructMetaData.Has("PropertiesMetaData")) {
+        return;
+    }
 
-    /* Editor Only Data */
-    if (CookedStructMetaData && CookedStructMetaData->Has("StructMetaData")) {
-        TArray<FUObjectJsonValueExport> PropertiesMetaData = CookedStructMetaData->GetObject("StructMetaData").GetArray("PropertiesMetaData");
+    for (const FUObjectJsonValueExport& Entry : StructMetaData.GetArray("PropertiesMetaData")) {
+        FMemberMetaData& Member = OutMemberMetaData.Add(Entry.GetString("Key"));
 
-        for (const FUObjectJsonValueExport& Value : PropertiesMetaData) {
-            /* Find a matching key */
-            if (Value.GetString("Key") == Name) {
-                TArray<FUObjectJsonValueExport> FieldMetaData = Value.GetObject("Value").GetArray("FieldMetaData");
+        const FUObjectJsonValueExport Value = Entry.GetObject("Value");
 
-                for (FUObjectJsonValueExport& FieldValue : FieldMetaData) {
-                    FString MetadataKey = FieldValue.GetString("Key");
-                    FString MetadataValue = FieldValue.GetString("Value");
+        if (!Value.Has("FieldMetaData")) continue;
 
-                    Property->SetMetaData(FName(*MetadataKey), *MetadataValue);
+        for (const FUObjectJsonValueExport& Field : Value.GetArray("FieldMetaData")) {
+            const FString Key = Field.GetString("Key");
 
-                    if (MetadataKey == TEXT("Tooltip")) {
-                        FStructureEditorUtils::ChangeVariableTooltip(UserDefinedStruct, Variable.VarGuid, MetadataValue);
-                    }
-
-                    if (MetadataKey == TEXT("DisplayName")) {
-                        Variable.FriendlyName = MetadataValue;
-                    }
-                }
+            if (Key == TEXT("DisplayName")) {
+                Member.DisplayName = Field.GetString("Value");
+            } else if (Key == TEXT("Tooltip")) {
+                Member.ToolTip = Field.GetString("Value");
+            } else if (Key != TEXT("MakeStructureDefaultValue")) {
+                /* The compiler writes MakeStructureDefaultValue back out of the default value */
+                Member.MetaData.Add(FName(*Key), Field.GetString("Value"));
             }
         }
     }
 }
 
+void IUserDefinedStructImporter::AddMemberToStruct(UUserDefinedStruct* UserDefinedStruct, const TSharedPtr<FJsonObject>& PropertyJsonObject, const TMap<FString, FMemberMetaData>& MemberMetaData) {
+    const FString Name = PropertyJsonObject->GetStringField(TEXT("Name"));
+
+    FString FriendlyName = Name;
+    FGuid VarGuid;
+
+    FRegexMatcher RegexMatcher(PropertyNameRegexPattern, Name);
+
+    if (RegexMatcher.FindNext()) {
+        /* Import properties keeping GUID if present */
+        FriendlyName = RegexMatcher.GetCaptureGroup(1);
+        VarGuid = StringToGuid(RegexMatcher.GetCaptureGroup(3));
+    }
+
+    /* The counter only decides what the editor calls the next member added by hand, so it just has
+     * to stay ahead of the ones coming in */
+    CastChecked<UUserDefinedStructEditorData>(UserDefinedStruct->EditorData)->GenerateUniqueNameIdForMemberVariable();
+
+    if (!VarGuid.IsValid()) {
+        VarGuid = FGuid::NewGuid();
+    }
+
+    FStructVariableDescription Variable; {
+        Variable.VarName = *Name;
+        Variable.FriendlyName = FriendlyName;
+        Variable.VarGuid = VarGuid;
+
+        Variable.SetPinType(ResolvePropertyPinType(PropertyJsonObject));
+    }
+
+    /* Metadata belongs on the description: the compiler rebuilds every FProperty from it, so
+     * anything written straight onto a property is gone by the next compile */
+    if (const FMemberMetaData* Metadata = MemberMetaData.Find(Name)) {
+        if (!Metadata->DisplayName.IsEmpty()) {
+            Variable.FriendlyName = Metadata->DisplayName;
+        }
+
+        Variable.ToolTip = Metadata->ToolTip;
+        Variable.MetaData = Metadata->MetaData;
+    }
+
+    FStructureEditorUtils::GetVarDesc(UserDefinedStruct).Add(Variable);
+}
+
+void IUserDefinedStructImporter::ApplyDefaultValues(UUserDefinedStruct* UserDefinedStruct) {
+    if (!DefaultProperties.IsValid() || DefaultProperties->Values.Num() == 0) {
+        return;
+    }
+
+    /* One instance for the whole struct: each member writes into its own offset in it */
+    FStructOnScope DefaultInstance(UserDefinedStruct);
+
+    if (!DefaultInstance.IsValid()) {
+        return;
+    }
+
+    for (FStructVariableDescription& Variable : FStructureEditorUtils::GetVarDesc(UserDefinedStruct)) {
+        const TSharedPtr<FJsonValue>* DefaultValue = DefaultProperties->Values.Find(StringToJsonKey(Variable.VarName.ToString()));
+
+        if (DefaultValue == nullptr || !DefaultValue->IsValid()) {
+            continue;
+        }
+
+        FProperty* Property = FindFProperty<FProperty>(UserDefinedStruct, Variable.VarName);
+
+        if (Property == nullptr) {
+            continue;
+        }
+
+        /* Get Property Value and deserialize the values */
+        void* PropertyValue = Property->ContainerPtrToValuePtr<void>(DefaultInstance.GetStructMemory());
+        GetPropertySerializer()->DeserializePropertyValue(Property, DefaultValue->ToSharedRef(), PropertyValue);
+
+        /* Get the default value as a string */
+        FString ExportedValue;
+#if UE5_1_BEYOND
+        Property->ExportTextItem_Direct(ExportedValue, PropertyValue, nullptr, UserDefinedStruct, 0);
+#else
+        Property->ExportText_Direct(ExportedValue, PropertyValue, nullptr, UserDefinedStruct, 0);
+#endif
+
+        Variable.DefaultValue = ExportedValue;
+    }
+}
+
 FEdGraphPinType IUserDefinedStructImporter::ResolvePropertyPinType(const TSharedPtr<FJsonObject> &PropertyJsonObject) {
+    FEdGraphPinType ResolvedType = FEdGraphPinType(NAME_None, NAME_None, nullptr, EPinContainerType::None,false, FEdGraphTerminalType());
+
+    if (!PropertyJsonObject.IsValid()) {
+        UE_LOG(LogReflection, Error, TEXT("Property has no type to resolve, defaulting to 'Byte'"));
+        ResolvedType.PinCategory = TEXT("byte");
+
+        return ResolvedType;
+    }
+
     const FString Type = PropertyJsonObject->GetStringField(TEXT("Type"));
 
     /* Special handling for containers */
     if (const EPinContainerType* ContainerType = ContainerTypeMap.Find(Type)) {
         if (*ContainerType == EPinContainerType::Map) {
             TSharedPtr<FJsonObject> KeyPropObject = PropertyJsonObject->GetObjectField(TEXT("KeyProp"));
-            
-            FEdGraphPinType ResolvedType = ResolvePropertyPinType(KeyPropObject);
+
+            ResolvedType = ResolvePropertyPinType(KeyPropObject);
             ResolvedType.ContainerType = *ContainerType;
 
             TSharedPtr<FJsonObject> ValuePropObject = PropertyJsonObject->GetObjectField(TEXT("ValueProp"));
             FEdGraphPinType ResolvedTerminalType = ResolvePropertyPinType(ValuePropObject);
-            
+
             ResolvedType.PinValueType.TerminalCategory = ResolvedTerminalType.PinCategory;
             ResolvedType.PinValueType.TerminalSubCategory = ResolvedTerminalType.PinSubCategory;
             ResolvedType.PinValueType.TerminalSubCategoryObject = ResolvedTerminalType.PinSubCategoryObject;
@@ -190,24 +274,22 @@ FEdGraphPinType IUserDefinedStructImporter::ResolvePropertyPinType(const TShared
 
         if (*ContainerType == EPinContainerType::Set) {
             TSharedPtr<FJsonObject> ElementPropObject = PropertyJsonObject->GetObjectField(TEXT("ElementProp"));
-            FEdGraphPinType ResolvedType = ResolvePropertyPinType(ElementPropObject);
-            
+            ResolvedType = ResolvePropertyPinType(ElementPropObject);
+
             ResolvedType.ContainerType = *ContainerType;
-            
+
             return ResolvedType;
         }
 
         if (*ContainerType == EPinContainerType::Array) {
             TSharedPtr<FJsonObject> InnerTypeObject = PropertyJsonObject->GetObjectField(TEXT("Inner"));
-            FEdGraphPinType ResolvedType = ResolvePropertyPinType(InnerTypeObject);
-            
+            ResolvedType = ResolvePropertyPinType(InnerTypeObject);
+
             ResolvedType.ContainerType = *ContainerType;
-            
+
             return ResolvedType;
         }
     }
-
-    FEdGraphPinType ResolvedType = FEdGraphPinType(NAME_None, NAME_None, nullptr, EPinContainerType::None,false, FEdGraphTerminalType());
 
     /* Find main type from our PropertyCategoryMap */
 
@@ -237,15 +319,16 @@ FEdGraphPinType IUserDefinedStructImporter::ResolvePropertyPinType(const TShared
 }
 
 UObject* IUserDefinedStructImporter::LoadObjectFromJsonReference(const TSharedPtr<FJsonObject> &ParentJsonObject, const FString &ReferenceKey) {
-    const TSharedPtr<FJsonObject> ReferenceObject = ParentJsonObject->GetObjectField(ReferenceKey);
-    
-    if (!ReferenceObject) {
+    if (!ParentJsonObject->HasTypedField<EJson::Object>(ReferenceKey)) {
         UE_LOG(LogReflection, Error, TEXT("Failed to load Object from property %s: property not found"), *ReferenceKey);
+
         return nullptr;
     }
 
+    const TSharedPtr<FJsonObject> ReferenceObject = ParentJsonObject->GetObjectField(ReferenceKey);
+
     TObjectPtr<UObject> LoadedObject;
     LoadExport<UObject>(&ReferenceObject, LoadedObject);
-    
+
     return LoadedObject;
 }

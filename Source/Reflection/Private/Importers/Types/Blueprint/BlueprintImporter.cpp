@@ -21,15 +21,12 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 	UClass* Class = GetAssetClass();
 	
 	if (!Class) {
-		AppendNotification(
-			FText::FromString("Failed to Resolve Parent Class"),
-			FText::FromString("The Blueprint's parent class could not be found or loaded. Verify that the class is defined and available when reflecting."),
-			2.0f,
-			SNotificationItem::CS_Fail,
-			true,
-			350.0f
+		FImportIssues::Report(
+			EImportIssue::MissingClass,
+			TEXT("Couldn't resolve the parent class"),
+			TEXT("The blueprint's parent class could not be found or loaded. Verify that the class is defined and available when reflecting.")
 		);
-		
+
 		return nullptr;
 	}
 	

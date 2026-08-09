@@ -58,11 +58,11 @@ bool IMaterialImporter::Import() {
 #if ENGINE_UE5
 		if (GetSettings()->AssetSettings.Material.Stubs) {
 			CreateStubs(this);
-			CreatedStubsNotification();
+			ReportCreatedStubs();
 		}
 		else {
 #endif
-			SpawnMaterialDataMissingNotification();
+			ReportMaterialDataMissing();
 #if ENGINE_UE5
 			return false;
 		}

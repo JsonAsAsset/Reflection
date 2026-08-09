@@ -2,6 +2,7 @@
 
 #include "Modules/Toolbar/Tools/ImportFolder.h"
 
+#include "Importers/Constructor/ImportIssues.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Modules/Toolbar/Tools/ImportFromPath.h"
@@ -33,7 +34,9 @@ void TToolImportFolder::Execute() {
 
 	int32 Reflected = 0;
 	int32 Attempted = 0;
-	bool Cancelled = false; {
+	bool Cancelled = false;
+
+	FImportIssues::Begin(); {
 		/* Import opens a scope of its own per asset, which is what the dialog ends up showing.
 		 * This one is here to own the Cancel button for the whole run rather than for one asset. */
 		const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "ReflectingFolder", "Reflecting folder"));
@@ -65,4 +68,6 @@ void TToolImportFolder::Execute() {
 		true,
 		310.0f
 	);
+
+	FImportIssues::Finish();
 }

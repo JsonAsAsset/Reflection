@@ -14,6 +14,7 @@
 /* FCustomPrimitiveData, for how many data floats this engine gives a primitive */
 #include "SceneTypes.h"
 #include "Engine/EngineUtilities.h"
+#include "Importers/Constructor/ImportIssues.h"
 #include "Utilities/JsonHelpers.h"
 
 #if ENGINE_UE5
@@ -859,7 +860,7 @@ UMaterialExpression* IMaterialGraph::OnMissingNodeClass(FUObjectExport* Export, 
 	/* Add a comment in the graph notifying the user of a missing node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 	UMaterialExpressionComment* Comment = NewObject<UMaterialExpressionComment>(Parent, UMaterialExpressionComment::StaticClass(), *("UMaterialExpressionComment_" + Type.ToString()), RF_Transactional);
 
-	Comment->Text = *("Missing Node Class " + Type.ToString());
+	Comment->Text = *("Missing Node: " + Type.ToString());
 	Comment->CommentColor = FLinearColor(1.0, 0.0, 0.0);
 	Comment->bCommentBubbleVisible = true;
 	Comment->SizeX = 415;
@@ -870,15 +871,13 @@ UMaterialExpression* IMaterialGraph::OnMissingNodeClass(FUObjectExport* Export, 
 	GetObjectSerializer()->DeserializeObjectProperties(Properties, Comment);
 	AddExpressionToParent(Parent, Comment);
 
-	/* Add a notification letting the user know of a missing node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+	/* Report the missing node ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 	GLog->Log(*("Reflection: Missing Node " + Type.ToString() + " in Parent " + Parent->GetName()));
-	AppendNotification(
-		FText::FromString("Missing Node (" + Parent->GetName() + ")"),
-		FText::FromString(Type.ToString()),
-		8.0f,
-		SNotificationItem::ECompletionState::CS_Fail,
-		true,
-		456.0
+
+	FImportIssues::Report(
+		EImportIssue::MissingClass,
+		"Missing node " + Type.ToString(),
+		"This engine build has no class for it, so a commented reroute stands in for it in " + Parent->GetName() + "."
 	);
 
 	/* Put a reroute in place of the missing node */
@@ -923,27 +922,20 @@ void IMaterialGraph::ResolveSwitchPassthroughs(FUObjectExportContainer* Containe
 	PendingSwitchPassthroughs.Empty();
 }
 
-void IMaterialGraph::SpawnMaterialDataMissingNotification() const {
-	FNotificationInfo Info = FNotificationInfo(FText::FromString("Empty Material (" + GetAssetName() + ")"));
-	Info.ExpireDuration = 7.0f;
-	Info.bUseLargeFont = true;
-	Info.bUseSuccessFailIcons = true;
-	Info.WidthOverride = FOptionalSize(350);
-	SetNotificationSubText(Info, FText::FromString(FString("Please see the requirements for Materials on GitHub")));
-
-	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
-	NotificationPtr->SetCompletionState(SNotificationItem::CS_Fail);
+void IMaterialGraph::ReportMaterialDataMissing() const {
+	FImportIssues::Report(
+		EImportIssue::Data,
+		TEXT("The export carries no material data"),
+		TEXT("Nothing was there to build a graph from - see the requirements for Materials on GitHub.")
+	);
 }
 
-void IMaterialGraph::CreatedStubsNotification() const {
-	FNotificationInfo Info = FNotificationInfo(FText::FromString("Created Stubs for " + GetAssetName()));
-	Info.ExpireDuration = 7.0f;
-	Info.bUseLargeFont = true;
-	Info.bUseSuccessFailIcons = true;
-	Info.WidthOverride = FOptionalSize(350);
-
-	const TSharedPtr<SNotificationItem> NotificationPtr = FSlateNotificationManager::Get().AddNotification(Info);
-	NotificationPtr->SetCompletionState(SNotificationItem::CS_Fail);
+void IMaterialGraph::ReportCreatedStubs() const {
+	FImportIssues::Report(
+		EImportIssue::Data,
+		TEXT("Built from stubs"),
+		TEXT("The export carries no material data, so the parameters were stubbed out and the graph is empty.")
+	);
 }
 
 FExpressionInput IMaterialGraph::PopulateExpressionInput(const FJsonObject* JsonProperties, UMaterialExpression* Expression, const FString& Type) {

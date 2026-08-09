@@ -6,6 +6,7 @@
 #include "TimerManager.h"
 #include "UObject/StrongObjectPtr.h"
 
+#include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Engine/Log.h"
 #include "Modules/UI/StyleModule.h"
@@ -206,6 +207,8 @@ namespace {
 			false,
 			310.0f
 		);
+
+		FImportIssues::Finish();
 	}
 
 	void TickJob() {
@@ -257,6 +260,9 @@ void FImportJob::Enqueue(const TArray<FString>& Files) {
 
 	GJob = MakeUnique<FJobState>();
 	GJob->Files = Files;
+
+	/* Files appended to a running job join its report rather than starting a new one */
+	FImportIssues::Begin();
 
 	GJob->Notification = AppendNotificationWithHandler(
 		FText::FromString(TEXT("Reflecting")),

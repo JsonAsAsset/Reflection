@@ -43,7 +43,7 @@ bool IMaterialFunctionImporter::Import() {
 
 	/* If Missing Material Data */
 	if (ExpressionContainer->Num() == 0) {
-		SpawnMaterialDataMissingNotification();
+		ReportMaterialDataMissing();
 
 		return false;
 	}

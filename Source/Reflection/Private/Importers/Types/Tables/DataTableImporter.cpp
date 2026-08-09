@@ -33,13 +33,10 @@ bool IDataTableImporter::Import() {
 #endif
 		
 		if (TableRowStruct == nullptr) {
-			AppendNotification(
-				FText::FromString("DataTable Struct Missing: " + TableStruct),
-				FText::FromString("The parent DataTable's struct definition could not be found. Ensure the correct struct is defined and referenced by this table."),
-				2.0f,
-				SNotificationItem::CS_Fail,
-				true,
-				350.0f
+			FImportIssues::Report(
+				EImportIssue::MissingClass,
+				TEXT("Missing row struct ") + TableStruct,
+				TEXT("The table's struct definition could not be found. Ensure the correct struct is defined and referenced by this table.")
 			);
 
 			return false;
