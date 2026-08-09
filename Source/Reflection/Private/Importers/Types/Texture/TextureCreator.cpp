@@ -531,16 +531,16 @@ void FTextureCreator::DeserializeTexture2D(UTexture2D* Texture2D, const TSharedP
 	/* Cooked sizes live on the export rather than under its properties */
 	int SizeX;
 	int SizeY;
-#if !UE4_24_BELOW
+#if !UE4_23_BELOW
 	uint32 PackedData;
 #endif
 	FString PixelFormat;
 
 	if (Export->TryGetNumberField(TEXT("SizeX"), SizeX)) PlatformData->SizeX = SizeX;
 	if (Export->TryGetNumberField(TEXT("SizeY"), SizeY)) PlatformData->SizeY = SizeY;
-	/* 4.25 packed the slice count together with the cube map and opt data bits into PackedData.
+	/* 4.24 packed the slice count together with the cube map and opt data bits into PackedData.
 	 * Before that the slice count stood on its own, and the dump names it accordingly. */
-#if UE4_24_BELOW
+#if UE4_23_BELOW
 	int NumSlices;
 	if (Export->TryGetNumberField(TEXT("NumSlices"), NumSlices)) PlatformData->NumSlices = NumSlices;
 #else

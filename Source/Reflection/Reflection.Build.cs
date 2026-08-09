@@ -53,8 +53,8 @@ public class Reflection : ModuleRules {
 			"DeveloperSettings",
 #endif
 
-#if UE_4_25_OR_LATER
-			/* The cloth runtime was a single ClothingSystemRuntime module until it was split */
+#if UE_4_24_OR_LATER
+			/* The cloth runtime was a single ClothingSystemRuntime module until 4.24 split it */
 			"ClothingSystemRuntimeCommon",
 #else
 			"ClothingSystemRuntime",

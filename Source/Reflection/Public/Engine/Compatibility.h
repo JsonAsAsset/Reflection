@@ -311,10 +311,10 @@ inline FString OutputNameToString(const FName Name) {
 	return Name.ToString();
 }
 
-/* FString grew the Left/Right/Mid Inline family in 4.24. A free function rather than a shim on the
- * type, so one spelling covers every version: before 4.24 the truncation is a plain reassignment. */
+/* FString grew the Left/Right/Mid Inline family in 4.25. A free function rather than a shim on the
+ * type, so one spelling covers every version: before 4.25 the truncation is a plain reassignment. */
 inline void LeftInline(FString& String, const int32 Count) {
-#if UE4_23_BELOW
+#if UE4_24_BELOW
 	String = String.Left(Count);
 #else
 	String.LeftInline(Count);
