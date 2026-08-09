@@ -92,8 +92,7 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 |  | Asset Types |
 |-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | **🔴 Animation** | AnimSequence, AnimMontage **(Animation Curves)** |
-| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
-| **🟢 Curve** | CurveLinearColor **(Colors)** |
+| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
 | **🔤 UI** | FontFace **(Font Properties)**, WidgetBlueprint **(Widget Animations)** |
 
 These are reached from **Cloud Tools** with the asset selected in your content browser, and need a [Cloud Server](#cloud).
@@ -115,12 +114,7 @@ See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/U
 [<img align="left" width="150" src="https://github.com/user-attachments/assets/d8e4f9c9-1268-4aee-ab1a-dabee31b3069?raw=true">](https://fmodel.app)
 
 > [!IMPORTANT]
-> If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
->
->
-> ​There is a specific FModel version for **material data support** found in the discord server.            
-> [**Material Data Prerequisites still apply.**](#material-data-prerequisites)
->  ​
+> If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
 
 We strongly recommend using the latest **commit** of Reflection to ensure compatibility with recent Unreal updates and access to the newest features.
 
