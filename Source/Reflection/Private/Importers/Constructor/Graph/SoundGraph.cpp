@@ -9,6 +9,7 @@
 #include "Sound/SoundCue.h"
 
 #include "Engine/Log.h"
+#include "Importers/Constructor/Graph/Utilities/SoundNodeLayoutUtilities.h"
 #include "Importers/Constructor/ImportIssues.h"
 #include "Modules/UI/StyleModule.h"
 #include "HAL/FileManager.h"
@@ -281,6 +282,15 @@ void ISoundGraph::SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoun
 				}
 			}
 		}
+	}
+
+	/* Every wire is in by now, which is what the layout reads */
+	OrganizeNodes(SoundCueAsset);
+}
+
+void ISoundGraph::OrganizeNodes(const USoundCue* SoundCueAsset) {
+	if (SoundCueAsset != nullptr) {
+		OrganizeSoundCueGraph(SoundCueAsset->SoundCueGraph);
 	}
 }
 

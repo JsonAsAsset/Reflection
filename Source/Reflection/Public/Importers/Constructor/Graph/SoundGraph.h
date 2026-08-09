@@ -20,6 +20,7 @@ public:
 
 	void ConstructNodes(USoundCue* SoundCue, TMap<FString, USoundNode*>& OutNodes);
 	void SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoundNode*> SoundCueNodes);
+	void OrganizeNodes(const USoundCue* SoundCueAsset);
 
 	/* Sound Wave Import */
 	static void OnDownloadSoundWave(const FString& SavePath, FString AssetPtr, USoundNodeWavePlayer* Node);
