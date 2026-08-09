@@ -92,7 +92,7 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 |  | Asset Types |
 |-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
 | **🔴 Animation** | AnimSequence, AnimMontage **(Animation Curves)** |
-| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
+| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
 | **🔤 UI** | FontFace **(Font Properties)**, WidgetBlueprint **(Widget Animations)** |
 
 These are reached from **Cloud Tools** with the asset selected in your content browser, and need a [Cloud Server](#cloud).
