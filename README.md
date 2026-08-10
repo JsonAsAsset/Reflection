@@ -201,10 +201,6 @@ Anything that couldn't be rebuilt is collected into a **Reflection Errors** wind
 
 Thanks go to these wonderful people:
 
-<a href="https://github.com/JsonAsAsset/Reflection/graphs/contributors">
-  <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
-</a>
-
 <!-- prettier-ignore-start -->
 <!-- markdownlint-disable -->
 <table>
@@ -215,6 +211,10 @@ Thanks go to these wonderful people:
 </table>
 
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
+
+<a href="https://github.com/JsonAsAsset/Reflection/graphs/contributors">
+  <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
+</a>
 
 - Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot.
 - Also, thanks to the people who contributed to [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
