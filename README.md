@@ -29,9 +29,6 @@ Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that
 
 </br>
 
-
-✨ [Contributors](#contribute)
-
 ### Example Use
 
 * Importing **materials**, data assets, and data tables — [see more](#asset-types)
@@ -198,8 +195,10 @@ Anything that couldn't be rebuilt is collected into a **Reflection Errors** wind
 > [!TIP]
 > Prefer the old file picker? Set `bCloudServer` to `false` in [Reflection.Build.cs](Source/Reflection/Reflection.Build.cs) and rebuild, the Reflection button then asks for a JSON file instead of a path. Nothing else about Cloud changes.
 
+-----------------
+
 <a name="contribute"></a>
-## ✨ Contributors
+### Contributors
 
 Thanks go to these wonderful people:
 
@@ -220,6 +219,8 @@ Thanks go to these wonderful people:
 
 - Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot.
 - Also, thanks to the people who contributed to [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
+
+-----------------
 
 <a name="licensing"></a>
 ### Licensing
