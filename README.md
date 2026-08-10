@@ -1,5 +1,5 @@
 <br/>
-<div align="center">
+<div align="left">
   <!--
   Also popularly known as "JAA", standing for Json As Asset.
   Now known as Reflection, can be used in a way like "Reflect that asset!"
@@ -11,26 +11,17 @@
     </p>
   </a>
 
-  <h3 align="center">Reflection</h3>
-
-  <p align="center">
-    Reconstruction Toolkit for Unreal Engine
-    <br />
-    <a href="#table-of-contents"><strong>Explore the docs »</strong></a>
-  </p>
+  <h3 align="left">Reflection</h3>
 </div>
 
-<div align="center">
+<div align="left">
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
-[![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
-
-[![Discord](https://img.shields.io/badge/Join%20Discord-Collector?color=0363ff&logo=discord&logoColor=white&style=for-the-badge)](https://discord.gg/xXEw4jc2UT)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
+[![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
+[![Discord](https://img.shields.io/discord/1110083898043551835.svg?style=for-the-badge&color=0363ff&logo=discord)](https://discord.gg/xXEw4jc2UT)
 
 </div>
-
-### Description
 
 Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that reads [JSON](https://www.json.org/json-en.html) files exported from FModel [(UEParse)](https://github.com/FabianFG/CUE4Parse), and **rebuilds them as real assets** in your project: materials, data tables, physics assets, and more. Connect it to a [Cloud](#cloud) instance to **fetch references automatically**, **reflect extra data** onto assets you've already imported, and *validate* your project against the game files.
 
