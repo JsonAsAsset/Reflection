@@ -114,7 +114,7 @@ See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/U
 [<img align="left" width="150" src="https://github.com/user-attachments/assets/d8e4f9c9-1268-4aee-ab1a-dabee31b3069?raw=true">](https://fmodel.app)
 
 > [!IMPORTANT]
-> If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
+> If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
 
 We strongly recommend using the latest **commit** of Reflection to ensure compatibility with recent Unreal updates and access to the newest features.
 
@@ -174,17 +174,34 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported. **Validation** compares your project against the game files to catch anything missing or misplaced.
 
 <a name="workflow"></a>
-## Workflow
+## Workflow 🔁
 
-1. Find an asset in [FModel](https://fmodel.app), and save it by right-clicking and pressing `Save Properties`. Locate the file on your computer and copy the location.
+Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the exports behind them. Nothing has to be saved out of FModel first.
 
-2. Press the [Reflection](https://github.com/JsonAsAsset/Reflection) button on your content browser, and a file picker should pop up. <img align="right" width="330" src=https://github.com/user-attachments/assets/020d005d-f34b-4bb0-b3d2-c1c4c570eb42>
+1. **Start your Cloud instance.** The button next to Reflection in the content browser toolbar reads `On` once it's up.
 
-3. Select the file and press Open.
+2. **Copy the path of an asset.** Either form works, so a reference copied straight out of FModel is fine:
+   ```
+   /Game/Asset.uasset
+   ```
 
-4. The asset **imports** and brings you to the created asset in the content browser once it's done.
+3. **Press the Reflection button** on your content browser toolbar. A dialog opens, and anything path-like already on your clipboard is queued for you.
 
-Need a whole folder at once instead? Use **Reflect Folder of JSON Files**, under the Reflection dropdown's Asset Tools.
+4. **Queue as many as you want.** Type or paste a path and press `Enter` (or `Add`), several pasted at once queue one per line. `X` takes one back out.
+
+5. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you actually want.
+
+Anything that couldn't be rebuilt is collected into a **Reflection Errors** window at the end, rather than being buried in the log.
+
+#### Other ways in
+
+| | |
+|---|---|
+| **A whole folder of the game files** | **Folder**, under the Reflection dropdown. Reflects everything under a game path, not one in your project. |
+| **JSON files off disk** | Save an asset out of FModel with `Save Properties`, then use **Reflect Folder of JSON Files** under the Reflection dropdown's Asset Tools. |
+
+> [!TIP]
+> Prefer the old file picker? Set `bCloudServer` to `false` in [Reflection.Build.cs](Source/Reflection/Reflection.Build.cs) and rebuild, the Reflection button then asks for a JSON file instead of a path. Nothing else about Cloud changes.
 
 <a name="contribute"></a>
 ## ✨ Contributors
