@@ -54,6 +54,9 @@ bool IMaterialFunctionImporter::Import() {
 	/* Deserialize any properties */
 	GetObjectSerializer()->DeserializeObjectProperties(GetAssetData(), MaterialFunction);
 
+	/* Everything is wired by this point, which is what dropping an output needs */
+	PruneMissingMaterialAttributes(MaterialFunction);
+
 	/* Expressions built by hand leave these two caches stale, and the engine only refills them in
 	 * PostLoad or ForceRecompileForRendering. DependentFunctionExpressionCandidates is the one that
 	 * matters: FMaterialCachedExpressionData reaches functions nested below this one only through

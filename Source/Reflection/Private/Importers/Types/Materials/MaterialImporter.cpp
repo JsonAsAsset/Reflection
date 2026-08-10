@@ -139,6 +139,9 @@ bool IMaterialImporter::Import() {
 		EditorOnlyData->ParameterGroupData = ParameterGroupData;
 	}
 
+	/* Everything is wired by this point, which is what dropping an output needs */
+	PruneMissingMaterialAttributes(Material, EditorOnlyData);
+
 	/* Handle edit changes, and add it to the content browser */
 	if (!OnAssetCreation(Material)) return false;
 
