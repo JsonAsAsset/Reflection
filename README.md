@@ -29,7 +29,7 @@ Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that
 
 </br>
 
-### Example Use
+### Use
 
 * Importing **materials**, data assets, and data tables — [see more](#asset-types)
 * Porting **physics assets** for skeletal meshes
@@ -160,14 +160,15 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 -----------------
 
 <a name="cloud"></a>
-### Set up the Cloud ☁️
-**Enable Cloud** in Plugin Settings, then [set up a Cloud instance](https://github.com/JsonAsAsset/Core/releases) and start it.
+### Cloud ☁️
+[Set up a Cloud instance](https://github.com/JsonAsAsset/Core/releases) and start it.
 
-Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported. **Validation** compares your project against the game files to catch anything missing or misplaced.
+Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported.
+
+-----------------
 
 <a name="workflow"></a>
-## Workflow 🔁
-
+## Workflow
 Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the exports behind them. Nothing has to be saved out of FModel first.
 
 1. **Start your Cloud instance.** The button next to Reflection in the content browser toolbar reads `On` once it's up.
@@ -176,7 +177,6 @@ Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the
    ```
    /Game/Asset.uasset
    ```
-
 3. **Press the Reflection button** on your content browser toolbar. A dialog opens, and anything path-like already on your clipboard is queued for you.
 
 4. **Queue as many as you want.** Type or paste a path and press `Enter` (or `Add`), several pasted at once queue one per line. `X` takes one back out.
@@ -186,7 +186,6 @@ Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the
 Anything that couldn't be rebuilt is collected into a **Reflection Errors** window at the end, rather than being buried in the log.
 
 #### Other ways in
-
 | | |
 |---|---|
 | **A whole folder of the game files** | **Folder**, under the Reflection dropdown. Reflects everything under a game path, not one in your project. |
