@@ -7,7 +7,7 @@
   
   <a href="https://github.com/JsonAsAsset/Reflection">
     <p>
-      <img width="500" alt="backgorund" src="https://github.com/user-attachments/assets/bcb83183-9c37-4c4f-9994-4e0e71482b36" />
+      <img width="350" alt="backgorund" src="https://github.com/user-attachments/assets/bcb83183-9c37-4c4f-9994-4e0e71482b36" />
     </p>
   </a>
 
