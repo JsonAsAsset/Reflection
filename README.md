@@ -15,9 +15,11 @@
 <div align="left">
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/master/LICENSE)
+
 [![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
 [![Discord](https://img.shields.io/discord/1110083898043551835.svg?style=for-the-badge&color=0363ff&logo=discord)](https://discord.gg/xXEw4jc2UT)
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
 
 </div>
 
@@ -39,11 +41,6 @@ Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that
 
 This project aims to streamline the porting and modding experience, making it easier to bring game assets into Unreal Engine.
 
-<a name="licensing"></a>
-### Licensing
-
-Reflection is licensed under the MIT License. Read more in the [LICENSE](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE) file. The plugin also uses [Detex](https://github.com/hglm/detex) and [NVIDIA Texture Tools](https://docs.nvidia.com/texture-tools/index.html).
-
 -----------------
 
 ### **Table of Contents**
@@ -51,15 +48,6 @@ Reflection is licensed under the MIT License. Read more in the [LICENSE](https:/
 > 1. [Asset Types](#asset-types)  
 > 2. [Installation](#installation)  
 > 3. [→ Workflow](#workflow)
-
------------------
-
-> [!CAUTION]
-> Please note that this plugin is intended solely for **personal and educational use**.
-> 
-> Do not use it to create or distribute **commercial products** without obtaining the necessary **licenses and permissions**. It is important to respect **intellectual property rights** and only use assets that you are **authorized to use**.
->
-> We **do not assume any responsibility** for the way the created content is used.
 
 -----------------
 
@@ -102,6 +90,17 @@ Unreal Engine games made below 4.12 (a guess) will have material data. *Games ma
 If your game uses custom C++ classes or structures, **you need to define them**.
 
 See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/UE-Modding-Tools?tab=readme-ov-file#game-specific-template-projects) for game-specific template projects.
+
+-----------------
+
+> [!CAUTION]
+> Please note that this plugin is intended solely for **personal and educational use**.
+> 
+> Do not use it to create or distribute **commercial products** without obtaining the necessary **licenses and permissions**. It is important to respect **intellectual property rights** and only use assets that you are **authorized to use**.
+>
+> We **do not assume any responsibility** for the way the created content is used.
+
+-----------------
 
 <a name="installation"></a>
 ## Installation
@@ -161,8 +160,10 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 4. Save the file.
 </details>
 
+-----------------
+
 <a name="cloud"></a>
-### Set up the Cloud ✨
+### Set up the Cloud ☁️
 **Enable Cloud** in Plugin Settings, then [set up a Cloud instance](https://github.com/JsonAsAsset/Core/releases) and start it.
 
 Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported. **Validation** compares your project against the game files to catch anything missing or misplaced.
@@ -219,3 +220,8 @@ Thanks go to these wonderful people:
 
 - Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot.
 - Also, thanks to the people who contributed to [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
+
+<a name="licensing"></a>
+### Licensing
+
+Reflection is licensed under the MIT License. Read more in the [LICENSE](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE) file. The plugin also uses [Detex](https://github.com/hglm/detex) and [NVIDIA Texture Tools](https://docs.nvidia.com/texture-tools/index.html).
