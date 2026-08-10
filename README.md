@@ -197,7 +197,7 @@ Anything that couldn't be rebuilt is collected into a **Reflection Errors** wind
 
 -----------------
 
-<a name="contribute"></a>
+<a name="contributors"></a>
 ### Contributors
 
 Thanks go to these wonderful people:
@@ -217,8 +217,12 @@ Thanks go to these wonderful people:
   <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
 </a>
 
-- Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot.
-- Also, thanks to the people who contributed to [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
+Special thanks to:
+- [@NathanFelipeRH](https://github.com/NathanFelipeRH)
+- [@ZyloxMods](https://github.com/ZyloxMods)
+- [@Tajgames](#contributors)
+
+Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot. And to the contributors of [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
 
 -----------------
 
