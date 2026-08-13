@@ -201,7 +201,16 @@ FReply SReflectFolderDialog::OnReflectClicked() {
 }
 
 void SReflectFolderDialog::Find() {
-	const FString Folder = FolderBox->GetText().ToString().TrimStartAndEnd();
+	FString Folder = FolderBox->GetText().ToString().TrimStartAndEnd();
+
+	/* Pasting an asset's own path is the common way to get here, so the file on the end is taken
+	 * off rather than searched for as a folder. A folder never has an extension, so the dot is
+	 * what tells the two apart. */
+	if (FString Leaf; Folder.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd) && Leaf.Contains(TEXT("."))) {
+		Folder.Split(TEXT("/"), &Folder, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+	}
+
+	Folder.RemoveFromEnd(TEXT("/"));
 
 	Rows.Reset();
 	Paths.Reset();
