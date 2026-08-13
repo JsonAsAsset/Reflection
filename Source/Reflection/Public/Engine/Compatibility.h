@@ -520,6 +520,18 @@ inline UClass* FindClassByType(const FString& Type) {
 	return Class;
 }
 
+/* Same search as FindClassByType, for a UENUM. Reaches enums declared in a module's private
+ * headers, which is the only way to read the names behind ids a plugin defines for itself. */
+inline UEnum* FindEnumByType(const FString& Type) {
+#if UE5_1_BEYOND
+	UEnum* Enum = FindFirstObject<UEnum>(*Type);
+#else
+	UEnum* Enum = FindObject<UEnum>(ANY_PACKAGE, *Type);
+#endif
+
+	return Enum;
+}
+
 inline FTexturePlatformData* GetPlatformData(UTexture* Texture) {
 	if (UTexture2D* Texture2D = Cast<UTexture2D>(Texture)) {
 #if ENGINE_UE5

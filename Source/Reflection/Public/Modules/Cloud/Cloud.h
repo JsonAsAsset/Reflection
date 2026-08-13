@@ -54,6 +54,7 @@ public:
 	/* Export Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
 	static inline FString ExportURL = TEXT("/api/export");
+	static inline FString SkinWeightsURL = TEXT("/api/export/skinweights");
 
 	class REFLECTION_API Export {
 	public:
@@ -71,6 +72,10 @@ public:
 		 * encoding. False when the Cloud couldn't produce the payload, which it says by answering
 		 * with json instead. */
 		static bool GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData);
+
+		/* Alternate skin weights, one entry per profile. Not properties, so not in the export:
+		 * they live in the LOD's cooked override tables. Empty for anything without them. */
+		static TArray<TSharedPtr<FJsonValue>> GetSkinWeightsBlocking(const FString& Path);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

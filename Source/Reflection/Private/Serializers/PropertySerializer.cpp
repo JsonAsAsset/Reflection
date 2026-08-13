@@ -481,6 +481,16 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		}
 	}
 	else if (const FStructProperty* StructProperty = CastField<const FStructProperty>(Property)) {
+		/* A guid is written out as the one string its whole value fits in rather than as the four
+		 * ints behind it, so the struct walk below would read it as an object and leave it zeroed.
+		 * FGuid::Parse takes every format the engine prints, including the hyphenated quads that
+		 * asset guids come through as. */
+		if (StructProperty->Struct == TBaseStructure<FGuid>::Get() && NewJsonValue->Type == EJson::String) {
+			FGuid::Parse(NewJsonValue->AsString(), *static_cast<FGuid*>(OutValue));
+
+			return;
+		}
+
 		if (StructProperty->Struct == FGameplayTag::StaticStruct()) {
 			FGameplayTag* GameplayTagStr = static_cast<FGameplayTag*>(OutValue);
 			FGameplayTag NewTag = FGameplayTag::RequestGameplayTag(FName(*NewJsonValue->AsObject()->GetStringField(TEXT("TagName"))), false);

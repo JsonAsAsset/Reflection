@@ -154,6 +154,17 @@ TSharedPtr<FJsonObject> Cloud::Export::GetRawBlocking(const FString& Path, const
 	return GetBlocking(Path, true, Parameters, Headers);
 }
 
+TArray<TSharedPtr<FJsonValue>> Cloud::Export::GetSkinWeightsBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(SkinWeightsURL, { { TEXT("path"), Path } }, {});
+
+	/* Unreachable, missing and profile-less all leave the caller with the same nothing */
+	if (!Response.IsValid() || !Response->HasField(TEXT("profiles"))) {
+		return TArray<TSharedPtr<FJsonValue>>();
+	}
+
+	return Response->GetArrayField(TEXT("profiles"));
+}
+
 bool Cloud::Export::GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData) {
 	const FReflectionHttpRequest Request = BuildRequest(ExportURL, { { TEXT("path"), Path } }, { { TEXT("content-type"), ContentType } });
 	Request->SetVerb(TEXT("GET"));

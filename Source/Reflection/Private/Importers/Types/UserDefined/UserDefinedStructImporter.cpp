@@ -196,7 +196,7 @@ void IUserDefinedStructImporter::AddMemberToStruct(UUserDefinedStruct* UserDefin
 
         Variable.ToolTip = Metadata->ToolTip;
 
-#if ENGINE_UE5
+#if ENGINE_UE5 && false
         Variable.MetaData = Metadata->MetaData;
 #endif
     }

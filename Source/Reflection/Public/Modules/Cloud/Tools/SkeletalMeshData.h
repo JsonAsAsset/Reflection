@@ -18,6 +18,16 @@ public:
 protected:
 	/* By reference: the caller writes slots back into the mesh */
 	static TArray<FSkeletalMaterial>& GetMaterials(USkeletalMesh* Mesh);
+
+	/* Ports the per section flags onto the mesh's sections, returning how many it reached. Cloth's
+	 * section fields are left to binding. */
+	static int32 ApplySectionUserData(USkeletalMesh* Mesh, const TSharedPtr<FJsonObject>& MeshExport);
+
+	/* Rebuilds the weights behind the profile entries, returning how many profiles got any */
+	static int32 ApplySkinWeightProfiles(USkeletalMesh* Mesh);
+
+	/* Logs profiles that only made it half way: an entry with no weights, or weights with no entry */
+	static void ReportSkinWeightProfiles(USkeletalMesh* Mesh);
 };
 
 REGISTER_TOOL(TSkeletalMeshData)

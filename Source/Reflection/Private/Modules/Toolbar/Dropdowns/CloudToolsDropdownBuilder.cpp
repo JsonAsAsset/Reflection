@@ -9,6 +9,7 @@
 
 /* Every tool registers from its own header, so including them is what puts them in the menu */
 #include "Modules/Cloud/Tools/AnimationData.h"
+#include "Modules/Cloud/Tools/ClothingData.h"
 #include "Modules/Cloud/Tools/ConvexCollision.h"
 #include "Modules/Cloud/Tools/CurveLinearColorData.h"
 #include "Modules/Cloud/Tools/FontData.h"
