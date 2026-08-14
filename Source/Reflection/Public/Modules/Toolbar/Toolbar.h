@@ -42,8 +42,8 @@ public:
 #endif
 
 	/* Adds Reflect to the Content Browser's right click menu, so an asset already in the project
-	 * can be reflected without retyping its path. 4.27 is where both menus exist as tool menus */
-#if UE4_27_AND_UE5
+	 * can be reflected without retyping its path. 4.26 is where both menus became tool menus */
+#if !UE4_25_BELOW
 	void RegisterAssetContextMenu();
 #endif
 

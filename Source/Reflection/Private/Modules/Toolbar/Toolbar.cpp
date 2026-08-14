@@ -139,12 +139,12 @@ void UReflectionToolbar::Register() {
 	RegisterMainMenu();
 #endif
 
-#if UE4_27_AND_UE5
+#if !UE4_25_BELOW
 	RegisterAssetContextMenu();
 #endif
 }
 
-#if UE4_27_AND_UE5
+#if !UE4_25_BELOW
 void UReflectionToolbar::RegisterAssetContextMenu() {
 	UToolMenus* ToolMenus = UToolMenus::Get();
 	if (ToolMenus == nullptr) return;
