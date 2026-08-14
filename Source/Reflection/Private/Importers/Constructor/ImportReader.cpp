@@ -137,6 +137,19 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 
 	if (!Successful) {
 		FImportIssues::Report(EImportIssue::Failed, TEXT("The importer couldn't build this asset"));
+
+		/* The package is made before the importer runs, so an import that builds nothing leaves an
+		 * empty one behind and the Content Browser shows the folder it would have lived in */
+		if (Export->Object == nullptr) {
+			LocalPackage->SetDirtyFlag(false);
+			LocalPackage->ClearFlags(RF_Public | RF_Standalone);
+
+#if ENGINE_UE5
+			LocalPackage->MarkAsGarbage();
+#else
+			LocalPackage->MarkPendingKill();
+#endif
+		}
 	}
 
 	if (HideNotifications) {

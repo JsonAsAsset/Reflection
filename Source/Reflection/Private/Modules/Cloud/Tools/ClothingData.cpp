@@ -189,14 +189,6 @@ void TClothingData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 				SectionUserData.ClothingData.AssetGuid = ClothingAsset->GetAssetGuid();
 				SectionUserData.ClothingData.AssetLodIndex = AssetLodIndex;
 
-				/* @TEMP: mapping size is the only number that says whether the bind did anything */
-				UE_LOG(LogReflection, Warning, TEXT("[Cloth] bound LOD%d section %d: %d render verts, %d sim verts, mapping %d x %d"),
-					MeshLodIndex,
-					SectionIndex,
-					BoundSection.SoftVertices.Num(),
-					ClothingAsset->LodData.IsValidIndex(AssetLodIndex) ? ClothingAsset->LodData[AssetLodIndex].PhysicalMeshData.Vertices.Num() : -1,
-					BoundSection.ClothMappingDataLODs.Num(),
-					BoundSection.ClothMappingDataLODs.Num() > 0 ? BoundSection.ClothMappingDataLODs[0].Num() : 0);
 
 				BoundSections++;
 			}
@@ -209,7 +201,10 @@ void TClothingData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 
 		/* Tethers and self collision are cooked out of the export, so they are rebuilt rather than
 		 * trusted. Transition data is per LOD pair, so it waits until every LOD is bound. */
+#if ENGINE_UE5
+		/* Only spelled this way from UE5 */
 		ClothingAsset->InvalidateAllCachedData();
+#endif
 		ClothingAsset->BuildLodTransitionData();
 
 		ClothingAsset->Modify();
@@ -223,23 +218,6 @@ void TClothingData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 	/* The run's one rebuild happens here, on the way out */
 	}
 
-	/* @TEMP: read back after the rebuild, which is where the mapping goes missing */
-	for (int32 MeshLodIndex = 0; MeshLodIndex < ImportedModel->LODModels.Num(); ++MeshLodIndex) {
-		const FSkeletalMeshLODModel& LodModel = ImportedModel->LODModels[MeshLodIndex];
-
-		for (int32 SectionIndex = 0; SectionIndex < LodModel.Sections.Num(); ++SectionIndex) {
-			const FSkelMeshSection& Section = LodModel.Sections[SectionIndex];
-			if (!Section.HasClothingData()) continue;
-
-			UE_LOG(LogReflection, Warning, TEXT("[Cloth] end of run, LOD%d section %d: asset %d, mapping %d x %d, disabled %d"),
-				MeshLodIndex,
-				SectionIndex,
-				Section.CorrespondClothAssetIndex,
-				Section.ClothMappingDataLODs.Num(),
-				Section.ClothMappingDataLODs.Num() > 0 ? Section.ClothMappingDataLODs[0].Num() : 0,
-				Section.bDisabled ? 1 : 0);
-		}
-	}
 
 	BrowseToWhenFinished(SkeletalMesh);
 

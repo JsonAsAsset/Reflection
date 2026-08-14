@@ -60,7 +60,7 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 
 		const int32 VertexCount = (*Vertices)->GetIntegerField(TEXT("Count"));
 		const int32 BonesPerVertex = (*Vertices)->GetIntegerField(TEXT("BonesPerVertex"));
-		const int32 NumTexCoords = FMath::Clamp((*Vertices)->GetIntegerField(TEXT("NumTexCoords")), 1, MAX_TEXCOORDS);
+		const int32 NumTexCoords = FMath::Clamp((*Vertices)->GetIntegerField(TEXT("NumTexCoords")), 1, static_cast<int32>(MAX_TEXCOORDS));
 
 		if (VertexCount == 0 || BonesPerVertex == 0) continue;
 
@@ -257,15 +257,6 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 			}
 		}
 
-		/* @TEMP: the builder reads Points through every wedge, so these have to agree */
-		UE_LOG(LogReflection, Warning, TEXT("[Geo] LOD%d: %d points, %d wedges, %d faces, %d influences, %d materials, %d texcoords"),
-			LodIndex,
-			ImportData.Points.Num(),
-			ImportData.Wedges.Num(),
-			ImportData.Faces.Num(),
-			ImportData.Influences.Num(),
-			ImportData.Materials.Num(),
-			ImportData.NumTexCoords);
 
 		SkeletalMesh->SaveLODImportedData(LodIndex, ImportData);
 
@@ -276,13 +267,6 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 			LodInfo->bHasBeenSimplified = false;
 			LodInfo->ReductionSettings.NumOfTrianglesPercentage = 1.0f;
 			LodInfo->ReductionSettings.NumOfVertPercentage = 1.0f;
-
-			/* @TEMP: says whether the build reads any of the above */
-			UE_LOG(LogReflection, Warning, TEXT("[Geo] LOD%d gate: HasMeshDescription %d, Simplified %d, ReductionActive %d"),
-				LodIndex,
-				SkeletalMesh->HasMeshDescription(LodIndex) ? 1 : 0,
-				LodInfo->bHasBeenSimplified ? 1 : 0,
-				SkeletalMesh->IsReductionActive(LodIndex) ? 1 : 0);
 		}
 
 		if (ImportData.bHasVertexColors) {
