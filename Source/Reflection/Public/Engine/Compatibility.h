@@ -17,6 +17,7 @@
 #define REFLECTION_EXPERIMENTAL 0
 #endif
 
+#include "Engine/StaticMesh.h"
 #include "Engine/TextureCube.h"
 #include "Engine/VolumeTexture.h"
 
