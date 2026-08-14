@@ -17,13 +17,14 @@ class REFLECTION_API SReflectFolderDialog : public SCompoundWidget {
 public:
 	SLATE_BEGIN_ARGS(SReflectFolderDialog) {}
 		SLATE_ARGUMENT(TSharedPtr<SWindow>, ParentWindow)
+		SLATE_ARGUMENT(FString, InitialFolder)
 	SLATE_END_ARGS()
 
 	void Construct(const FArguments& InArgs);
 
 	/* Runs the dialog modally. True when the user chose to reflect, with OutPaths holding what
 	 * Cloud listed under the folder. */
-	static bool Open(TArray<FString>& OutPaths);
+	static bool Open(TArray<FString>& OutPaths, const FString& InitialFolder = FString());
 
 private:
 	FReply OnFindClicked();

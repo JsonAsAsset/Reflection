@@ -2,6 +2,9 @@
 
 #pragma once
 
+#include "Engine/StaticMesh.h"
+#include "StaticMeshCompiler.h"
+
 #include "Engine/Compatibility.h"
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
@@ -126,6 +129,17 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
 
 	if (UVectorFieldStatic* VectorFieldStatic = Cast<UVectorFieldStatic>(Asset)) {
 		VectorFieldStatic->Resource = nullptr;
+	}
+
+	/* A static mesh is fully built by the PostEditChange above, resources and all. Calling PostLoad
+	 * as well builds it a second time, and the second build frees the render data the first one had
+	 * already handed to the render thread. */
+	if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(Asset)) {
+		if (StaticMesh->IsCompiling()) {
+			FStaticMeshCompilingManager::Get().FinishCompilation({ StaticMesh });
+		}
+
+		return true;
 	}
 
 	Asset->PostLoad();

@@ -116,6 +116,38 @@ struct REFLECTION_API FUObjectJsonValueExport {
 		JsonObject->RemoveField(FieldName);
 	}
 
+	/* Flat arrays of numbers, converted once into their own type. The wrapper has nothing to say
+	 * about an element that is not an object, and these are read per vertex. */
+	TArray<float> GetFloats(const FString& FieldName) const {
+		TArray<float> Result;
+
+		const TArray<TSharedPtr<FJsonValue>>* Values;
+		if (!JsonObject.IsValid() || !JsonObject->TryGetArrayField(FieldName, Values)) return Result;
+
+		Result.Reserve(Values->Num());
+
+		for (const TSharedPtr<FJsonValue>& Element : *Values) {
+			Result.Add(Element.IsValid() ? static_cast<float>(Element->AsNumber()) : 0.0f);
+		}
+
+		return Result;
+	}
+
+	TArray<uint32> GetUnsigneds(const FString& FieldName) const {
+		TArray<uint32> Result;
+
+		const TArray<TSharedPtr<FJsonValue>>* Values;
+		if (!JsonObject.IsValid() || !JsonObject->TryGetArrayField(FieldName, Values)) return Result;
+
+		Result.Reserve(Values->Num());
+
+		for (const TSharedPtr<FJsonValue>& Element : *Values) {
+			Result.Add(Element.IsValid() ? static_cast<uint32>(Element->AsNumber()) : 0u);
+		}
+
+		return Result;
+	}
+
 	TArray<FUObjectJsonValueExport> GetArray(const FString& FieldName) const {
 		TArray<FUObjectJsonValueExport> Result;
 

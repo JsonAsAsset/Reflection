@@ -22,7 +22,7 @@
 
 #define LOCTEXT_NAMESPACE "Reflection.ReflectFolder"
 
-bool SReflectFolderDialog::Open(TArray<FString>& OutPaths) {
+bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, const FString& InitialFolder) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("Title", "Reflect Folder"))
 		.ClientSize(FVector2D(720.0f, 480.0f))
@@ -34,6 +34,7 @@ bool SReflectFolderDialog::Open(TArray<FString>& OutPaths) {
 	Window->SetContent(
 		SAssignNew(Dialog, SReflectFolderDialog)
 		.ParentWindow(Window)
+		.InitialFolder(InitialFolder)
 	);
 
 	const IMainFrameModule& MainFrameModule = IMainFrameModule::Get();
@@ -148,11 +149,14 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		]
 	];
 
-	/* Whatever is selected in the Content Browser is usually what this was opened for */
-	const FString SelectedFolder = GetSelectedContentBrowserFolder();
+	/* Falls back to whatever the Content Browser has selected */
+	const FString SelectedFolder = InArgs._InitialFolder.IsEmpty() ? GetSelectedContentBrowserFolder() : InArgs._InitialFolder;
 
 	if (!SelectedFolder.IsEmpty()) {
 		FolderBox->SetText(FText::FromString(SelectedFolder));
+
+		/* The folder is already known, and the list is the point */
+		Find();
 	}
 
 	FSlateApplication::Get().SetKeyboardFocus(FolderBox);

@@ -165,6 +165,26 @@ TArray<TSharedPtr<FJsonValue>> Cloud::Export::GetSkinWeightsBlocking(const FStri
 	return Response->GetArrayField(TEXT("profiles"));
 }
 
+TSharedPtr<FJsonObject> Cloud::Export::GetLodModelBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(LodModelURL, { { TEXT("path"), Path } }, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("lods"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
+TSharedPtr<FJsonObject> Cloud::Export::GetStaticMeshBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(StaticMeshURL, { { TEXT("path"), Path } }, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("lods"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
 bool Cloud::Export::GetBinaryBlocking(const FString& Path, const FString& ContentType, TArray<uint8>& OutData) {
 	const FReflectionHttpRequest Request = BuildRequest(ExportURL, { { TEXT("path"), Path } }, { { TEXT("content-type"), ContentType } });
 	Request->SetVerb(TEXT("GET"));

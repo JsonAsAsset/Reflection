@@ -8,10 +8,13 @@
 #include "Utilities/Process.h"
 
 #include "Modules/UI/StyleModule.h"
+#include "ContentBrowserModule.h"
+#include "Engine/AssetCompatibility.h"
 #include "Importers/Constructor/ImportJob.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Modules/Metadata.h"
 #include "Modules/Cloud/Cloud.h"
+#include "Modules/Toolbar/Tools/ImportFolder.h"
 #include "Modules/Toolbar/Tools/ImportFromPath.h"
 #if ENGINE_UE5
 #include "Modules/Toolbar/Dropdowns/ValidationDropdownBuilder.h"
@@ -134,10 +137,73 @@ void UReflectionToolbar::Register() {
 
 	/* Validation lives on the main menu bar, not in here */
 	RegisterMainMenu();
+	RegisterAssetContextMenu();
 #endif
 }
 
 #if ENGINE_UE5
+void UReflectionToolbar::RegisterAssetContextMenu() {
+#if ENGINE_UE5
+	UToolMenus* ToolMenus = UToolMenus::Get();
+
+	/* Placed after an existing section: found or added lands at the bottom */
+	const auto AddReflectSection = [](UToolMenu* Menu, const FName After, const FText& Tooltip, TFunction<void()> OnReflect) {
+		if (Menu == nullptr) return;
+
+		FToolMenuSection& Section = Menu->AddSection(
+			GReflectionName,
+			FText::FromString(GReflectionName.ToString()),
+			FToolMenuInsert(After, EToolMenuInsertType::After)
+		);
+
+		Section.AddMenuEntry(
+			GReflectionName,
+			FText::FromString("Reflect"),
+			Tooltip,
+			FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), "Toolbar.Icon"),
+
+			FUIAction(
+				FExecuteAction::CreateLambda(OnReflect),
+
+				FCanExecuteAction::CreateLambda([] {
+					return Cloud::Status::IsOpened();
+				})
+			)
+		);
+	};
+
+	AddReflectSection(
+		ToolMenus->ExtendMenu("ContentBrowser.AssetContextMenu"),
+		TEXT("GetAssetActions"),
+		FText::FromString("Reflects the selected assets from Cloud, replacing what is in the project."),
+		[] {
+			const FContentBrowserModule& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+
+			TArray<FAssetData> SelectedAssets;
+			ContentBrowser.Get().GetSelectedAssets(SelectedAssets);
+
+			/* One at a time, so a miss does not take the rest of the selection with it */
+			for (const FAssetData& AssetData : SelectedAssets) {
+				const FString ObjectPath = GetAssetObjectPath(AssetData);
+				if (ObjectPath.IsEmpty()) continue;
+
+				TToolImportFromPath::Import(ObjectPath);
+			}
+		}
+	);
+
+	AddReflectSection(
+		ToolMenus->ExtendMenu("ContentBrowser.FolderContextMenu"),
+		TEXT("PathViewFolderOptions"),
+		FText::FromString("Opens Reflect Folder listing what the Cloud has under this folder."),
+		[] {
+			/* The dialog fills itself in from the Content Browser selection */
+			TToolImportFolder().Execute();
+		}
+	);
+#endif
+}
+
 void UReflectionToolbar::RegisterMainMenu() {
 	UToolMenus* ToolMenus = UToolMenus::Get();
 	if (ToolMenus == nullptr) {

@@ -55,6 +55,8 @@ public:
 public:
 	static inline FString ExportURL = TEXT("/api/export");
 	static inline FString SkinWeightsURL = TEXT("/api/export/skinweights");
+	static inline FString LodModelURL = TEXT("/api/export/lodmodel");
+	static inline FString StaticMeshURL = TEXT("/api/export/staticmesh");
 
 	class REFLECTION_API Export {
 	public:
@@ -76,6 +78,12 @@ public:
 		/* Alternate skin weights, one entry per profile. Not properties, so not in the export:
 		 * they live in the LOD's cooked override tables. Empty for anything without them. */
 		static TArray<TSharedPtr<FJsonValue>> GetSkinWeightsBlocking(const FString& Path);
+
+		/* The cooked geometry, vertex for vertex. Null when the Cloud has no mesh at Path. */
+		static TSharedPtr<FJsonObject> GetLodModelBlocking(const FString& Path);
+
+		/* The cooked static mesh geometry and its slots. Null when the Cloud has none at Path. */
+		static TSharedPtr<FJsonObject> GetStaticMeshBlocking(const FString& Path);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

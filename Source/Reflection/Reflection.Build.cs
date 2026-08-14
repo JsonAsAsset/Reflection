@@ -90,6 +90,11 @@ public class Reflection : ModuleRules {
 			/* UEdGraphSchema_K2, whose PC_* pin categories name the type of a blueprint variable */
 			"BlueprintGraph",
 
+			/* FMeshDescription and FStaticMeshAttributes, which the static mesh importer describes
+			 * its geometry into */
+			"MeshDescription",
+			"StaticMeshDescription",
+
 #if UE_4_23_OR_LATER
 			/* PhysicsCore was carved out of Engine in 4.23 */
 			"PhysicsCore",

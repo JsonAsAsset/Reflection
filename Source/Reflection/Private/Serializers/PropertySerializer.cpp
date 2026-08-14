@@ -239,6 +239,28 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		FProperty* KeyProperty = MapProperty->KeyProp;
 		FProperty* ValueProperty = MapProperty->ValueProp;
 		FScriptMapHelper MapHelper(MapProperty, OutValue);
+
+		/* A map whose values are simple enough to write inline comes through as a json object keyed
+		 * by the map key ({"Mobile": 1}), and one whose values are not comes through as an array of
+		 * Key/Value pairs. Both are the same map, and reading only the array form leaves the other
+		 * kind empty. */
+		if (NewJsonValue->Type == EJson::Object) {
+			for (const auto& Pair : NewJsonValue->AsObject()->Values) {
+				const int32 Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
+				uint8* PairPtr = MapHelper.GetPairPtr(Index);
+
+				/* The key is the field name, which json only ever has as a string */
+				const TSharedRef<FJsonValue> EntryKey = MakeShared<FJsonValueString>(JsonKeyToString(Pair.Key));
+
+				DeserializePropertyValue(KeyProperty, EntryKey, PairPtr);
+				DeserializePropertyValue(ValueProperty, Pair.Value.ToSharedRef(), PairPtr + MapHelper.MapLayout.ValueOffset, OptionalOuter);
+			}
+
+			MapHelper.Rehash();
+
+			return;
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>& PairArray = NewJsonValue->AsArray();
 
 		for (int32 i = 0; i < PairArray.Num(); i++) {

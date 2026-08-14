@@ -13,6 +13,7 @@
 #include "Modules/Cloud/Tools/ConvexCollision.h"
 #include "Modules/Cloud/Tools/CurveLinearColorData.h"
 #include "Modules/Cloud/Tools/FontData.h"
+#include "Modules/Cloud/Tools/MeshGeometry.h"
 #include "Modules/Cloud/Tools/SkeletalMeshData.h"
 #include "Modules/Cloud/Tools/WidgetAnimations.h"
 
