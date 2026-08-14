@@ -175,11 +175,6 @@ bool IAnimationBlueprintImporter::Import() {
 	}
 
 	CreateGraph(RootGraphAnimProperties, AnimGraph, RootAnimNodeContainer);
-
-	FKismetEditorUtilities::CompileBlueprint(
-		AnimBlueprint,
-		EBlueprintCompileOptions::None
-	);
 	
 	return OnAssetCreation(AnimBlueprint);
 }
