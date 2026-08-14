@@ -25,6 +25,57 @@ UObject* IStaticMeshImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UStaticMesh>(GetPackage(), UStaticMesh::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
 
+void IStaticMeshImporter::NormalizeLegacyStaticMeshMaterials(UStaticMesh* StaticMesh, const TSharedPtr<FJsonObject>& Properties) {
+    if (StaticMesh == nullptr || !Properties.IsValid()) return;
+
+    const TArray<TSharedPtr<FJsonValue>>* StaticMaterials;
+    if (Properties->TryGetArrayField(TEXT("StaticMaterials"), StaticMaterials)) {
+        return;
+    }
+
+    const TArray<TSharedPtr<FJsonValue>>* LegacyMaterials;
+    if (!Properties->TryGetArrayField(TEXT("Materials"), LegacyMaterials)) {
+        return;
+    }
+
+    const TArray<FStaticMaterial>& ExistingSlots = GetStaticMaterials(StaticMesh);
+
+    TArray<TSharedPtr<FJsonValue>> NormalizedMaterials;
+    NormalizedMaterials.Reserve(LegacyMaterials->Num());
+
+    for (int32 MaterialIndex = 0; MaterialIndex < LegacyMaterials->Num(); ++MaterialIndex) {
+        const TSharedPtr<FJsonValue>& LegacyMaterial = (*LegacyMaterials)[MaterialIndex];
+
+        FName MaterialSlotName;
+        FName ImportedMaterialSlotName;
+
+        if (ExistingSlots.IsValidIndex(MaterialIndex)) {
+            MaterialSlotName = ExistingSlots[MaterialIndex].MaterialSlotName;
+            ImportedMaterialSlotName = ExistingSlots[MaterialIndex].ImportedMaterialSlotName;
+        }
+
+        if (MaterialSlotName.IsNone()) {
+            MaterialSlotName = FName(*FString::Printf(
+                TEXT("Material_%d"),
+                MaterialIndex));
+        }
+
+        if (ImportedMaterialSlotName.IsNone()) {
+            ImportedMaterialSlotName = MaterialSlotName;
+        }
+
+        const TSharedPtr<FJsonObject> StaticMaterial = MakeShared<FJsonObject>();
+
+        StaticMaterial->SetField(TEXT("MaterialInterface"), LegacyMaterial);
+        StaticMaterial->SetStringField(TEXT("MaterialSlotName"), MaterialSlotName.ToString());
+        StaticMaterial->SetStringField(TEXT("ImportedMaterialSlotName"), ImportedMaterialSlotName.ToString());
+        NormalizedMaterials.Add(MakeShared<FJsonValueObject>(StaticMaterial));
+    }
+
+    Properties->SetArrayField(TEXT("StaticMaterials"), NormalizedMaterials);
+    Properties->RemoveField(TEXT("Materials"));
+}
+
 bool IStaticMeshImporter::Import() {
 	UStaticMesh* StaticMesh = Create<UStaticMesh>();
 	if (StaticMesh == nullptr) return false;
@@ -81,17 +132,19 @@ bool IStaticMeshImporter::Import() {
 
 	BuildCollisionAndSockets(StaticMesh);
 
-	GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(GetAssetData(), {
-		"RenderData",
-		"LODGroup",
-		"BodySetup",
-		"NavCollision",
-		"ThumbnailInfo",
+	const TSharedPtr<FJsonObject> Properties = RemovePropertiesShared(GetAssetData(), {
+	   "RenderData",
+	   "LODGroup",
+	   "BodySetup",
+	   "NavCollision",
+	   "ThumbnailInfo",
 
-		/* Built from the exports below, so the references here would only be null */
-		"Sockets",
+	   /* Built from the exports below, so the references here would only be null */
+	   "Sockets",
+	});
 
-	}), StaticMesh);
+	NormalizeLegacyStaticMeshMaterials(StaticMesh, Properties);
+	GetObjectSerializer()->DeserializeObjectProperties(Properties, StaticMesh);
 
 	/* Dropped to the first LOD worth showing. A cook can strip the colours from LOD 0, and landing
 	 * there renders the mesh white. */

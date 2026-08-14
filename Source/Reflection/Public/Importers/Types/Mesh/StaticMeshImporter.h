@@ -19,6 +19,10 @@ private:
 	 * than the ones the payload names. False when the payload has nothing usable in it. */
 	bool BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonValueExport& Lod, int32 LodIndex);
 
+	/* Converts the legacy Materials array into StaticMaterials, preserving the slot names supplied by
+     * the geometry payload while attaching each material reference by index. */
+	void NormalizeLegacyStaticMeshMaterials(UStaticMesh* StaticMesh, const TSharedPtr<FJsonObject>& Properties);
+	
 	/* Slot order comes from the geometry payload, since a polygon group names its slot */
 	static void BuildMaterialSlots(UStaticMesh* StaticMesh, const TArray<TSharedPtr<FJsonValue>>& Slots);
 
