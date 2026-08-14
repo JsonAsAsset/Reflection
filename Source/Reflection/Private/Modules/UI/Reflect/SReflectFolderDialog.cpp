@@ -145,6 +145,17 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		[
 			SNew(SHorizontalBox)
 
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
+			[
+				SNew(SButton)
+				.Text(this, &SReflectFolderDialog::GetTypesText)
+				.ToolTipText(LOCTEXT("TypesTooltip", "Choose which asset types the run is allowed to build. Every type by default.\n\nThis covers what the folder listed. Assets those reference still come down with them, or what did come down would be missing pieces."))
+				.OnClicked(this, &SReflectFolderDialog::OnTypesClicked)
+			]
+
 			/* Under the list it counts, on the same line as the button it qualifies */
 			+ SHorizontalBox::Slot()
 			.FillWidth(1.0f)
@@ -152,17 +163,6 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 			[
 				SNew(STextBlock)
 				.Text(this, &SReflectFolderDialog::GetStatusText)
-			]
-
-			+ SHorizontalBox::Slot()
-			.AutoWidth()
-			.VAlign(VAlign_Center)
-			.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
-			[
-				SNew(SButton)
-				.Text(this, &SReflectFolderDialog::GetTypesText)
-				.ToolTipText(LOCTEXT("TypesTooltip", "Choose which asset types the run is allowed to build. Every type by default.\n\nThis covers what the folder listed. Assets those reference still come down with them, or what did come down would be missing pieces."))
-				.OnClicked(this, &SReflectFolderDialog::OnTypesClicked)
 			]
 
 			+ SHorizontalBox::Slot()

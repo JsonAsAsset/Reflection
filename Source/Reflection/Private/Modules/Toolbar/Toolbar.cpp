@@ -478,7 +478,7 @@ void UReflectionToolbar::CancelWaitForCloudTimer() {
 void UReflectionToolbar::IsFitToFunction(TFunction<void(bool)> OnResponse) {
 	/* A json file is imported from disk whether or not Cloud is up, so nothing has to be running
 	 * for the run to go ahead. Cloud still answers references while it is open. */
-	if (GetSettings()->DirectAssetData) {
+	if (GetSettings()->UseLocalJson) {
 		OnResponse(true);
 
 		return;
@@ -526,7 +526,7 @@ void UReflectionToolbar::Import() {
 	/* A path is the direct way in, and having to export a json first to import something Cloud
 	 * could have fetched is a step that does not need to exist. Built the other way, the file on
 	 * disk is what is being imported, so the file dialog is the way in. */
-	if (!GetSettings()->DirectAssetData) {
+	if (!GetSettings()->UseLocalJson) {
 		TToolImportFromPath Tool;
 		Tool.Execute();
 
