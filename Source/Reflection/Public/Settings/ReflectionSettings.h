@@ -61,6 +61,11 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRSettings AssetSettings;
 
+	/* On, the reflect button opens a file dialog and imports a json you exported yourself. Off, it
+	 * asks for an asset path and pulls the data from Cloud. */
+	UPROPERTY(EditAnywhere, Config, DisplayName = "Direct Asset Data", Category = Settings)
+	bool DirectAssetData = false;
+
 	/* Enables experimental/developing features. Features may not work as intended. */
 	UPROPERTY(EditAnywhere, Config, DisplayName = "Experiments", Category = Settings, AdvancedDisplay)
 	bool EnableExperiments = false;

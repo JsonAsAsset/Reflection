@@ -10,8 +10,7 @@ public class Reflection : ModuleRules {
 
 		var bIsLinux = Target.Platform == UnrealTargetPlatform.Linux;
 
-		/* Which way the reflect button goes in: Cloud paths, or a json file picked off disk. Set
-		 * this to false for the file dialog. Nothing else about Cloud changes. */
+		/* Nothing reads this any more: the way in is the Direct Asset Data setting */
 		var bCloudServer = true;
 
 		PublicDefinitions.Add("REFLECTION_CLOUD_SERVER=" + (bCloudServer ? "1" : "0"));
