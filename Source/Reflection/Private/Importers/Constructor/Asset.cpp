@@ -16,6 +16,7 @@
 #include "Dom/JsonObject.h"
 
 #include "Engine/FontFace.h"
+#include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/Graph/SoundGraph.h"
 #include "Modules/Cloud/Cloud.h"
@@ -23,6 +24,19 @@
 
 /* CreateAssetPackage Implementations ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 UPackage* FAssetUtilities::CreateAssetPackage(const FString& Path) {
+	/* A path off disk rather than a package path gets this far when the export was reflected from
+	 * somewhere outside the project, and the asset registry crashes on one that has no leading
+	 * slash rather than refusing it. */
+	if (!FPackageName::IsValidLongPackageName(Path)) {
+		FImportIssues::Report(
+			EImportIssue::Failed,
+			TEXT("Not a package path"),
+			FString::Printf(TEXT("\"%s\" is not one. Reflect from inside the export folder so the path resolves against the game's own."), *Path)
+		);
+
+		return nullptr;
+	}
+
 	UPackage* Package = CreatePackage(
 		/* 4.25, 4.26.0 and below need an Outer */
 #if UE4_25_BELOW || (UE4_26_0)
@@ -136,6 +150,14 @@ UPackage* FAssetUtilities::CreateAssetPackage(const FString& Name, const FString
 	}
 	
 	UPackage* Package = CreateAssetPackage(*PathWithGame);
+
+	/* Null when the path is not a package path, which the overload above reports for itself */
+	if (Package == nullptr) {
+		FailureReason = "\"" + PathWithGame + "\" is not a package path.\n\nReflect from inside the export folder so the path resolves against the game's own.";
+
+		return nullptr;
+	}
+
 	Package->FullyLoad();
 
 	return Package;
