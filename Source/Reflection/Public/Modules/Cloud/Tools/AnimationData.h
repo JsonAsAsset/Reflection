@@ -13,7 +13,7 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 	UAnimSequenceBase* AnimSequenceBase = nullptr;
 
 	if (UseSelectedAsset) {
-		AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(true, Container->GetAssetName());
+		AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(false, Container->GetAssetName());
 	} else {
 		if (Container->GetAsset()) {
 			AnimSequenceBase = Cast<UAnimSequenceBase>(Container->GetAsset());
@@ -27,9 +27,6 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 
 	if (UseSelectedAsset) {
 		if (!AnimSequenceBase) {
-			UE_LOG(LogReflection, Error, TEXT("Could not get valid AnimSequenceBase"));
-			FMessageDialog::Open(EAppMsgType::Ok, FText::FromString("Select a Animation inside of the Content Browser to reflect data."));
-		
 			return false;
 		}
 	}
