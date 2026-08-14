@@ -54,9 +54,12 @@ void FReflectionModule::StartupModule() {
 	Toolbar = NewObject<UReflectionToolbar>();
 	Toolbar->AddToRoot();
 	
-#if ENGINE_UE5
+	/* UE4 needs this too, its Register is what puts Reflect in the Content Browser's right click menu */
+#if !UE4_23_BELOW
 	UToolMenus::RegisterStartupCallback(FSimpleMulticastDelegate::FDelegate::CreateUObject(Toolbar, &UReflectionToolbar::Register));
-#else
+#endif
+
+#if ENGINE_UE4
 	{
     	const TSharedPtr<FUICommandList> PluginCommands = MakeShareable(new FUICommandList);
 

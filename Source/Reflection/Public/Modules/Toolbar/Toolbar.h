@@ -37,12 +37,14 @@ public:
 	 * other tool menus rather than buried in the Content Browser toolbar */
 	void RegisterMainMenu();
 
-	/* Adds Reflect to the Content Browser's right click menu, so an asset already in the project
-	 * can be reflected without retyping its path */
-	void RegisterAssetContextMenu();
-
 	/* Fills the Validation menu with everything in the validator registry */
 	static void PopulateValidationMenu(FMenuBuilder& MenuBuilder);
+#endif
+
+	/* Adds Reflect to the Content Browser's right click menu, so an asset already in the project
+	 * can be reflected without retyping its path. 4.27 is where both menus exist as tool menus */
+#if UE4_27_AND_UE5
+	void RegisterAssetContextMenu();
 #endif
 
 #if ENGINE_UE4

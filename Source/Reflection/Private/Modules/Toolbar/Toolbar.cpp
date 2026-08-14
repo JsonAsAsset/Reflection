@@ -137,14 +137,17 @@ void UReflectionToolbar::Register() {
 
 	/* Validation lives on the main menu bar, not in here */
 	RegisterMainMenu();
+#endif
+
+#if UE4_27_AND_UE5
 	RegisterAssetContextMenu();
 #endif
 }
 
-#if ENGINE_UE5
+#if UE4_27_AND_UE5
 void UReflectionToolbar::RegisterAssetContextMenu() {
-#if ENGINE_UE5
 	UToolMenus* ToolMenus = UToolMenus::Get();
+	if (ToolMenus == nullptr) return;
 
 	/* Placed after an existing section: found or added lands at the bottom */
 	const auto AddReflectSection = [](UToolMenu* Menu, const FName After, const FText& Tooltip, TFunction<void()> OnReflect) {
@@ -201,9 +204,10 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 			TToolImportFolder().Execute();
 		}
 	);
-#endif
 }
+#endif
 
+#if ENGINE_UE5
 void UReflectionToolbar::RegisterMainMenu() {
 	UToolMenus* ToolMenus = UToolMenus::Get();
 	if (ToolMenus == nullptr) {

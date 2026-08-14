@@ -75,6 +75,9 @@ public class Reflection : ModuleRules {
 			"Landscape",
 			"AssetTools",
 			"EditorStyle",
+
+			/* FContentBrowserModule, for the selection behind the right click menu */
+			"ContentBrowser",
 			"Settings",
 			"RHI",
 			"Detex",
