@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "Importers/Constructor/ImportIssues.h"
+
 #include "IContentBrowserSingleton.h"
 #include "ContentBrowserModule.h"
 #include "Utilities/Dialog.h"
@@ -77,19 +79,14 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 	ContentBrowserModule.Get().GetSelectedAssets(SelectedAssets);
 
 	if (SelectedAssets.Num() == 0) {
-		if (SuppressErrors == true) {
-			return nullptr;
+		if (SuppressErrors == false) {
+			FImportIssues::Report(
+				EImportIssue::Setting,
+				TEXT("Nothing selected in the Content Browser"),
+				FString::Printf(TEXT("This reflects onto a %s that is already in the project, so one has to be selected."), *T::StaticClass()->GetName())
+			);
 		}
-		
-		GLog->Log("Reflection: [GetSelectedAsset] None selected, returning nullptr.");
 
-		const FText DialogText = FText::Format(
-			FText::FromString(TEXT("Reflecting an asset of type '{0}' requires a base asset selected to modify. Select one in your content browser.")),
-			FText::FromString(T::StaticClass()->GetName())
-		);
-
-		FMessageDialog::Open(EAppMsgType::Ok, DialogText);
-		
 		return nullptr;
 	}
 
@@ -97,24 +94,28 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 	T* CastedAsset = Cast<T>(SelectedAsset);
 
 	if (!CastedAsset) {
-		if (SuppressErrors == true) {
-			return nullptr;
+		if (SuppressErrors == false) {
+			FImportIssues::Report(
+				EImportIssue::Setting,
+				TEXT("The selected asset is the wrong type"),
+				FString::Printf(TEXT("\"%s\" is a %s, and this reflects onto a %s."), *SelectedAsset->GetName(), *SelectedAsset->GetClass()->GetName(), *T::StaticClass()->GetName())
+			);
 		}
-		
-		GLog->Log("Reflection: [GetSelectedAsset] Selected asset is not of the required class, returning nullptr.");
 
-		const FText DialogText = FText::Format(
-			FText::FromString(TEXT("The selected asset is not of type '{0}'. Please select a valid asset.")),
-			FText::FromString(T::StaticClass()->GetName())
-		);
-
-		FMessageDialog::Open(EAppMsgType::Ok, DialogText);
-		
 		return nullptr;
 	}
 
-	if (CastedAsset && OptionalAssetNameCheck != "" && !CastedAsset->GetName().Equals(OptionalAssetNameCheck)) {
-		CastedAsset = nullptr;
+	/* Reflecting onto whatever happens to be selected is how the wrong asset gets overwritten */
+	if (OptionalAssetNameCheck != "" && !CastedAsset->GetName().Equals(OptionalAssetNameCheck)) {
+		if (SuppressErrors == false) {
+			FImportIssues::Report(
+				EImportIssue::Setting,
+				TEXT("The selected asset is not the one being reflected"),
+				FString::Printf(TEXT("\"%s\" is selected, and this reflects onto \"%s\"."), *CastedAsset->GetName(), *OptionalAssetNameCheck)
+			);
+		}
+
+		return nullptr;
 	}
 
 	return CastedAsset;
