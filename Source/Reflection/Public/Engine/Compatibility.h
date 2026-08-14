@@ -510,6 +510,30 @@ inline const UObject* GetClassDefaultObject(UClass* Class) {
 #endif
 }
 
+/* Vectors grew a float spelling in UE5, and MeshDescription is written against it */
+#if !ENGINE_UE5
+using FVector2f = FVector2D;
+using FVector3f = FVector;
+using FVector4f = FVector4;
+#endif
+
+/* UStaticMesh's members were put behind accessors in 4.27 */
+inline TArray<FStaticMaterial>& GetStaticMaterials(UStaticMesh* Mesh) {
+#if UE4_27_AND_UE5
+	return Mesh->GetStaticMaterials();
+#else
+	return Mesh->StaticMaterials;
+#endif
+}
+
+inline UBodySetup* GetBodySetup(const UStaticMesh* Mesh) {
+#if UE4_27_AND_UE5
+	return Mesh->GetBodySetup();
+#else
+	return Mesh->BodySetup;
+#endif
+}
+
 inline UClass* FindClassByType(const FString& Type) {
 #if UE5_1_BEYOND
 	UClass* Class = FindFirstObject<UClass>(*Type);

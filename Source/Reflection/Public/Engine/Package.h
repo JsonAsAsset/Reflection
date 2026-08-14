@@ -2,10 +2,15 @@
 
 #pragma once
 
-#include "Engine/StaticMesh.h"
-#include "StaticMeshCompiler.h"
 
 #include "Engine/Compatibility.h"
+
+#include "Engine/StaticMesh.h"
+
+/* Static meshes only build asynchronously from UE5 on */
+#if ENGINE_UE5
+#include "StaticMeshCompiler.h"
+#endif
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
 #if UE4_25_BELOW
@@ -131,13 +136,14 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
 		VectorFieldStatic->Resource = nullptr;
 	}
 
-	/* A static mesh is fully built by the PostEditChange above, resources and all. Calling PostLoad
-	 * as well builds it a second time, and the second build frees the render data the first one had
-	 * already handed to the render thread. */
+	/* PostEditChange above already built the static mesh, resources and all. PostLoad builds it a
+	 * second time and frees the render data the first build handed to the render thread. */
 	if (UStaticMesh* StaticMesh = Cast<UStaticMesh>(Asset)) {
+#if ENGINE_UE5
 		if (StaticMesh->IsCompiling()) {
 			FStaticMeshCompilingManager::Get().FinishCompilation({ StaticMesh });
 		}
+#endif
 
 		return true;
 	}

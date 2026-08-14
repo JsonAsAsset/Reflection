@@ -7,8 +7,6 @@
 #include "Serialization/JsonSerializer.h"
 #include "Engine/Compatibility.h"
 
-/* Conversion Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
-#if ENGINE_UE5
 /* Reads past the end of a flat array are a shape mismatch rather than a reason to stop */
 inline float ReadFloat(const TArray<float>& Values, const int32 Index) {
 	return Values.IsValidIndex(Index) ? Values[Index] : 0.0f;
@@ -35,6 +33,8 @@ inline uint32 ReadUInt(const TArray<TSharedPtr<FJsonValue>>* Values, const int32
 	return Values != nullptr && Values->IsValidIndex(Index) ? static_cast<uint32>((*Values)[Index]->AsNumber()) : 0xFFFFFFFFu;
 }
 
+/* Conversion Functions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+#if ENGINE_UE5
 inline FVector3f ObjectToVector3F(const FJsonObject* Object) {
 	return FVector3f(Object->GetNumberField(TEXT("X")), Object->GetNumberField(TEXT("Y")), Object->GetNumberField(TEXT("Z")));
 }

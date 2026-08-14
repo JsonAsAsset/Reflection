@@ -12,6 +12,15 @@
 #include "Engine/StaticMeshSocket.h"
 #include "PhysicsEngine/BodySetup.h"
 
+/* Spelled on the attribute set from UE5, and on the ref before that */
+inline void SetStaticMeshUVChannelCount(FMeshDescription& MeshDescription, const int32 Count) {
+#if ENGINE_UE5
+	MeshDescription.VertexInstanceAttributes().SetAttributeChannelCount(MeshAttribute::VertexInstance::TextureCoordinate, Count);
+#else
+	MeshDescription.VertexInstanceAttributes().GetAttributesRef<FVector2D>(MeshAttribute::VertexInstance::TextureCoordinate).SetNumIndices(Count);
+#endif
+}
+
 UObject* IStaticMeshImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<UStaticMesh>(GetPackage(), UStaticMesh::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
@@ -86,6 +95,7 @@ bool IStaticMeshImporter::Import() {
 
 	/* Dropped to the first LOD worth showing. A cook can strip the colours from LOD 0, and landing
 	 * there renders the mesh white. */
+#if ENGINE_UE5
 	if (GetSettings()->AssetSettings.StaticMesh.IgnoreMinQualityLevelLODDefault) {
 		FPerQualityLevelInt MinQualityLevelLOD = StaticMesh->GetQualityLevelMinLOD();
 
@@ -93,6 +103,7 @@ bool IStaticMeshImporter::Import() {
 
 		StaticMesh->SetQualityLevelMinLOD(MinQualityLevelLOD);
 	}
+#endif
 
 	return OnAssetCreation(StaticMesh);
 }
@@ -114,7 +125,7 @@ void IStaticMeshImporter::BuildMaterialSlots(UStaticMesh* StaticMesh, const TArr
 	}
 
 	if (Materials.Num() > 0) {
-		StaticMesh->SetStaticMaterials(Materials);
+		GetStaticMaterials(StaticMesh) = Materials;
 	}
 }
 
@@ -136,11 +147,11 @@ void IStaticMeshImporter::BuildCollisionAndSockets(UStaticMesh* StaticMesh) {
 	FUObjectExport* BodyExport = Container->FindByType(FString(TEXT("BodySetup")));
 	if (!BodyExport->IsJsonValid()) return;
 
-	if (StaticMesh->GetBodySetup() == nullptr) {
+	if (GetBodySetup(StaticMesh) == nullptr) {
 		StaticMesh->CreateBodySetup();
 	}
 
-	UBodySetup* BodySetup = StaticMesh->GetBodySetup();
+	UBodySetup* BodySetup = GetBodySetup(StaticMesh);
 	if (BodySetup == nullptr) return;
 
 	BodySetup->AggGeom.EmptyElements();
@@ -190,7 +201,7 @@ bool IStaticMeshImporter::BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonVa
 	Attributes.Register();
 
 	/* On the attribute set, not a temporary ref, and after Register defaults it to one */
-	MeshDescription->VertexInstanceAttributes().SetAttributeChannelCount(MeshAttribute::VertexInstance::TextureCoordinate, NumTexCoords);
+	SetStaticMeshUVChannelCount(*MeshDescription, NumTexCoords);
 
 	TVertexAttributesRef<FVector3f> VertexPositions = Attributes.GetVertexPositions();
 	TVertexInstanceAttributesRef<FVector3f> InstanceNormals = Attributes.GetVertexInstanceNormals();
@@ -214,7 +225,7 @@ bool IStaticMeshImporter::BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonVa
 		VertexIDs.Add(VertexID);
 	}
 
-	const TArray<FStaticMaterial>& MaterialSlots = StaticMesh->GetStaticMaterials();
+	const TArray<FStaticMaterial>& MaterialSlots = GetStaticMaterials(StaticMesh);
 
 	int32 BuiltTriangles = 0;
 
