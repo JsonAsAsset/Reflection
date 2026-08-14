@@ -7,6 +7,8 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Utilities/ContentBrowser.h"
+#include "Containers/Export.h"
+#include "Utilities/Dialog.h"
 #include "Modules/UI/Reflect/SReflectTypeFilterDialog.h"
 
 #include "Interfaces/IMainFrameModule.h"
@@ -22,6 +24,20 @@
 #include "Widgets/Views/STableRow.h"
 
 #define LOCTEXT_NAMESPACE "Reflection.ReflectFolder"
+
+/* Reduces whatever was pasted to the folder it lives in. */
+static FString ToFolderPath(FString Path) {
+	Path.TrimStartAndEndInline();
+	Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+	if (FString Leaf; Path.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd) && Leaf.Contains(TEXT("."))) {
+		Path.Split(TEXT("/"), &Path, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+	}
+
+	Path.RemoveFromEnd(TEXT("/"));
+
+	return Path;
+}
 
 bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
@@ -162,8 +178,21 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		]
 	];
 
-	/* Falls back to whatever the Content Browser has selected */
-	const FString SelectedFolder = InArgs._InitialFolder.IsEmpty() ? GetSelectedContentBrowserFolder() : InArgs._InitialFolder;
+	FString SelectedFolder = InArgs._InitialFolder;
+
+	if (SelectedFolder.IsEmpty()) {
+		const FString Clipboard = GetClipboard().TrimStartAndEnd();
+
+		if (IsAssetPathLike(Clipboard)) {
+			/* Reduced before it goes in the box rather than inside Find, so what is shown is
+			 * the folder that gets listed */
+			SelectedFolder = ToFolderPath(StripObjectOuter(Clipboard));
+		}
+	}
+
+	if (SelectedFolder.IsEmpty()) {
+		SelectedFolder = GetSelectedContentBrowserFolder();
+	}
 
 	if (!SelectedFolder.IsEmpty()) {
 		FolderBox->SetText(FText::FromString(SelectedFolder));
@@ -224,16 +253,7 @@ FReply SReflectFolderDialog::OnReflectClicked() {
 }
 
 void SReflectFolderDialog::Find() {
-	FString Folder = FolderBox->GetText().ToString().TrimStartAndEnd();
-
-	/* Pasting an asset's own path is the common way to get here, so the file on the end is taken
-	 * off rather than searched for as a folder. A folder never has an extension, so the dot is
-	 * what tells the two apart. */
-	if (FString Leaf; Folder.Split(TEXT("/"), nullptr, &Leaf, ESearchCase::IgnoreCase, ESearchDir::FromEnd) && Leaf.Contains(TEXT("."))) {
-		Folder.Split(TEXT("/"), &Folder, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
-	}
-
-	Folder.RemoveFromEnd(TEXT("/"));
+	const FString Folder = ToFolderPath(FolderBox->GetText().ToString());
 
 	Rows.Reset();
 	Paths.Reset();

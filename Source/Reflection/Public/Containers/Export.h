@@ -19,6 +19,38 @@ inline FString StripObjectOuter(const FString& InObjectName) {
 	return Result;
 }
 
+/* Whether one line could be an asset or folder path. */
+inline bool IsAssetPathLike(const FString& Line) {
+	/* A copied reference arrives as Type'/Game/Path/Asset.Asset' */
+	FString Path = StripObjectOuter(Line.TrimStartAndEnd());
+	Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+	if (Path.IsEmpty()) {
+		return false;
+	}
+
+	/* Every form of these has a root and something under it */
+	int32 Slash;
+	if (!Path.FindChar(TEXT('/'), Slash) || Path.Len() < 3) {
+		return false;
+	}
+
+	/* Prose is what this is mostly guarding against, and prose has spaces in it. Package paths
+	 * are allowed them in principle, but nothing that ships in a game uses them. */
+	for (const TCHAR Character : Path) {
+		if (FChar::IsWhitespace(Character)) {
+			return false;
+		}
+
+		/* Illegal in a package path either way */
+		if (FCString::Strchr(TEXT("?*:\"<>|"), Character) != nullptr) {
+			return false;
+		}
+	}
+
+	return true;
+}
+
 inline FString GetObjectNameFromOuter(const FString& InObjectName) {
 	return FPackageName::ObjectPathToObjectName(StripObjectOuter(InObjectName));
 }
