@@ -20,6 +20,22 @@
 
 #define LOCTEXT_NAMESPACE "Reflection.ReflectPaths"
 
+#if ENGINE_UE5
+static const FName RemoveButtonStyleName("SimpleButton");
+static const FName RemoveIconName("Icons.X");
+#else
+static const FName RemoveButtonStyleName("HoverHintOnly");
+static const FName RemoveIconName("Symbols.X");
+#endif
+
+static FSlateColor GetRemoveIconColor() {
+#if ENGINE_UE5
+	return FSlateColor::UseForeground();
+#else
+	return FAppStyle::Get().GetSlateColor("DefaultForeground");
+#endif
+}
+
 /* Whether one line could be an asset path.
  *
  * Deliberately shallow: only Cloud can say whether a path leads anywhere, and this runs against
@@ -311,14 +327,14 @@ TSharedRef<ITableRow> SReflectPathsDialog::GenerateRow(TSharedPtr<FString> Path,
 			.Padding(FMargin(4.0f, 2.0f, 4.0f, 2.0f))
 			[
 				SNew(SButton)
-				.ButtonStyle(FAppStyle::Get(), "SimpleButton")
+				.ButtonStyle(FAppStyle::Get(), RemoveButtonStyleName)
 				.ContentPadding(FMargin(2.0f))
 				.ToolTipText(LOCTEXT("RemoveTooltip", "Take this path back out of the queue"))
 				.OnClicked(this, &SReflectPathsDialog::RemovePath, Path)
 				[
 					SNew(SImage)
-					.Image(FAppStyle::Get().GetBrush("Icons.X"))
-					.ColorAndOpacity(FSlateColor::UseForeground())
+					.Image(FAppStyle::Get().GetBrush(RemoveIconName))
+					.ColorAndOpacity(GetRemoveIconColor())
 				]
 			]
 		];
