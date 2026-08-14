@@ -7,6 +7,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Utilities/ContentBrowser.h"
+#include "Modules/UI/Reflect/SReflectTypeFilterDialog.h"
 
 #include "Interfaces/IMainFrameModule.h"
 #include "Framework/Application/SlateApplication.h"
@@ -22,7 +23,7 @@
 
 #define LOCTEXT_NAMESPACE "Reflection.ReflectFolder"
 
-bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, const FString& InitialFolder) {
+bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("Title", "Reflect Folder"))
 		.ClientSize(FVector2D(720.0f, 480.0f))
@@ -45,6 +46,7 @@ bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, const FString& Initia
 	}
 
 	OutPaths = Dialog->Paths;
+	OutAllowedTypes = Dialog->AllowedTypes;
 
 	return OutPaths.Num() > 0;
 }
@@ -142,6 +144,17 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 			.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
 			[
 				SNew(SButton)
+				.Text(this, &SReflectFolderDialog::GetTypesText)
+				.ToolTipText(LOCTEXT("TypesTooltip", "Choose which asset types the run is allowed to build. Every type by default.\n\nThis covers what the folder listed. Assets those reference still come down with them, or what did come down would be missing pieces."))
+				.OnClicked(this, &SReflectFolderDialog::OnTypesClicked)
+			]
+
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
+			[
+				SNew(SButton)
 				.Text(this, &SReflectFolderDialog::GetReflectText)
 				.IsEnabled(this, &SReflectFolderDialog::CanReflect)
 				.OnClicked(this, &SReflectFolderDialog::OnReflectClicked)
@@ -173,6 +186,12 @@ void SReflectFolderDialog::OnFolderCommitted(const FText& NewText, const ETextCo
 
 FReply SReflectFolderDialog::OnFindClicked() {
 	Find();
+
+	return FReply::Handled();
+}
+
+FReply SReflectFolderDialog::OnTypesClicked() {
+	SReflectTypeFilterDialog::Open(AllowedTypes);
 
 	return FReply::Handled();
 }
@@ -273,6 +292,15 @@ FText SReflectFolderDialog::GetStatusText() const {
 	}
 
 	return FText::Format(LOCTEXT("StatusFoundFmt", "{0} asset(s)"), FText::AsNumber(Paths.Num()));
+}
+
+FText SReflectFolderDialog::GetTypesText() const {
+	/* The count is the only sign a filter is on once the window is shut */
+	if (AllowedTypes.Num() == 0) {
+		return LOCTEXT("TypesAll", "All Types");
+	}
+
+	return FText::Format(LOCTEXT("TypesSomeFmt", "{0} Types"), FText::AsNumber(AllowedTypes.Num()));
 }
 
 FText SReflectFolderDialog::GetReflectText() const {

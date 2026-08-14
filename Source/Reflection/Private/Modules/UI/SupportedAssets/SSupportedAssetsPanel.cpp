@@ -165,12 +165,18 @@ void SSupportedAssetsPanel::Construct(const FArguments& InArgs) {
 }
 
 void SSupportedAssetsPanel::Refresh() {
-	AllEntries.Reset();
+	AllEntries = Collect();
+
+	ApplyFilter();
+}
+
+TArray<TSharedPtr<FSupportedAssetEntry>> SSupportedAssetsPanel::Collect() {
+	TArray<TSharedPtr<FSupportedAssetEntry>> AllEntries;
 
 	/* Keyed on type, because a type can be reached more than one way and the first claim wins */
 	TMap<FString, TSharedPtr<FSupportedAssetEntry>> Seen;
 
-	const auto Add = [&Seen, this](const FString& Type, const FString& Category, const FString& Importer) {
+	const auto Add = [&Seen, &AllEntries](const FString& Type, const FString& Category, const FString& Importer) {
 		if (Type.IsEmpty() || Seen.Contains(Type)) return;
 
 		TSharedPtr<FSupportedAssetEntry> Entry = MakeShared<FSupportedAssetEntry>();
@@ -214,7 +220,7 @@ void SSupportedAssetsPanel::Refresh() {
 		return A->DisplayType < B->DisplayType;
 	});
 
-	ApplyFilter();
+	return AllEntries;
 }
 
 void SSupportedAssetsPanel::OnSearchChanged(const FText& Text) {

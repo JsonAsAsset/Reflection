@@ -15,6 +15,10 @@ public:
 	void Execute();
 
 	/* Reflects one asset. The path can be in either Cloud or editor form, with or without an extension, an export name or a Type'...' wrapper around it.
-	 * False when Cloud has nothing at that path, or the import itself failed. */
-	static bool Import(const FString& InPath);
+	 * False when Cloud has nothing at that path, or the import itself failed.
+	 *
+	 * AllowedTypes empty means every type. A type outside it is left alone and reported through
+	 * bOutFiltered, which is not the same as failing: the type is only known once the export is
+	 * down, so the request happens either way. */
+	static bool Import(const FString& InPath, const TSet<FString>& AllowedTypes = TSet<FString>(), bool* bOutFiltered = nullptr);
 };

@@ -24,10 +24,11 @@ public:
 
 	/* Runs the dialog modally. True when the user chose to reflect, with OutPaths holding what
 	 * Cloud listed under the folder. */
-	static bool Open(TArray<FString>& OutPaths, const FString& InitialFolder = FString());
+	static bool Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder = FString());
 
 private:
 	FReply OnFindClicked();
+	FReply OnTypesClicked();
 	FReply OnUseSelectedFolderClicked();
 	FReply OnReflectClicked();
 
@@ -45,6 +46,7 @@ private:
 
 	FText GetStatusText() const;
 	FText GetReflectText() const;
+	FText GetTypesText() const;
 
 	TSharedRef<ITableRow> GenerateRow(TSharedPtr<FString> Path, const TSharedRef<STableViewBase>& OwnerTable) const;
 
@@ -55,6 +57,9 @@ private:
 	/* The last Find's results, as rows and in the form the importer takes */
 	TArray<TSharedPtr<FString>> Rows;
 	TArray<FString> Paths;
+
+	/* Which types the run may build. Empty is no filter, which is what it starts as. */
+	TSet<FString> AllowedTypes;
 
 	/* Lets the status line tell "nothing looked for yet" apart from "nothing there" */
 	bool Searched = false;

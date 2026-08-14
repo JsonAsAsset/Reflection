@@ -27,13 +27,15 @@ void TToolImportFolder::Execute() {
 	/* The dialog does the listing itself: a folder is however big it is, and every asset in it is
 	 * a request, so what comes down is worth seeing before it runs */
 	TArray<FString> Paths;
+	TSet<FString> AllowedTypes;
 
-	if (!SReflectFolderDialog::Open(Paths)) {
+	if (!SReflectFolderDialog::Open(Paths, AllowedTypes)) {
 		return;
 	}
 
 	int32 Reflected = 0;
 	int32 Attempted = 0;
+	int32 Filtered = 0;
 	bool Cancelled = false;
 
 	FImportIssues::Begin(); {
@@ -42,10 +44,18 @@ void TToolImportFolder::Execute() {
 		const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "ReflectingFolder", "Reflecting folder"));
 
 		for (const FString& Path : Paths) {
-			Attempted++;
+			bool WasFiltered = false;
 
-			if (TToolImportFromPath::Import(Path)) {
+			if (TToolImportFromPath::Import(Path, AllowedTypes, &WasFiltered)) {
 				Reflected++;
+			}
+
+			/* A type the filter turned down never had a chance to succeed, so counting it as
+			 * attempted would report the run as failing */
+			if (WasFiltered) {
+				Filtered++;
+			} else {
+				Attempted++;
 			}
 
 			/* Cancelling only kills the request that was in flight, so the run has to notice it
@@ -62,7 +72,9 @@ void TToolImportFolder::Execute() {
 
 	AppendNotification(
 		FText::FromString(Cancelled ? "Reflect Folder Cancelled" : (Successful ? "Reflected Folder" : "Reflected With Failures")),
-		FText::FromString(FString::Printf(TEXT("%d of %d"), Reflected, Paths.Num())),
+		FText::FromString(Filtered > 0
+			? FString::Printf(TEXT("%d of %d, %d filtered out"), Reflected, Attempted, Filtered)
+			: FString::Printf(TEXT("%d of %d"), Reflected, Paths.Num())),
 		Successful ? 2.0f : 5.0f,
 		Successful ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail,
 		true,

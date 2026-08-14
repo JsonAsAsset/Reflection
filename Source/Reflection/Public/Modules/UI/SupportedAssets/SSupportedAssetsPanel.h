@@ -49,6 +49,10 @@ public:
 	/* Reads the registries again, ex: after experiments get toggled */
 	void Refresh();
 
+	/* Every type Reflection can build, sorted by category then name. Shared with the reflect
+	 * filter so the two can never disagree about what is supported. */
+	static TArray<TSharedPtr<FSupportedAssetEntry>> Collect();
+
 private:
 	TSharedRef<ITableRow> GenerateRow(TSharedPtr<FSupportedAssetEntry> Entry, const TSharedRef<STableViewBase>& OwnerTable);
 

@@ -58,7 +58,7 @@ void TToolImportFromPath::Execute() {
 	FImportIssues::Finish();
 }
 
-bool TToolImportFromPath::Import(const FString& InPath) {
+bool TToolImportFromPath::Import(const FString& InPath, const TSet<FString>& AllowedTypes, bool* bOutFiltered) {
 	/* Take whatever gets pasted: Type'/Game/Path/Asset.Asset', a path with an extension on it,
 	 * or a bare package path */
 	FString PackagePath = StripObjectOuter(InPath.TrimStartAndEnd());
@@ -103,6 +103,14 @@ bool TToolImportFromPath::Import(const FString& InPath) {
 
 	FString Type;
 	if (!Export.IsValid() || !Export->TryGetStringField(TEXT("Type"), Type)) {
+		return false;
+	}
+
+	if (AllowedTypes.Num() > 0 && !AllowedTypes.Contains(Type)) {
+		if (bOutFiltered != nullptr) {
+			*bOutFiltered = true;
+		}
+
 		return false;
 	}
 
