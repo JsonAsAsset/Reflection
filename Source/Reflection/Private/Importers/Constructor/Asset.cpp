@@ -2,6 +2,8 @@
 
 #include "Importers/Constructor/Asset.h"
 
+#include "Animation/Skeleton.h"
+
 #include "Importers/Constructor/Importer.h"
 
 #include "Importers/Types/Texture/TextureImporter.h"
@@ -182,6 +184,10 @@ template bool FAssetUtilities::ConstructAsset<USoundNode>(const FString& Path, c
 template bool FAssetUtilities::ConstructAsset<UCurveLinearColor>(const FString& Path, const FString& RealPath, const FString& Type, TObjectPtr<UCurveLinearColor>& OutObject, bool& bSuccess);
 template bool FAssetUtilities::ConstructAsset<UTextureLightProfile>(const FString&, const FString&, const FString&, TObjectPtr<UTextureLightProfile>&, bool&);
 template bool FAssetUtilities::ConstructAsset<UFontFace>(const FString&, const FString&, const FString&, TObjectPtr<UFontFace>&, bool&);
+
+/* A skeletal mesh is skinned to its skeleton, so an import reaches for one the project may not
+ * have yet */
+template bool FAssetUtilities::ConstructAsset<USkeleton>(const FString&, const FString&, const FString&, TObjectPtr<USkeleton>&, bool&);
 
 namespace {
 	/* Paths with an import open further down the stack, innermost last. */

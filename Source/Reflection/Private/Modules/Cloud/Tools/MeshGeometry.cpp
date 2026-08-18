@@ -20,19 +20,15 @@
 
 #endif
 
-void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
+int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TSharedPtr<FJsonObject>& Response) {
 #if UE4_27_AND_UE5
-	USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Object);
-	if (SkeletalMesh == nullptr) return;
+	if (SkeletalMesh == nullptr || !Response.IsValid()) return 0;
 
 	FSkeletalMeshModel* ImportedModel = SkeletalMesh->GetImportedModel();
-	if (ImportedModel == nullptr) return;
-
-	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetLodModelBlocking(SkeletalMesh->GetPathName());
-	if (!Response.IsValid()) return;
+	if (ImportedModel == nullptr) return 0;
 
 	const TArray<TSharedPtr<FJsonValue>>* Lods;
-	if (!Response->TryGetArrayField(TEXT("lods"), Lods)) return;
+	if (!Response->TryGetArrayField(TEXT("lods"), Lods)) return 0;
 
 	const FReferenceSkeleton& RefSkeleton = SkeletalMesh->GetRefSkeleton();
 
@@ -283,6 +279,22 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 
 	SkeletalMesh->MarkPackageDirty();
 	}
+
+	return RebuiltLods;
+#else
+	return 0;
+#endif
+}
+
+void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
+#if UE4_27_AND_UE5
+	USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Object);
+	if (SkeletalMesh == nullptr) return;
+
+	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetLodModelBlocking(SkeletalMesh->GetPathName());
+	if (!Response.IsValid()) return;
+
+	const int32 RebuiltLods = RebuildLodModels(SkeletalMesh, Response);
 
 	BrowseToWhenFinished(SkeletalMesh);
 

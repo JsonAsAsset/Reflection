@@ -175,6 +175,34 @@ TSharedPtr<FJsonObject> Cloud::Export::GetLodModelBlocking(const FString& Path) 
 	return Response;
 }
 
+TArray<uint8> Cloud::Export::GetDnaBlocking(const FString& Path) {
+	const FReflectionHttpRequest Request = BuildRequest(DnaURL, { { TEXT("path"), Path } }, {});
+	Request->SetVerb(TEXT("GET"));
+
+	const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+
+	if (!Response.IsValid() || Response->GetResponseCode() != 200) {
+		return {};
+	}
+
+	/* Json means the Cloud answered about the mesh rather than with a DNA */
+	if (Response->GetContentType().StartsWith(TEXT("application/json"))) {
+		return {};
+	}
+
+	return Response->GetContent();
+}
+
+TSharedPtr<FJsonObject> Cloud::Export::GetMorphTargetsBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(MorphTargetsURL, { { TEXT("path"), Path } }, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("morphs"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
 TSharedPtr<FJsonObject> Cloud::Export::GetStaticMeshBlocking(const FString& Path) {
 	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(StaticMeshURL, { { TEXT("path"), Path } }, {});
 

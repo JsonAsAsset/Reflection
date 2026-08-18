@@ -10,6 +10,12 @@
 /* Static meshes only build asynchronously from UE5 on */
 #if ENGINE_UE5
 #include "StaticMeshCompiler.h"
+
+/* Skeletal meshes build asynchronously the same way static ones do, from 5.0 on */
+#if ENGINE_UE5
+#include "SkinnedAssetCompiler.h"
+#include "Engine/SkeletalMesh.h"
+#endif
 #endif
 
 /* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
@@ -147,6 +153,18 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
 
 		return true;
 	}
+
+	/* Same story for a skeletal mesh, and worse: its PostLoad starts a second async build while
+	 * the first is still running, which trips the build task's own idle check */
+#if ENGINE_UE5
+	if (USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Asset)) {
+		if (SkeletalMesh->IsCompiling()) {
+			FSkinnedAssetCompilingManager::Get().FinishCompilation({ SkeletalMesh });
+		}
+
+		return true;
+	}
+#endif
 
 	Asset->PostLoad();
 

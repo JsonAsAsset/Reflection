@@ -30,6 +30,16 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_CONTROL_RIG=" + (bControlRig ? "1" : "0"));
 
+		/* RigLogic is what reads a MetaHuman's DNA, and it ships as an engine plugin the same way
+		 * Control Rig does. An engine without it has nothing to hand the bit stream to. */
+		var bRigLogic = false;
+
+#if UE_5_0_OR_LATER
+		bRigLogic = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic"));
+#endif
+
+		PublicDefinitions.Add("REFLECTION_RIG_LOGIC=" + (bRigLogic ? "1" : "0"));
+
 #if UE_5_0_OR_LATER
 	    /* Unreal Engine 5 and later */
 	    CppStandard = CppStandardVersion.Cpp20;
@@ -152,6 +162,13 @@ public class Reflection : ModuleRules {
 
 				/* UControlRigBlueprintFactory, which is what gives a new rig its graph */
 				"ControlRigEditor"
+			});
+		}
+
+		if (bRigLogic) {
+			PrivateDependencyModuleNames.AddRange(new[] {
+				/* UDNAAsset, and the reader that turns a DNA stream into one */
+				"RigLogicModule"
 			});
 		}
 

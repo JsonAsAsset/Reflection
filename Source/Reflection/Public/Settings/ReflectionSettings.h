@@ -8,6 +8,7 @@
 /* Settings Substructures */
 #include "Types/AnimationBlueprintSettings.h"
 #include "Types/MaterialSettings.h"
+#include "Types/SkeletalMeshSettings.h"
 #include "Types/StaticMeshSettings.h"
 #include "Types/TextureSettings.h"
 #include "Redirector.h"
@@ -40,6 +41,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRStaticMeshSettings StaticMesh;
+
+	UPROPERTY(EditAnywhere, Config, Category = Settings)
+	FRSkeletalMeshSettings SkeletalMesh;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;

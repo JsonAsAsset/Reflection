@@ -56,7 +56,9 @@ public:
 	static inline FString ExportURL = TEXT("/api/export");
 	static inline FString SkinWeightsURL = TEXT("/api/export/skinweights");
 	static inline FString LodModelURL = TEXT("/api/export/lodmodel");
+	static inline FString MorphTargetsURL = TEXT("/api/export/morphtargets");
 	static inline FString StaticMeshURL = TEXT("/api/export/staticmesh");
+	static inline FString DnaURL = TEXT("/api/export/dna");
 
 	class REFLECTION_API Export {
 	public:
@@ -82,8 +84,14 @@ public:
 		/* The cooked geometry, vertex for vertex. Null when the Cloud has no mesh at Path. */
 		static TSharedPtr<FJsonObject> GetLodModelBlocking(const FString& Path);
 
+		/* The cooked morph deltas, keyed to the same vertices the LOD model serves */
+		static TSharedPtr<FJsonObject> GetMorphTargetsBlocking(const FString& Path);
+
 		/* The cooked static mesh geometry and its slots. Null when the Cloud has none at Path. */
 		static TSharedPtr<FJsonObject> GetStaticMeshBlocking(const FString& Path);
+
+		/* A MetaHuman head's DNA, as the bytes RigLogic reads. Empty for a mesh without one. */
+		static TArray<uint8> GetDnaBlocking(const FString& Path);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

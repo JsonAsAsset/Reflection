@@ -17,6 +17,11 @@ public:
 	virtual FText GetDisplayName() const override { return FText::FromString("Mesh Geometry"); }
 	virtual FText GetTooltip() const override { return FText::FromString("Rebuilds the selected mesh's LOD models from the cooked geometry"); }
 	virtual FSlateIcon GetIcon() const override { return FSlateIcon(FAppStyle::GetAppStyleSetName(), "ClassIcon.SkeletalMeshComponent"); }
+
+	/* Describes every LOD the payload carries into the mesh's imported model, returning how many
+	 * were rebuilt. Shared with the skeletal mesh importer, which has just made the asset the tool
+	 * is otherwise pointed at, so both reach the geometry the same way. */
+	static int32 RebuildLodModels(USkeletalMesh* SkeletalMesh, const TSharedPtr<FJsonObject>& Response);
 };
 
 REGISTER_TOOL(TMeshGeometry)
