@@ -63,6 +63,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		const TArray<TSharedPtr<FJsonValue>>* Positions = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Normals = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Tangents = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Binormals = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* UVs = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Colors = nullptr;
 		const TArray<TSharedPtr<FJsonValue>>* Bones = nullptr;
@@ -70,6 +71,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 
 		(*Vertices)->TryGetArrayField(TEXT("Positions"), Positions);
 		(*Vertices)->TryGetArrayField(TEXT("Normals"), Normals);
+		(*Vertices)->TryGetArrayField(TEXT("Binormals"), Binormals);
 		(*Vertices)->TryGetArrayField(TEXT("Tangents"), Tangents);
 		(*Vertices)->TryGetArrayField(TEXT("UVs"), UVs);
 		(*Vertices)->TryGetArrayField(TEXT("Colors"), Colors);
@@ -81,7 +83,15 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			ImportedModel->LODModels.Add(new FSkeletalMeshLODModel());
 		}
 
-		while (SkeletalMesh->GetLODNum() <= LodIndex) {
+		/* 5.4 keeps a source model per LOD alongside the info, and saving imported data goes
+		 * through it. Deserialized properties can leave a mesh with the infos and none of those,
+		 * and adding by info count alone then leaves the save indexing off the end. Adding covers
+		 * both, so the shorter of the two is what decides. */
+		while (SkeletalMesh->GetLODNum() <= LodIndex
+#if UE5_4_BEYOND
+			|| SkeletalMesh->GetNumSourceModels() <= LodIndex
+#endif
+			) {
 			SkeletalMesh->AddLODInfo();
 		}
 
@@ -99,9 +109,11 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		ImportData.PointToRawMap.Empty(VertexCount);
 
 		TArray<FVector3f> VertexNormals;
+		TArray<FVector3f> VertexBinormals;
 		TArray<FVector3f> VertexTangents;
 
 		VertexNormals.Empty(VertexCount);
+		VertexBinormals.Empty(VertexCount);
 		VertexTangents.Empty(VertexCount);
 
 		/* Which section owns each vertex, so a wedge can name the material it belongs to */
@@ -133,6 +145,10 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			ImportData.PointToRawMap.Add(Vertex);
 
 			VertexNormals.Add(FVector3f(ReadFloat(Normals, Vertex * 3), ReadFloat(Normals, Vertex * 3 + 1), ReadFloat(Normals, Vertex * 3 + 2)));
+
+			if (Binormals != nullptr) {
+				VertexBinormals.Add(FVector3f(ReadFloat(Binormals, Vertex * 3), ReadFloat(Binormals, Vertex * 3 + 1), ReadFloat(Binormals, Vertex * 3 + 2)));
+			}
 			VertexTangents.Add(FVector3f(ReadFloat(Tangents, Vertex * 3), ReadFloat(Tangents, Vertex * 3 + 1), ReadFloat(Tangents, Vertex * 3 + 2)));
 
 			for (int32 UV = 0; UV < NumTexCoords; ++UV) {
@@ -210,7 +226,12 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 
 					Face.TangentZ[Corner] = VertexNormals.IsValidIndex(Vertex) ? VertexNormals[Vertex] : FVector3f::ZAxisVector;
 					Face.TangentX[Corner] = VertexTangents.IsValidIndex(Vertex) ? VertexTangents[Vertex] : FVector3f::XAxisVector;
-					Face.TangentY[Corner] = FVector3f::CrossProduct(Face.TangentZ[Corner], Face.TangentX[Corner]);
+					/* The game's own binormal, not one worked back out of the other two: the cross
+					 * product is always right handed, and a UV shell mirrored against its
+					 * neighbour is lit by the sign that says it isn't. */
+					Face.TangentY[Corner] = VertexBinormals.IsValidIndex(Vertex)
+						? VertexBinormals[Vertex]
+						: FVector3f::CrossProduct(Face.TangentZ[Corner], Face.TangentX[Corner]);
 				}
 			}
 		}

@@ -6,6 +6,7 @@
 
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/ImportIssues.h"
+#include "Modules/Cloud/Cloud.h"
 #include "Settings/SettingsAccess.h"
 
 #include "ControlRigBlueprint.h"
@@ -860,6 +861,94 @@ static void ReportRigLogicResult(USkeletalMesh* Mesh) {
 #endif
 }
 
+/* Compares what the mesh was built with against what the game shipped, vertex for vertex.
+ *
+ * The built LOD keeps its own copy of the tangent basis per soft vertex, and the cooked data is
+ * still available from the Cloud, so the two are read side by side. A vertex the build split into
+ * several keeps the basis of the one it came from, which is what the import map is for. */
+static void ReportTangentFidelity(USkeletalMesh* Mesh, const FString& FetchPath) {
+	const FSkeletalMeshModel* Model = Mesh->GetImportedModel();
+	if (Model == nullptr) return;
+
+	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetLodModelBlocking(FetchPath);
+
+	const TArray<TSharedPtr<FJsonValue>>* Lods;
+
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("lods"), Lods)) {
+		UE_LOG(LogRigImportTest, Display, TEXT("tangent check: no cooked geometry to compare against"));
+
+		return;
+	}
+
+	const auto Read = [](const TArray<TSharedPtr<FJsonValue>>* Values, const int32 Index) {
+		return Values != nullptr && Values->IsValidIndex(Index) ? static_cast<float>((*Values)[Index]->AsNumber()) : 0.0f;
+	};
+
+	for (const TSharedPtr<FJsonValue>& LodValue : *Lods) {
+		const TSharedPtr<FJsonObject> Lod = LodValue.IsValid() ? LodValue->AsObject() : nullptr;
+		if (!Lod.IsValid()) continue;
+
+		const int32 LodIndex = Lod->GetIntegerField(TEXT("Index"));
+		if (!Model->LODModels.IsValidIndex(LodIndex)) continue;
+
+		const TSharedPtr<FJsonObject>* Vertices;
+		if (!Lod->TryGetObjectField(TEXT("Vertices"), Vertices)) continue;
+
+		const TArray<TSharedPtr<FJsonValue>>* Normals = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Tangents = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Binormals = nullptr;
+
+		(*Vertices)->TryGetArrayField(TEXT("Normals"), Normals);
+		(*Vertices)->TryGetArrayField(TEXT("Tangents"), Tangents);
+		(*Vertices)->TryGetArrayField(TEXT("Binormals"), Binormals);
+
+		const FSkeletalMeshLODModel& Built = Model->LODModels[LodIndex];
+
+		float WorstNormal = 0.0f;
+		float WorstTangent = 0.0f;
+		int32 Compared = 0;
+		int32 FlippedHandedness = 0;
+
+		for (const FSkelMeshSection& Section : Built.Sections) {
+			for (int32 Index = 0; Index < Section.SoftVertices.Num(); ++Index) {
+				const int32 RenderVertex = Section.GetVertexBufferIndex() + Index;
+
+				if (!Built.MeshToImportVertexMap.IsValidIndex(RenderVertex)) continue;
+
+				const int32 Cooked = Built.MeshToImportVertexMap[RenderVertex];
+				if (Cooked < 0) continue;
+
+				const FSoftSkinVertex& Vertex = Section.SoftVertices[Index];
+
+				const FVector3f CookedNormal(Read(Normals, Cooked * 3), Read(Normals, Cooked * 3 + 1), Read(Normals, Cooked * 3 + 2));
+				const FVector3f CookedTangent(Read(Tangents, Cooked * 3), Read(Tangents, Cooked * 3 + 1), Read(Tangents, Cooked * 3 + 2));
+
+				WorstNormal = FMath::Max(WorstNormal, FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+					FVector3f::DotProduct(Vertex.TangentZ.GetSafeNormal(), CookedNormal.GetSafeNormal()), -1.0f, 1.0f))));
+
+				WorstTangent = FMath::Max(WorstTangent, FMath::RadiansToDegrees(FMath::Acos(FMath::Clamp(
+					FVector3f::DotProduct(Vertex.TangentX.GetSafeNormal(), CookedTangent.GetSafeNormal()), -1.0f, 1.0f))));
+
+				/* Which way round the basis is, which is the half a cross product cannot tell */
+				if (Binormals != nullptr) {
+					const FVector3f CookedBinormal(Read(Binormals, Cooked * 3), Read(Binormals, Cooked * 3 + 1), Read(Binormals, Cooked * 3 + 2));
+
+					if (FVector3f::DotProduct(Vertex.TangentY.GetSafeNormal(), CookedBinormal.GetSafeNormal()) < 0.0f) {
+						FlippedHandedness++;
+					}
+				}
+
+				Compared++;
+			}
+		}
+
+		if (Compared == 0) continue;
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  lod %d: %d verts checked, normals worst %.3f deg, tangents worst %.3f deg, handedness flipped on %d"),
+			LodIndex, Compared, WorstNormal, WorstTangent, FlippedHandedness);
+	}
+}
+
 int32 URigImportCommandlet::Main(const FString& Params) {
 	/* Load-only mode: a separate process reading the saved asset cold, exactly the way the user's
 	 * editor does. Nothing from the importing process is alive here. */
@@ -1054,6 +1143,21 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 
 		UE_LOG(LogRigImportTest, Display, TEXT("morph targets: %d, min lod: %d"), Mesh->GetMorphTargets().Num(), Mesh->GetMinLod().Default);
 
+		/* The path the game cooked it under, which is what the Cloud indexes on */
+		FString CookedPath;
+
+		for (const TSharedPtr<FJsonValue>& ExportValue : Exports) {
+			const TSharedPtr<FJsonObject> Export = ExportValue.IsValid() ? ExportValue->AsObject() : nullptr;
+			if (!Export.IsValid()) continue;
+
+			if (Export->GetStringField(TEXT("Type")) == TEXT("SkeletalMesh")) {
+				Export->TryGetStringField(TEXT("Package"), CookedPath);
+
+				break;
+			}
+		}
+
+		ReportTangentFidelity(Mesh, CookedPath);
 		ReportMorphTargets(Mesh, TEXT(" "));
 		ReportDna(Mesh, TEXT(" "));
 		ReportDnaNeutral(Mesh);
