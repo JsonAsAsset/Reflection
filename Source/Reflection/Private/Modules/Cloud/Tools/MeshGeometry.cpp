@@ -263,6 +263,12 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			LodInfo->bHasBeenSimplified = false;
 			LodInfo->ReductionSettings.NumOfTrianglesPercentage = 1.0f;
 			LodInfo->ReductionSettings.NumOfVertPercentage = 1.0f;
+
+			/* The normals and tangents above are the game's own, per corner. Left on, the build
+			 * throws them away and works its own out of the triangles, which is not the shading
+			 * the mesh was authored with. */
+			LodInfo->BuildSettings.bRecomputeNormals = false;
+			LodInfo->BuildSettings.bRecomputeTangents = false;
 		}
 
 		if (ImportData.bHasVertexColors) {
