@@ -16,6 +16,7 @@
 #include "AssetRegistry/AssetRegistryModule.h"
 #endif
 #include "Engine/Log.h"
+#include "Framework/Application/SlateApplication.h"
 #include "Framework/Docking/TabManager.h"
 
 /*
@@ -46,6 +47,13 @@ inline bool HasLiveContentBrowser() {
 
 inline void BrowseToAsset(UObject* Asset) {
 	if (Asset == nullptr) {
+		return;
+	}
+
+	/* Reflecting from a commandlet has no editor to jump in. Asking for one anyway ends up
+	 * building a window out of a Slate application that was never started, which asserts on the
+	 * way rather than declining. */
+	if (IsRunningCommandlet() || !FSlateApplication::IsInitialized()) {
 		return;
 	}
 

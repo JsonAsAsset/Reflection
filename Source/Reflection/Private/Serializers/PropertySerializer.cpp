@@ -726,6 +726,15 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		*static_cast<FString*>(OutValue) = StringValue;
 	}
 	else if (const FEnumProperty* EnumProperty = CastField<const FEnumProperty>(Property)) {
+		/* Tagged properties name the value they hold, and anything an exporter reads by hand has
+		 * only the number it was stored as to give. Read as a name, a number matches nothing and
+		 * the property keeps whatever it was constructed with. */
+		if (NewJsonValue->Type == EJson::Number) {
+			EnumProperty->GetUnderlyingProperty()->SetIntPropertyValue(OutValue, static_cast<int64>(NewJsonValue->AsNumber()));
+
+			return;
+		}
+
 		FString EnumAsString = NewJsonValue->AsString();
 
 		if (EnumAsString.Contains("::")) {

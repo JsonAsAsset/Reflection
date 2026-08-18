@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 using System;
+using System.IO;
 using UnrealBuildTool;
 
 /* NOTE: Please make sure to put UE5 only modules in the #if statement below, we want UE4 and UE5 compatibility */
@@ -14,6 +15,20 @@ public class Reflection : ModuleRules {
 		var bCloudServer = true;
 
 		PublicDefinitions.Add("REFLECTION_CLOUD_SERVER=" + (bCloudServer ? "1" : "0"));
+
+		/* Control Rig ships as an engine plugin, and an engine it was stripped out of has nothing to
+		 * link the rig importer against. The rig API this is written against is the UE5 one, so 4.26
+		 * and 4.27, where the plugin exists but a rig is still a hierarchy container, count as not
+		 * having it either. */
+		var bControlRig = false;
+
+		/* 5.2 is where RigVM became a plugin of its own and a rig blueprint became a RigVM one */
+#if UE_5_2_OR_LATER
+		bControlRig = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "ControlRig"))
+			&& Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Runtime", "RigVM"));
+#endif
+
+		PublicDefinitions.Add("REFLECTION_CONTROL_RIG=" + (bControlRig ? "1" : "0"));
 
 #if UE_5_0_OR_LATER
 	    /* Unreal Engine 5 and later */
@@ -123,6 +138,23 @@ public class Reflection : ModuleRules {
 #endif
 		});
 		
+		if (bControlRig) {
+			PrivateDependencyModuleNames.AddRange(new[] {
+				/* URigHierarchy and the controller every element is added through */
+				"ControlRig",
+
+				/* UControlRigBlueprint, and URigVMBlueprint under it */
+				"ControlRigDeveloper",
+				"RigVMDeveloper",
+
+				/* The VM itself: its function registry is what names the node behind an instruction */
+				"RigVM",
+
+				/* UControlRigBlueprintFactory, which is what gives a new rig its graph */
+				"ControlRigEditor"
+			});
+		}
+
 		if (!bIsLinux) {
 			PrivateDependencyModuleNames.AddRange(new[] {
 				"Detex",

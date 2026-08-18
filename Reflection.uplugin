@@ -51,6 +51,11 @@
 			"Optional": true
 		},
 		{
+			"Name": "ControlRig",
+			"Enabled": true,
+			"Optional": true
+		},
+		{
 			"Name": "PluginUtils",
 			"Enabled": true,
 			"Optional": true
