@@ -348,10 +348,40 @@ TArray<uint8> ISkeletalMeshImporter::RewriteDnaForAnimNode(USkeletalMesh* Skelet
 
 bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString& FetchPath) {
 #if REFLECTION_RIG_LOGIC
-	const TArray<uint8> Cooked = Cloud::Export::GetDnaBlocking(FetchPath);
+	TArray<uint8> Cooked = Cloud::Export::GetDnaBlocking(FetchPath);
 
 	if (Cooked.Num() == 0) {
 		return false;
+	}
+
+	/* A DNA kept in a package of its own has a few bytes of that package's own ahead of the stream,
+	 * where one hung straight off the mesh starts at it. The reader wants the stream. */
+	{
+		int32 Start = INDEX_NONE;
+
+		for (int32 Index = 0; Index + 2 < Cooked.Num() && Index < 64; ++Index) {
+			if (Cooked[Index] == 'D' && Cooked[Index + 1] == 'N' && Cooked[Index + 2] == 'A') {
+				Start = Index;
+
+				break;
+			}
+		}
+
+		if (Start == INDEX_NONE) {
+			FImportIssues::Report(
+				EImportIssue::Data,
+				TEXT("The mesh's DNA isn't a DNA"),
+				TEXT("What came back doesn't start with a DNA stream, so there is nothing RigLogic can read a face out of.")
+			);
+
+			return false;
+		}
+
+		if (Start > 0) {
+			Cooked.RemoveAt(0, Start, EAllowShrinking::No);
+
+			UE_LOG(LogReflection, Display, TEXT("\"%s\" trimmed %d byte(s) ahead of its DNA stream"), *GetAssetName(), Start);
+		}
 	}
 
 	/* Rewritten into the axes the anim node reads, since that node is the only thing that ever
@@ -406,13 +436,10 @@ static constexpr int32 GDnaJointAttributes = 9;
 
 namespace {
 	/* A joint's local transform: the DNA's neutral, then whatever the controls evaluated to on top.
-	 * The sign flips are this DNA's axes against the engine's.
 	 *
-	 * They are not the ones FAnimNode_RigLogic uses. That node is written for a DNA in MetaHuman's
-	 * coordinate system and this data declares its own, and reading it that way puts the joints
-	 * outside the head the mesh was skinned to. These signs are the ones that land the skeleton
-	 * inside its own mesh, and that reproduce the reference pose the skeleton is built at to within
-	 * a fifth of a degree across every facial joint. */
+	 * These are the signs FAnimNode_RigLogic uses, and they have to be: by the time anything reads
+	 * a joint here the DNA has already been rewritten into that node's axes, so reading it any
+	 * other way inverts every rotation and every sideways offset. */
 	FTransform ComposeDnaJoint(const TArrayView<const float>& Neutral, const TArrayView<const float>& Delta, const int32 Attribute) {
 		const auto Read = [](const TArrayView<const float>& Values, const int32 Index) {
 			return Values.IsValidIndex(Index) ? Values[Index] : 0.0f;
@@ -420,13 +447,13 @@ namespace {
 
 		const FVector Translation(
 			Read(Neutral, Attribute + 0) + Read(Delta, Attribute + 0),
-			Read(Neutral, Attribute + 1) + Read(Delta, Attribute + 1),
+			-(Read(Neutral, Attribute + 1) + Read(Delta, Attribute + 1)),
 			Read(Neutral, Attribute + 2) + Read(Delta, Attribute + 2)
 		);
 
 		const FQuat Rotation =
-			FQuat(FRotator(-Read(Neutral, Attribute + 4), Read(Neutral, Attribute + 5), -Read(Neutral, Attribute + 3))) *
-			FQuat(FRotator(-Read(Delta, Attribute + 4), Read(Delta, Attribute + 5), -Read(Delta, Attribute + 3)));
+			FQuat(FRotator(-Read(Neutral, Attribute + 4), -Read(Neutral, Attribute + 5), Read(Neutral, Attribute + 3))) *
+			FQuat(FRotator(-Read(Delta, Attribute + 4), -Read(Delta, Attribute + 5), Read(Delta, Attribute + 3)));
 
 		const FVector Scale(
 			Read(Neutral, Attribute + 6) + Read(Delta, Attribute + 6),
@@ -640,7 +667,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	};
 
 	WriteFrame({});
-	PoseNames.Add(TEXT("Neutral"));
+	PoseNames.Add(TEXT("base_pose"));
 
 	for (int32 Control = 0; Control < ControlCount; ++Control) {
 		for (int32 Reset = 0; Reset < ControlCount; ++Reset) {
@@ -681,7 +708,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 		Controller.CloseBracket(false);
 	}
 
-	const FString PoseAssetName = GetAssetName() + TEXT("_PoseAsset");
+	const FString PoseAssetName = GetAssetName() + TEXT("_DNA_PoseAsset");
 	const FString PoseAssetPath = FPackageName::GetLongPackagePath(GetPackage()->GetName()) / PoseAssetName;
 
 	UPackage* PosePackage = CreatePackage(*PoseAssetPath);
@@ -697,8 +724,8 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	PoseAsset->SetPreviewMesh(SkeletalMesh);
 	PoseAsset->CreatePoseFromAnimation(Sequence, &PoseNames);
 
-	/* Additive against the neutral frame, so the controls a face is driven by add up the way they
-	 * do in the rig rather than each replacing the last */
+	/* Additive against the base pose, so the controls a face is driven by add up the way they do in
+	 * the rig rather than each replacing the last */
 	PoseAsset->ConvertSpace(true, 0);
 
 	/* Built from the DNA, not from an animation that outlives this import */

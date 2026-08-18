@@ -19,6 +19,7 @@
 #if REFLECTION_RIG_LOGIC
 #include "AnimGraphNode_RigLogic.h"
 #include "AnimGraphNode_SequencePlayer.h"
+#include "AnimGraphNode_PoseBlendNode.h"
 #include "Animation/AnimData/IAnimationDataController.h"
 #include "Animation/AnimData/CurveIdentifier.h"
 #include "AnimGraphNode_Root.h"
@@ -120,7 +121,7 @@ static void ReportDna(USkeletalMesh* Mesh, const TCHAR* Prefix) {
 
 /* The pose asset a baked DNA leaves beside the mesh */
 static void ReportPoseAsset(const FString& MeshPath, const TCHAR* Prefix, bool bSave) {
-	const FString PosePath = MeshPath + TEXT("_PoseAsset.") + FPackageName::GetShortName(MeshPath) + TEXT("_PoseAsset");
+	const FString PosePath = MeshPath + TEXT("_DNA_PoseAsset.") + FPackageName::GetShortName(MeshPath) + TEXT("_DNA_PoseAsset");
 
 	UPoseAsset* PoseAsset = LoadObject<UPoseAsset>(nullptr, *PosePath);
 
@@ -288,6 +289,226 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 	UE_LOG(LogRigImportTest, Display, TEXT("dna neutral vs reference pose: %d of %d joints differ, worst '%s' at %.2f degrees / %.3f cm"),
 		Mismatched, Compared, *WorstBone, WorstAngle, WorstDistance);
 
+#endif
+}
+
+/* Drives the same control through the rig and through the baked poses, and compares the two.
+ *
+ * A pose asset is meant to stand in for the rig, so for a given control the two should move the
+ * same bones the same way. Anything mirrored shows up as a negative dot product, which is what a
+ * pose read out of the DNA with the wrong signs looks like. */
+static void ComparePoseAssetToRig(USkeletalMesh* Mesh, const FString& PoseAssetPath) {
+#if REFLECTION_RIG_LOGIC
+	USkeleton* Skeleton = Mesh->GetSkeleton();
+	if (Skeleton == nullptr) return;
+
+	UPoseAsset* PoseAsset = LoadObject<UPoseAsset>(nullptr, *PoseAssetPath);
+
+	if (PoseAsset == nullptr) {
+		UE_LOG(LogRigImportTest, Display, TEXT("pose comparison: no pose asset at %s"), *PoseAssetPath);
+
+		return;
+	}
+
+	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(Mesh);
+	if (DNAAsset == nullptr) return;
+
+	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	if (!Behavior.IsValid()) return;
+
+	static const TCHAR* Wanted[] = { TEXT("jawOpen"), TEXT("browDownL"), TEXT("browRaiseInL"), TEXT("eyeBlinkL") };
+
+	const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
+
+	for (const TCHAR* Pattern : Wanted) {
+		FString CurveName;
+
+		for (uint16 Control = 0; Control < Behavior->GetRawControlCount(); ++Control) {
+			const FString Name = Behavior->GetRawControlName(Control);
+
+			if (Name.Contains(Pattern)) {
+				CurveName = Name.Replace(TEXT("."), TEXT("_"));
+
+				break;
+			}
+		}
+
+		if (CurveName.IsEmpty()) continue;
+
+		/* Each graph evaluated with the control off and on, so whatever is static drops out */
+		TArray<FVector> Displacement[2];
+
+		for (int32 Graph = 0; Graph < 2; ++Graph) {
+			TArray<FTransform> Sampled[2];
+
+			for (int32 Pass = 0; Pass < 2; ++Pass) {
+				UAnimSequence* Driver = NewObject<UAnimSequence>(GetTransientPackage(), NAME_None, RF_Transient);
+				Driver->SetSkeleton(Skeleton);
+
+				{
+					IAnimationDataController& Controller = Driver->GetController();
+
+					Controller.OpenBracket(NSLOCTEXT("Reflection", "DriveControl", "Driving one control"), false);
+					Controller.InitializeModel();
+					Controller.SetFrameRate(FFrameRate(30, 1), false);
+					Controller.SetNumberOfFrames(FFrameNumber(1), false);
+
+					const FAnimationCurveIdentifier CurveId(FName(*CurveName), ERawCurveTrackTypes::RCT_Float);
+
+					Controller.AddCurve(CurveId, 0x00000004, false);
+					Controller.SetCurveKeys(CurveId, { FRichCurveKey(0.0f, static_cast<float>(Pass)), FRichCurveKey(1.0f, static_cast<float>(Pass)) }, false);
+
+					Controller.NotifyPopulated();
+					Controller.CloseBracket(false);
+				}
+
+				/* A fresh name each time: making a blueprint over one that already exists hands
+				 * back nothing, and every graph here would be the first one */
+				static int32 Sequence = 0;
+
+				const FString BlueprintName = FString::Printf(TEXT("PoseCompare_AnimBP_%d"), Sequence++);
+
+				UPackage* Package = CreatePackage(*(TEXT("/Game/ReflectedRigs/") + BlueprintName));
+
+				UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+					UAnimInstance::StaticClass(), Package, FName(*BlueprintName),
+					BPTYPE_Normal, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass()));
+
+				if (AnimBlueprint == nullptr) {
+					UE_LOG(LogRigImportTest, Error, TEXT("pose comparison: could not make '%s'"), *BlueprintName);
+
+					return;
+				}
+
+				AnimBlueprint->TargetSkeleton = Skeleton;
+
+				UEdGraph* AnimGraph = nullptr;
+
+				for (UEdGraph* Candidate : AnimBlueprint->FunctionGraphs) {
+					if (Candidate != nullptr && Candidate->GetFName() == UEdGraphSchema_K2::GN_AnimGraph) {
+						AnimGraph = Candidate;
+
+						break;
+					}
+				}
+
+				if (AnimGraph == nullptr) {
+					UE_LOG(LogRigImportTest, Error, TEXT("pose comparison: no anim graph"));
+
+					return;
+				}
+
+				UAnimGraphNode_Root* Result = nullptr;
+
+				for (UEdGraphNode* Node : AnimGraph->Nodes) {
+					if (UAnimGraphNode_Root* Root = Cast<UAnimGraphNode_Root>(Node)) {
+						Result = Root;
+
+						break;
+					}
+				}
+
+				UAnimGraphNode_SequencePlayer* Player = NewObject<UAnimGraphNode_SequencePlayer>(AnimGraph);
+
+				Player->CreateNewGuid();
+				Player->PostPlacedNewNode();
+				Player->Node.SetSequence(Driver);
+				Player->AllocateDefaultPins();
+
+				AnimGraph->AddNode(Player, false, false);
+
+				UEdGraphNode* Consumer = nullptr;
+				UEdGraphPin* ConsumerIn = nullptr;
+				UEdGraphPin* ConsumerOut = nullptr;
+
+				if (Graph == 0) {
+					UAnimGraphNode_RigLogic* RigLogicNode = NewObject<UAnimGraphNode_RigLogic>(AnimGraph);
+
+					RigLogicNode->CreateNewGuid();
+					RigLogicNode->PostPlacedNewNode();
+					RigLogicNode->AllocateDefaultPins();
+
+					AnimGraph->AddNode(RigLogicNode, false, false);
+
+					Consumer = RigLogicNode;
+					ConsumerIn = RigLogicNode->FindPin(TEXT("AnimSequence"), EGPD_Input);
+					ConsumerOut = RigLogicNode->FindPin(TEXT("Pose"), EGPD_Output);
+				} else {
+					UAnimGraphNode_PoseBlendNode* PoseNode = NewObject<UAnimGraphNode_PoseBlendNode>(AnimGraph);
+
+					PoseNode->CreateNewGuid();
+					PoseNode->PostPlacedNewNode();
+					PoseNode->Node.PoseAsset = PoseAsset;
+					PoseNode->AllocateDefaultPins();
+
+					AnimGraph->AddNode(PoseNode, false, false);
+
+					Consumer = PoseNode;
+					ConsumerIn = PoseNode->FindPin(TEXT("SourcePose"), EGPD_Input);
+					ConsumerOut = PoseNode->FindPin(TEXT("Pose"), EGPD_Output);
+				}
+
+				UEdGraphPin* PlayerOut = Player->FindPin(TEXT("Pose"), EGPD_Output);
+				UEdGraphPin* ResultIn = Result != nullptr ? Result->FindPin(TEXT("Result"), EGPD_Input) : nullptr;
+
+				if (PlayerOut != nullptr && ConsumerIn != nullptr) PlayerOut->MakeLinkTo(ConsumerIn);
+				if (ConsumerOut != nullptr && ResultIn != nullptr) ConsumerOut->MakeLinkTo(ResultIn);
+
+				FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+
+				UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+				if (World == nullptr) return;
+
+				USkeletalMeshComponent* Component = NewObject<USkeletalMeshComponent>(World);
+
+				Component->SetSkeletalMesh(Mesh);
+				Component->SetAnimInstanceClass(AnimBlueprint->GeneratedClass);
+				Component->RegisterComponentWithWorld(World);
+				Component->InitAnim(true);
+				Component->TickAnimation(0.0f, false);
+				Component->RefreshBoneTransforms();
+
+				Sampled[Pass] = Component->GetComponentSpaceTransforms();
+
+				Component->UnregisterComponent();
+				World->DestroyWorld(false);
+			}
+
+			Displacement[Graph].SetNum(FMath::Min(Sampled[0].Num(), Sampled[1].Num()));
+
+			for (int32 Bone = 0; Bone < Displacement[Graph].Num(); ++Bone) {
+				Displacement[Graph][Bone] = Sampled[1][Bone].GetTranslation() - Sampled[0][Bone].GetTranslation();
+			}
+		}
+
+		/* The bone the rig moved most, and what the poses did with it */
+		int32 Loudest = INDEX_NONE;
+		float Largest = 0.0f;
+
+		for (int32 Bone = 0; Bone < FMath::Min(Displacement[0].Num(), Displacement[1].Num()); ++Bone) {
+			const float Size = static_cast<float>(Displacement[0][Bone].Size());
+
+			if (Size > Largest) {
+				Largest = Size;
+				Loudest = Bone;
+			}
+		}
+
+		if (Loudest == INDEX_NONE) {
+			UE_LOG(LogRigImportTest, Display, TEXT("  '%s': the rig moved nothing"), *CurveName);
+
+			continue;
+		}
+
+		const FVector Rig = Displacement[0][Loudest];
+		const FVector Pose = Displacement[1][Loudest];
+
+		const double Agreement = FVector::DotProduct(Rig.GetSafeNormal(), Pose.GetSafeNormal());
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  '%s' on '%s': rig %.3f cm, poses %.3f cm, agreement %.2f (%s)"),
+			*CurveName, *RefSkeleton.GetBoneName(Loudest).ToString(), Rig.Size(), Pose.Size(), Agreement,
+			Pose.Size() < 0.005 ? TEXT("poses did nothing") : (Agreement > 0.9 ? TEXT("same way") : (Agreement < -0.5 ? TEXT("MIRRORED") : TEXT("different"))));
+	}
 #endif
 }
 
@@ -837,6 +1058,7 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		ReportDna(Mesh, TEXT(" "));
 		ReportDnaNeutral(Mesh);
 		ReportRigLogicResult(Mesh);
+		ComparePoseAssetToRig(Mesh, Mesh->GetPackage()->GetName() + TEXT("_DNA_PoseAsset.") + FPackageName::GetShortName(Mesh->GetPackage()->GetName()) + TEXT("_DNA_PoseAsset"));
 		ReportPoseAsset(Mesh->GetPackage()->GetName(), TEXT(" "), true);
 		UE_LOG(LogRigImportTest, Display, TEXT("lods: %d, materials: %d, sockets: %d, vertex colors: %d"),
 			Model ? Model->LODModels.Num() : 0, Mesh->GetMaterials().Num(),
