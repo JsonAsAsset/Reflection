@@ -59,6 +59,7 @@ public:
 	static inline FString MorphTargetsURL = TEXT("/api/export/morphtargets");
 	static inline FString StaticMeshURL = TEXT("/api/export/staticmesh");
 	static inline FString DnaURL = TEXT("/api/export/dna");
+	static inline FString ReferenceSkeletonURL = TEXT("/api/export/refskeleton");
 
 	class REFLECTION_API Export {
 	public:
@@ -92,6 +93,10 @@ public:
 
 		/* A MetaHuman head's DNA, as the bytes RigLogic reads. Empty for a mesh without one. */
 		static TArray<uint8> GetDnaBlocking(const FString& Path);
+
+		/* The pose the mesh itself is bound at, which is not the one its skeleton carries. Null
+		 * when the Cloud has no mesh at Path. */
+		static TSharedPtr<FJsonObject> GetReferenceSkeletonBlocking(const FString& Path);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

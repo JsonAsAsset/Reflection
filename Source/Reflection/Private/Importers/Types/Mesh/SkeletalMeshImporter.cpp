@@ -10,6 +10,12 @@
 #include "RigLogic.h"
 #include "RigInstance.h"
 #include "SkelMeshDNAUtils.h"
+#include "FMemoryResource.h"
+#include "riglogic/RigLogic.h"
+#include "dna/BinaryStreamReader.h"
+#include "dna/BinaryStreamWriter.h"
+#include "trio/streams/MemoryStream.h"
+#include "DNAToSkelMeshMap.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/PoseAsset.h"
 #include "Animation/AnimData/IAnimationDataController.h"
@@ -185,13 +191,172 @@ bool ISkeletalMeshImporter::ExportNamesDna() {
 	return false;
 }
 
+TArray<uint8> ISkeletalMeshImporter::RewriteDnaForAnimNode(USkeletalMesh* SkeletalMesh, const TArray<uint8>& Dna) {
+#if REFLECTION_RIG_LOGIC
+	/* A DNA asset is only ever read by the RigLogic anim node, and that node reads a joint's nine
+	 * numbers in MetaHuman's axes: translation as (x, -y, z), rotation as a rotator of
+	 * (-ry, -rz, rx). This data is not in those axes -- the pose the mesh is bound at is the same
+	 * numbers read as (x, y, z) and (-ry, rz, -rx) -- so the node rests somewhere the mesh was
+	 * never skinned and deforms the face.
+	 *
+	 * The node can't be changed, so the DNA is. Negating the three attributes the two readings
+	 * disagree on cancels exactly: the node's own formula then lands on the pose the mesh is
+	 * bound at. Translation Y, rotation X and rotation Z, wherever they appear -- in the neutral
+	 * the rig rests at, and in the deltas every control drives. */
+	static constexpr int32 AttributesPerJoint = 9;
+
+	TArray<uint8> Source = Dna;
+
+	auto InStream = rl4::makeScoped<trio::MemoryStream>();
+	InStream->write(reinterpret_cast<const char*>(Source.GetData()), Source.Num());
+	InStream->seek(0);
+
+	auto Reader = rl4::makeScoped<dna::BinaryStreamReader>(
+		InStream.get(), dna::DataLayer::All, dna::UnknownLayerPolicy::Preserve, 0u, FMemoryResource::Instance());
+
+	Reader->read();
+
+	if (!rl4::Status::isOk()) {
+		UE_LOG(LogReflection, Warning, TEXT("Reading the DNA to rewrite it failed: %s"), ANSI_TO_TCHAR(rl4::Status::get().message));
+
+		return Dna;
+	}
+
+	auto OutStream = rl4::makeScoped<trio::MemoryStream>();
+	auto Writer = rl4::makeScoped<dna::BinaryStreamWriter>(OutStream.get(), FMemoryResource::Instance());
+
+	Writer->setFrom(Reader.get(), dna::DataLayer::All, dna::UnknownLayerPolicy::Preserve, FMemoryResource::Instance());
+
+	/* The pose the rig rests at. Not the DNA's own: the mesh's, taken from the package and written
+	 * back in the node's axes, so the rig rests exactly where the mesh is bound for every joint it
+	 * touches. The DNA and this skeleton disagree about the body -- arms, spine, neck -- and the
+	 * node writes those joints too, so leaving them as the DNA had them drags the whole head. */
+	const uint16 JointCount = Reader->getJointCount();
+
+	const FReferenceSkeleton& RefSkeleton = SkeletalMesh->GetRefSkeleton();
+
+	TArray<dna::Vector3> Translations;
+	TArray<dna::Vector3> Rotations;
+
+	Translations.Reserve(JointCount);
+	Rotations.Reserve(JointCount);
+
+	int32 Copied = 0;
+
+	for (uint16 Joint = 0; Joint < JointCount; ++Joint) {
+		const dna::StringView JointName = Reader->getJointName(Joint);
+
+		const int32 Bone = RefSkeleton.FindBoneIndex(FName(FString(static_cast<int32>(JointName.size()), JointName.data())));
+
+		if (Bone != INDEX_NONE) {
+			const FTransform& Bound = RefSkeleton.GetRefBonePose()[Bone];
+			const FRotator Rotation = Bound.GetRotation().Rotator();
+
+			/* Inverted through the node's own reading: it takes translation as (x, -y, z) and
+			 * rotation as a rotator of (-ry, -rz, rx), so these are the numbers that come back
+			 * out of it as the pose the mesh is bound at */
+			Translations.Add(dna::Vector3{
+				static_cast<float>(Bound.GetTranslation().X),
+				static_cast<float>(-Bound.GetTranslation().Y),
+				static_cast<float>(Bound.GetTranslation().Z)
+			});
+
+			Rotations.Add(dna::Vector3{
+				static_cast<float>(Rotation.Roll),
+				static_cast<float>(-Rotation.Pitch),
+				static_cast<float>(-Rotation.Yaw)
+			});
+
+			Copied++;
+
+			continue;
+		}
+
+		/* A joint the skeleton has no bone for keeps what the DNA said, read the same way round */
+		dna::Vector3 Translation = Reader->getNeutralJointTranslation(Joint);
+		dna::Vector3 Rotation = Reader->getNeutralJointRotation(Joint);
+
+		Translation.y = -Translation.y;
+
+		Rotation.x = -Rotation.x;
+		Rotation.z = -Rotation.z;
+
+		Translations.Add(Translation);
+		Rotations.Add(Rotation);
+	}
+
+	Writer->setNeutralJointTranslations(Translations.GetData(), JointCount);
+	Writer->setNeutralJointRotations(Rotations.GetData(), JointCount);
+
+	/* What the controls do on top of it. A joint group is a matrix of one row per attribute it
+	 * drives, so a row is negated when the attribute it lands on is one of the three. */
+	int32 NegatedRows = 0;
+
+	for (uint16 Group = 0; Group < Reader->getJointGroupCount(); ++Group) {
+		const auto Values = Reader->getJointGroupValues(Group);
+		const auto Outputs = Reader->getJointGroupOutputIndices(Group);
+
+		if (Values.size() == 0 || Outputs.size() == 0) continue;
+
+		const int32 Columns = static_cast<int32>(Values.size() / Outputs.size());
+		if (Columns == 0) continue;
+
+		TArray<float> Patched;
+		Patched.Append(Values.data(), static_cast<int32>(Values.size()));
+
+		for (int32 Row = 0; Row < static_cast<int32>(Outputs.size()); ++Row) {
+			const int32 Attribute = Outputs[Row] % AttributesPerJoint;
+
+			if (Attribute != 1 && Attribute != 3 && Attribute != 5) continue;
+
+			for (int32 Column = 0; Column < Columns; ++Column) {
+				const int32 Index = Row * Columns + Column;
+
+				if (Patched.IsValidIndex(Index)) {
+					Patched[Index] = -Patched[Index];
+				}
+			}
+
+			NegatedRows++;
+		}
+
+		Writer->setJointGroupValues(Group, Patched.GetData(), static_cast<uint32>(Patched.Num()));
+	}
+
+	Writer->write();
+
+	if (!rl4::Status::isOk()) {
+		UE_LOG(LogReflection, Warning, TEXT("Writing the rewritten DNA failed: %s"), ANSI_TO_TCHAR(rl4::Status::get().message));
+
+		return Dna;
+	}
+
+	TArray<uint8> Rewritten;
+	Rewritten.AddUninitialized(static_cast<int32>(OutStream->size()));
+
+	OutStream->seek(0);
+	OutStream->read(reinterpret_cast<char*>(Rewritten.GetData()), OutStream->size());
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" rewrote its DNA into the anim node's axes: %d joint(s), %d from the mesh's own bind pose, %d delta row(s)"),
+		*GetAssetName(), JointCount, Copied, NegatedRows);
+
+	return Rewritten;
+#else
+	return Dna;
+#endif
+}
+
 bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString& FetchPath) {
 #if REFLECTION_RIG_LOGIC
-	TArray<uint8> Dna = Cloud::Export::GetDnaBlocking(FetchPath);
+	const TArray<uint8> Cooked = Cloud::Export::GetDnaBlocking(FetchPath);
 
-	if (Dna.Num() == 0) {
+	if (Cooked.Num() == 0) {
 		return false;
 	}
+
+	/* Rewritten into the axes the anim node reads, since that node is the only thing that ever
+	 * reads a DNA asset */
+	TArray<uint8> Dna = RewriteDnaForAnimNode(SkeletalMesh, Cooked);
 
 	/* Behavior is what RigLogic runs a face with, geometry is what the editor updates the mesh
 	 * from. A cook keeps the first and leaves an empty stream where the second was, so the mesh
@@ -240,25 +405,162 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 static constexpr int32 GDnaJointAttributes = 9;
 
 namespace {
-	/* What a control did to a joint, on its own, in the axes the engine poses a bone with.
+	/* A joint's local transform: the DNA's neutral, then whatever the controls evaluated to on top.
+	 * The sign flips are this DNA's axes against the engine's.
 	 *
-	 * The mapping is not the one the RigLogic anim node uses: that one is written for a DNA in
-	 * MetaHuman's coordinate system, and this data is not in it. These signs are the ones that
-	 * reproduce the skeleton's own reference pose out of the DNA's neutral, to within a fifth of
-	 * a degree across every facial joint. */
-	FTransform ComposeDnaDelta(const TArrayView<const float>& Delta, const int32 Attribute) {
-		const auto Read = [&Delta](const int32 Index) {
-			return Delta.IsValidIndex(Index) ? Delta[Index] : 0.0f;
+	 * They are not the ones FAnimNode_RigLogic uses. That node is written for a DNA in MetaHuman's
+	 * coordinate system and this data declares its own, and reading it that way puts the joints
+	 * outside the head the mesh was skinned to. These signs are the ones that land the skeleton
+	 * inside its own mesh, and that reproduce the reference pose the skeleton is built at to within
+	 * a fifth of a degree across every facial joint. */
+	FTransform ComposeDnaJoint(const TArrayView<const float>& Neutral, const TArrayView<const float>& Delta, const int32 Attribute) {
+		const auto Read = [](const TArrayView<const float>& Values, const int32 Index) {
+			return Values.IsValidIndex(Index) ? Values[Index] : 0.0f;
 		};
 
-		return FTransform(
-			FQuat(FRotator(-Read(Attribute + 4), Read(Attribute + 5), -Read(Attribute + 3))),
-			FVector(Read(Attribute + 0), Read(Attribute + 1), Read(Attribute + 2)),
-			FVector(Read(Attribute + 6), Read(Attribute + 7), Read(Attribute + 8))
+		const FVector Translation(
+			Read(Neutral, Attribute + 0) + Read(Delta, Attribute + 0),
+			Read(Neutral, Attribute + 1) + Read(Delta, Attribute + 1),
+			Read(Neutral, Attribute + 2) + Read(Delta, Attribute + 2)
 		);
+
+		const FQuat Rotation =
+			FQuat(FRotator(-Read(Neutral, Attribute + 4), Read(Neutral, Attribute + 5), -Read(Neutral, Attribute + 3))) *
+			FQuat(FRotator(-Read(Delta, Attribute + 4), Read(Delta, Attribute + 5), -Read(Delta, Attribute + 3)));
+
+		const FVector Scale(
+			Read(Neutral, Attribute + 6) + Read(Delta, Attribute + 6),
+			Read(Neutral, Attribute + 7) + Read(Delta, Attribute + 7),
+			Read(Neutral, Attribute + 8) + Read(Delta, Attribute + 8)
+		);
+
+		return FTransform(Rotation, Translation, Scale);
 	}
 }
 #endif
+
+bool ISkeletalMeshImporter::ApplyCookedBindPose(USkeletalMesh* SkeletalMesh, USkeleton* Skeleton, const FString& FetchPath) {
+	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetReferenceSkeletonBlocking(FetchPath);
+
+	const TArray<TSharedPtr<FJsonValue>>* Bones;
+
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("bones"), Bones) || Bones->Num() == 0) {
+		return false;
+	}
+
+	/* The pose a mesh is bound at is the mesh's, not its skeleton's: characters share a skeleton
+	 * and each is built at its own proportions. Everything the mesh is skinned with is measured
+	 * against this pose, so binding to the skeleton's instead deforms the mesh the moment a bone
+	 * moves away from it, which is what a rig does on its first evaluation. */
+	FReferenceSkeleton BindPose;
+
+	{
+		FReferenceSkeletonModifier Modifier(BindPose, Skeleton);
+
+		const auto ReadVector = [](const TArray<TSharedPtr<FJsonValue>>* Values, const int32 Offset) {
+			return FVector(
+				Values != nullptr && Values->IsValidIndex(Offset) ? (*Values)[Offset]->AsNumber() : 0.0,
+				Values != nullptr && Values->IsValidIndex(Offset + 1) ? (*Values)[Offset + 1]->AsNumber() : 0.0,
+				Values != nullptr && Values->IsValidIndex(Offset + 2) ? (*Values)[Offset + 2]->AsNumber() : 0.0
+			);
+		};
+
+		for (const TSharedPtr<FJsonValue>& Value : *Bones) {
+			const TSharedPtr<FJsonObject> Bone = Value.IsValid() ? Value->AsObject() : nullptr;
+			if (!Bone.IsValid()) continue;
+
+			FString Name;
+			if (!Bone->TryGetStringField(TEXT("Name"), Name)) return false;
+
+			int32 ParentIndex = INDEX_NONE;
+			Bone->TryGetNumberField(TEXT("ParentIndex"), ParentIndex);
+
+			const TArray<TSharedPtr<FJsonValue>>* Translation = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Rotation = nullptr;
+			const TArray<TSharedPtr<FJsonValue>>* Scale = nullptr;
+
+			Bone->TryGetArrayField(TEXT("Translation"), Translation);
+			Bone->TryGetArrayField(TEXT("Rotation"), Rotation);
+			Bone->TryGetArrayField(TEXT("Scale"), Scale);
+
+			const FQuat BoneRotation(
+				Rotation != nullptr && Rotation->IsValidIndex(0) ? (*Rotation)[0]->AsNumber() : 0.0,
+				Rotation != nullptr && Rotation->IsValidIndex(1) ? (*Rotation)[1]->AsNumber() : 0.0,
+				Rotation != nullptr && Rotation->IsValidIndex(2) ? (*Rotation)[2]->AsNumber() : 0.0,
+				Rotation != nullptr && Rotation->IsValidIndex(3) ? (*Rotation)[3]->AsNumber() : 1.0
+			);
+
+			const FTransform Pose(BoneRotation.GetNormalized(), ReadVector(Translation, 0), ReadVector(Scale, 0));
+
+			Modifier.Add(FMeshBoneInfo(FName(*Name), Name, ParentIndex), Pose);
+		}
+	}
+
+	if (BindPose.GetNum() == 0) return false;
+
+	SkeletalMesh->SetRefSkeleton(BindPose);
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" bound at its own pose, %d bone(s)"), *GetAssetName(), BindPose.GetNum());
+
+	return true;
+}
+
+bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
+#if REFLECTION_RIG_LOGIC
+	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(SkeletalMesh);
+	if (DNAAsset == nullptr) return false;
+
+	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	if (!Behavior.IsValid()) return false;
+
+	USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
+	if (Skeleton == nullptr) return false;
+
+	/* RigLogic doesn't add to the pose a bone is already in, it puts the bone where the DNA's
+	 * neutral says. A mesh bound anywhere else wears that difference as a deformation for as long
+	 * as the rig runs, which is what a head bound to the shared skeleton rather than its own does.
+	 *
+	 * The engine has USkelMeshDNAUtils::UpdateJoints for this, and it can't be used here: it
+	 * rebuilds the whole chain in component space off the DNA's own root, which is written in the
+	 * DNA's axes, and this DNA is not in the ones that code was written for. It lands the skeleton
+	 * on its side. Only the joints are taken, in the frame the skeleton already has them. */
+	/* The same numbers the rig evaluates against, rather than the reader's own accessors: those
+	 * two do not report a rotation the same way round, and this is the pair that has to agree. */
+	FRigLogic RigLogic(Behavior.Get());
+
+	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+
+	int32 Aligned = 0;
+
+	{
+	FReferenceSkeletonModifier Modifier(SkeletalMesh->GetRefSkeleton(), Skeleton);
+
+	for (uint16 Joint = 0; Joint < Behavior->GetJointCount(); ++Joint) {
+		/* The DNA roots its hierarchy at a joint that is its own parent, and that one holds where
+		 * the rig sits rather than how a bone is offset from its parent. Read as an offset it
+		 * throws the skeleton clean out of its own mesh, so the game's placement is kept. */
+		if (Behavior->GetJointParentIndex(Joint) == Joint) continue;
+
+		const int32 Bone = SkeletalMesh->GetRefSkeleton().FindBoneIndex(FName(*Behavior->GetJointName(Joint)));
+		if (Bone == INDEX_NONE) continue;
+
+		/* Where the rig rests, which is where the mesh has to be bound */
+		Modifier.UpdateRefPoseTransform(Bone, ComposeDnaJoint(Neutral, {}, Joint * GDnaJointAttributes));
+
+		Aligned++;
+	}
+
+	}
+
+	SkeletalMesh->GetRefBasesInvMatrix().Reset();
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" bound %d joint(s) to its DNA's neutral"), *GetAssetName(), Aligned);
+
+	return Aligned > 0;
+#else
+	return false;
+#endif
+}
 
 UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh) {
 #if REFLECTION_RIG_LOGIC
@@ -277,15 +579,20 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	FRigLogic RigLogic(Behavior.Get());
 	FRigInstance Instance(&RigLogic);
 
+	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+
 	/* A DNA names the joints it drives, and the mesh knows them as bones. Only those get a track:
 	 * everything else stays wherever the pose it is played over left it. */
 	const FReferenceSkeleton& RefSkeleton = Skeleton->GetReferenceSkeleton();
 
 	TArray<FName> BoneNames;
 	TArray<int32> BoneJoints;
-	TArray<FTransform> BoneRestPose;
 
 	for (uint16 Joint = 0; Joint < Behavior->GetJointCount(); ++Joint) {
+		/* Skipped for the same reason the bind pose skips it: the DNA's root holds a placement,
+		 * and a pose that wrote it as a bone offset would take the head with it */
+		if (Behavior->GetJointParentIndex(Joint) == Joint) continue;
+
 		const FName BoneName(*Behavior->GetJointName(Joint));
 
 		const int32 Bone = RefSkeleton.FindBoneIndex(BoneName);
@@ -293,7 +600,6 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 		BoneNames.Add(BoneName);
 		BoneJoints.Add(Joint);
-		BoneRestPose.Add(RefSkeleton.GetRefBonePose()[Bone]);
 	}
 
 	if (BoneNames.Num() == 0) {
@@ -321,17 +627,15 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	RotationKeys.SetNum(BoneNames.Num());
 	ScaleKeys.SetNum(BoneNames.Num());
 
-	/* A pose is the bone where the skeleton put it, moved by what the control did. Writing the
-	 * DNA's own neutral instead would drag every bone to wherever that rig had it, which is not
-	 * where this skeleton is built or where the mesh is bound. */
+	/* The pose the rig itself would write for that control, so a pose and the rig agree bone for
+	 * bone. The mesh is bound to the same neutral these are composed from. */
 	const auto WriteFrame = [&](const TArrayView<const float>& Delta) {
 		for (int32 Bone = 0; Bone < BoneNames.Num(); ++Bone) {
-			const FTransform Rest = BoneRestPose[Bone];
-			const FTransform Moved = ComposeDnaDelta(Delta, BoneJoints[Bone] * GDnaJointAttributes);
+			const FTransform Local = ComposeDnaJoint(Neutral, Delta, BoneJoints[Bone] * GDnaJointAttributes);
 
-			PositionKeys[Bone].Add(Rest.GetTranslation() + Moved.GetTranslation());
-			RotationKeys[Bone].Add(Rest.GetRotation() * Moved.GetRotation());
-			ScaleKeys[Bone].Add(Rest.GetScale3D() + Moved.GetScale3D());
+			PositionKeys[Bone].Add(Local.GetTranslation());
+			RotationKeys[Bone].Add(Local.GetRotation());
+			ScaleKeys[Bone].Add(Local.GetScale3D());
 		}
 	};
 
@@ -383,6 +687,10 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	UPackage* PosePackage = CreatePackage(*PoseAssetPath);
 	if (PosePackage == nullptr) return nullptr;
 
+	/* Re-importing lands on the package the last import wrote, and a package read back off disk
+	 * comes in on demand: saving one that was never finished reading is fatal */
+	PosePackage->FullyLoad();
+
 	UPoseAsset* PoseAsset = NewObject<UPoseAsset>(PosePackage, FName(*PoseAssetName), RF_Public | RF_Standalone);
 
 	PoseAsset->SetSkeleton(Skeleton);
@@ -429,7 +737,28 @@ bool ISkeletalMeshImporter::Import() {
 	}
 
 	SkeletalMesh->SetSkeleton(Skeleton);
-	SkeletalMesh->SetRefSkeleton(Skeleton->GetReferenceSkeleton());
+
+	/* Asked for by the path the game cooked it under. The export names that itself; only when it
+	 * doesn't is the path the asset landed at turned back into one, which is a guess the moment an
+	 * import is redirected somewhere else. */
+	FString FetchPath = GetAssetExport()->HasField(TEXT("Package"))
+		? GetAssetExport()->GetStringField(TEXT("Package"))
+		: FString();
+
+	if (FetchPath.IsEmpty()) {
+		FetchPath = GetPackage()->GetPathName();
+
+		FRRedirects::Reverse(FetchPath);
+	}
+
+	/* The mesh's own bind pose if the Cloud can serve it, and the skeleton's only as a fallback:
+	 * the skeleton is shared and built at nobody's proportions in particular. */
+	const bool bCookedBindPose = ApplyCookedBindPose(SkeletalMesh, Skeleton, FetchPath);
+
+	if (!bCookedBindPose) {
+		SkeletalMesh->SetRefSkeleton(Skeleton->GetReferenceSkeleton());
+	}
+
 	SkeletalMesh->CalculateInvRefMatrices();
 
 	/* Before the geometry: a wedge names the slot it belongs to */
@@ -457,19 +786,6 @@ bool ISkeletalMeshImporter::Import() {
 		"MorphTargets",
 		"SkinWeightProfiles",
 	}), SkeletalMesh);
-
-	/* Geometry is not in the export, so it is asked for by the path the game cooked it under.
-	 * The export names that itself; only when it doesn't is the path the asset landed at turned
-	 * back into one, which is a guess the moment an import is redirected somewhere else. */
-	FString FetchPath = GetAssetExport()->HasField(TEXT("Package"))
-		? GetAssetExport()->GetStringField(TEXT("Package"))
-		: FString();
-
-	if (FetchPath.IsEmpty()) {
-		FetchPath = GetPackage()->GetPathName();
-
-		FRRedirects::Reverse(FetchPath);
-	}
 
 	const TSharedPtr<FJsonObject> Geometry = Cloud::Export::GetLodModelBlocking(FetchPath);
 
@@ -534,6 +850,12 @@ bool ISkeletalMeshImporter::Import() {
 	 * properties: the stream sits after them in the package the same way the geometry does. */
 	if (ExportNamesDna()) {
 		if (ApplyDna(SkeletalMesh, FetchPath)) {
+			/* Only when the mesh's own bind pose could not be had: reconstructing it from the
+			 * DNA is a guess at what the package already states outright */
+			if (!bCookedBindPose) {
+				AlignBindPoseToDna(SkeletalMesh);
+			}
+
 			/* Flattening the rig into poses is the setting's job */
 			if (GetSettings()->AssetSettings.SkeletalMesh.BakeDnaToPoseAsset) {
 				if (const UPoseAsset* PoseAsset = BakeDnaPoseAsset(SkeletalMesh)) {

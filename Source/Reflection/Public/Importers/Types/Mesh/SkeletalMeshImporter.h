@@ -41,9 +41,24 @@ private:
 	/* True when the export hangs a DNA off the mesh, which is what a MetaHuman head does */
 	bool ExportNamesDna();
 
+	/* Rewrites a DNA so the RigLogic anim node reads it correctly. The node is the only thing that
+	 * ever reads one, and it reads a joint's numbers in axes this data is not written in, so the
+	 * data is put into the node's axes rather than the node into the data's. */
+	TArray<uint8> RewriteDnaForAnimNode(USkeletalMesh* SkeletalMesh, const TArray<uint8>& Dna);
+
 	/* Hands the mesh its DNA, the bit stream RigLogic reads a face rig out of. It is written after
 	 * the DNA asset's properties rather than as any of them, so it comes down on its own. */
-	static bool ApplyDna(USkeletalMesh* SkeletalMesh, const FString& FetchPath);
+	bool ApplyDna(USkeletalMesh* SkeletalMesh, const FString& FetchPath);
+
+	/* Binds the mesh at the pose the cooked package says it was built at, rather than at the one
+	 * its skeleton carries. A skeleton is shared between characters and each is built at its own
+	 * proportions, so the two are not the same pose. False when the Cloud has none to give. */
+	bool ApplyCookedBindPose(USkeletalMesh* SkeletalMesh, USkeleton* Skeleton, const FString& FetchPath);
+
+	/* Puts the mesh's bind pose where the DNA's neutral is. RigLogic sets a bone rather than adding
+	 * to it, so a mesh bound anywhere else wears the difference as a deformation the whole time the
+	 * rig runs. False when the skeleton can't carry the DNA's joints. */
+	bool AlignBindPoseToDna(USkeletalMesh* SkeletalMesh);
 
 	/* Flattens the face rig into a pose asset beside the mesh, one pose per control the DNA names.
 	 * Each control is evaluated on its own and the joints it moves are kept as they are, which is

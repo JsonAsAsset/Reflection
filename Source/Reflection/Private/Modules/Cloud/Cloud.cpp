@@ -175,6 +175,16 @@ TSharedPtr<FJsonObject> Cloud::Export::GetLodModelBlocking(const FString& Path) 
 	return Response;
 }
 
+TSharedPtr<FJsonObject> Cloud::Export::GetReferenceSkeletonBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(ReferenceSkeletonURL, { { TEXT("path"), Path } }, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("bones"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
 TArray<uint8> Cloud::Export::GetDnaBlocking(const FString& Path) {
 	const FReflectionHttpRequest Request = BuildRequest(DnaURL, { { TEXT("path"), Path } }, {});
 	Request->SetVerb(TEXT("GET"));

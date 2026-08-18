@@ -168,7 +168,14 @@ public class Reflection : ModuleRules {
 		if (bRigLogic) {
 			PrivateDependencyModuleNames.AddRange(new[] {
 				/* UDNAAsset, and the reader that turns a DNA stream into one */
-				"RigLogicModule"
+				"RigLogicModule",
+
+				/* The DNA reader and writer themselves, for putting one into the axes the anim
+				 * node reads */
+				"RigLogicLib",
+
+				/* UAnimGraphNode_RigLogic, which is how the node is put in a graph to test it */
+				"RigLogicDeveloper"
 			});
 		}
 

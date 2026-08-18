@@ -17,6 +17,18 @@
 #include "Engine/AssetUserData.h"
 
 #if REFLECTION_RIG_LOGIC
+#include "AnimGraphNode_RigLogic.h"
+#include "AnimGraphNode_SequencePlayer.h"
+#include "Animation/AnimData/IAnimationDataController.h"
+#include "Animation/AnimData/CurveIdentifier.h"
+#include "AnimGraphNode_Root.h"
+#include "Animation/AnimBlueprint.h"
+#include "Animation/AnimBlueprintGeneratedClass.h"
+#include "Animation/AnimInstance.h"
+#include "Components/SkeletalMeshComponent.h"
+#include "Engine/World.h"
+#include "EdGraphSchema_K2.h"
+#include "Kismet2/KismetEditorUtilities.h"
 #include "DNAAsset.h"
 #include "DNAReader.h"
 #include "RigLogic.h"
@@ -132,6 +144,8 @@ static void ReportPoseAsset(const FString& MeshPath, const TCHAR* Prefix, bool b
 	if (bSave) {
 		UPackage* Package = PoseAsset->GetPackage();
 
+		Package->FullyLoad();
+
 		FSavePackageArgs SaveArgs;
 		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 
@@ -174,8 +188,8 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 
 		const auto Read = [&Neutral](const int32 Index) { return Neutral.IsValidIndex(Index) ? Neutral[Index] : 0.0f; };
 
-		const FVector DnaTranslation(Read(Attribute + 0), -Read(Attribute + 1), Read(Attribute + 2));
-		const FQuat DnaRotation(FRotator(-Read(Attribute + 4), -Read(Attribute + 5), Read(Attribute + 3)));
+		const FVector DnaTranslation(Read(Attribute + 0), Read(Attribute + 1), Read(Attribute + 2));
+		const FQuat DnaRotation(FRotator(-Read(Attribute + 4), Read(Attribute + 5), -Read(Attribute + 3)));
 
 		const FTransform& RefPose = RefSkeleton.GetRefBonePose()[Bone];
 
@@ -186,6 +200,8 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 
 		if (Distance > 0.05f || Angle > 1.0f) {
 			Mismatched++;
+
+			UE_LOG(LogRigImportTest, Display, TEXT("  differs: '%s' %.2f degrees / %.3f cm"), *BoneName.ToString(), Angle, Distance);
 		}
 
 		if (Angle > WorstAngle) {
@@ -198,10 +214,428 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 	UE_LOG(LogRigImportTest, Display, TEXT("dna neutral vs reference pose: %d of %d joints differ, worst '%s' at %.2f degrees / %.3f cm"),
 		Mismatched, Compared, *WorstBone, WorstAngle, WorstDistance);
 
+	/* The pose the mesh is actually bound at, measured against both ways of reading the DNA: the
+	 * one the stock anim node uses, and the one that reproduces this bind pose. Whichever matches
+	 * is the convention a rig has to evaluate in for this mesh not to deform. */
+	for (int32 Convention = 0; Convention < 2; ++Convention) {
+		float Total = 0.0f;
+		float Worst = 0.0f;
+		float TranslationError = 0.0f;
+		float ScaleError = 0.0f;
+		int32 Counted = 0;
+		int32 Matching = 0;
+
+		for (uint16 Joint = 0; Joint < Behavior->GetJointCount(); ++Joint) {
+			const FName BoneName(*Behavior->GetJointName(Joint));
+
+			const int32 Bone = RefSkeleton.FindBoneIndex(BoneName);
+			if (Bone == INDEX_NONE) continue;
+			if (!BoneName.ToString().StartsWith(TEXT("FACIAL_"))) continue;
+
+			const int32 Attribute = Joint * 9;
+			const auto Read = [&Neutral](const int32 Index) { return Neutral.IsValidIndex(Index) ? Neutral[Index] : 0.0f; };
+
+			const FQuat Candidate = Convention == 0
+				? FQuat(FRotator(-Read(Attribute + 4), -Read(Attribute + 5), Read(Attribute + 3)))
+				: FQuat(FRotator(-Read(Attribute + 4), Read(Attribute + 5), -Read(Attribute + 3)));
+
+			const FVector CandidateTranslation = Convention == 0
+				? FVector(Read(Attribute + 0), -Read(Attribute + 1), Read(Attribute + 2))
+				: FVector(Read(Attribute + 0), Read(Attribute + 1), Read(Attribute + 2));
+
+			const FVector CandidateScale(Read(Attribute + 6), Read(Attribute + 7), Read(Attribute + 8));
+
+			const FTransform& Bound = RefSkeleton.GetRefBonePose()[Bone];
+
+			TranslationError += static_cast<float>(FVector::Dist(CandidateTranslation, Bound.GetTranslation()));
+			ScaleError += static_cast<float>(FVector::Dist(CandidateScale, Bound.GetScale3D()));
+
+			const float Angle = FMath::RadiansToDegrees(static_cast<float>(Candidate.AngularDistance(Bound.GetRotation())));
+
+			Total += Angle;
+			Worst = FMath::Max(Worst, Angle);
+
+			if (Angle < 1.0f) Matching++;
+
+			Counted++;
+		}
+
+		if (Counted == 0) continue;
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  %s convention: %d of %d match, mean %.3f degrees (worst %.2f), translation %.4f cm, scale %.4f"),
+			Convention == 0 ? TEXT("anim node") : TEXT("fitted   "), Matching, Counted, Total / Counted, Worst,
+			TranslationError / Counted, ScaleError / Counted);
+	}
+
+	/* Where the bones actually ended up, so a bind pose that moved the mesh is visible */
+	for (const TCHAR* Name : { TEXT("spine_04"), TEXT("head"), TEXT("FACIAL_C_Forehead") }) {
+		const int32 Bone = RefSkeleton.FindBoneIndex(FName(Name));
+		if (Bone == INDEX_NONE) continue;
+
+		FTransform Component = RefSkeleton.GetRefBonePose()[Bone];
+
+		for (int32 Parent = RefSkeleton.GetParentIndex(Bone); Parent != INDEX_NONE; Parent = RefSkeleton.GetParentIndex(Parent)) {
+			Component = Component * RefSkeleton.GetRefBonePose()[Parent];
+		}
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  bone '%s' local %s r %s, component %s"),
+			Name, *RefSkeleton.GetRefBonePose()[Bone].GetTranslation().ToString(),
+			*RefSkeleton.GetRefBonePose()[Bone].GetRotation().Rotator().ToString(),
+			*Component.GetTranslation().ToString());
+	}
+
 	/* The raw numbers side by side, so the mapping between them can be read off rather than guessed */
 	UE_LOG(LogRigImportTest, Display, TEXT("dna neutral vs reference pose: %d of %d joints differ, worst '%s' at %.2f degrees / %.3f cm"),
 		Mismatched, Compared, *WorstBone, WorstAngle, WorstDistance);
 
+#endif
+}
+
+/* Drives one control at a time through a real RigLogic node and reports which bones moved and
+ * which way.
+ *
+ * The rest pose says nothing: negating the neutral makes it match by construction. What the curves
+ * drive are the deltas, and a delta with a sign wrong still moves the right bones by the right
+ * amount, in the wrong direction. Nothing is assumed about which bone a control owns -- the bones
+ * that moved most are simply reported, with the direction they went. */
+static void ReportControlDirections(USkeletalMesh* Mesh, UAnimBlueprint* AnimBlueprint, UAnimGraphNode_SequencePlayer* Player) {
+#if REFLECTION_RIG_LOGIC
+	USkeleton* Skeleton = Mesh->GetSkeleton();
+	if (Skeleton == nullptr || AnimBlueprint == nullptr || Player == nullptr) return;
+
+	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(Mesh);
+	if (DNAAsset == nullptr) return;
+
+	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	if (!Behavior.IsValid()) return;
+
+	/* A handful whose direction is obvious to anyone looking at a face */
+	static const TCHAR* Wanted[] = { TEXT("jawOpen"), TEXT("browDownL"), TEXT("browRaiseInL"), TEXT("eyeBlinkL") };
+
+	const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
+
+	TArray<FTransform> Bound;
+	Bound.SetNum(RefSkeleton.GetNum());
+
+	for (int32 Bone = 0; Bone < RefSkeleton.GetNum(); ++Bone) {
+		const int32 Parent = RefSkeleton.GetParentIndex(Bone);
+
+		Bound[Bone] = Parent == INDEX_NONE
+			? RefSkeleton.GetRefBonePose()[Bone]
+			: RefSkeleton.GetRefBonePose()[Bone] * Bound[Parent];
+	}
+
+	for (const TCHAR* Pattern : Wanted) {
+		FString CurveName;
+
+		for (uint16 Control = 0; Control < Behavior->GetRawControlCount(); ++Control) {
+			const FString Name = Behavior->GetRawControlName(Control);
+
+			if (Name.Contains(Pattern)) {
+				CurveName = Name.Replace(TEXT("."), TEXT("_"));
+
+				break;
+			}
+		}
+
+		if (CurveName.IsEmpty()) {
+			UE_LOG(LogRigImportTest, Display, TEXT("  control '%s': the DNA has no such control"), Pattern);
+
+			continue;
+		}
+
+		/* Evaluated twice, with the control off and on. Everything static -- the pose the player
+		 * hands over for bones it has no track for, the bind pose, the body -- is in both, so the
+		 * difference between them is the control and nothing else. */
+		TArray<FTransform> Sampled[2];
+
+		for (int32 Pass = 0; Pass < 2; ++Pass) {
+			UAnimSequence* Driver = NewObject<UAnimSequence>(GetTransientPackage(), NAME_None, RF_Transient);
+			Driver->SetSkeleton(Skeleton);
+
+			{
+				IAnimationDataController& Controller = Driver->GetController();
+
+				Controller.OpenBracket(NSLOCTEXT("Reflection", "DriveControl", "Driving one control"), false);
+				Controller.InitializeModel();
+				Controller.SetFrameRate(FFrameRate(30, 1), false);
+				Controller.SetNumberOfFrames(FFrameNumber(1), false);
+
+				const FAnimationCurveIdentifier CurveId(FName(*CurveName), ERawCurveTrackTypes::RCT_Float);
+
+				Controller.AddCurve(CurveId, 0x00000004, false);
+				Controller.SetCurveKeys(CurveId, { FRichCurveKey(0.0f, static_cast<float>(Pass)), FRichCurveKey(1.0f, static_cast<float>(Pass)) }, false);
+
+				Controller.NotifyPopulated();
+				Controller.CloseBracket(false);
+			}
+
+			Player->Node.SetSequence(Driver);
+
+			FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+
+			UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+			if (World == nullptr) return;
+
+			USkeletalMeshComponent* Component = NewObject<USkeletalMeshComponent>(World);
+
+			Component->SetSkeletalMesh(Mesh);
+			Component->SetAnimInstanceClass(AnimBlueprint->GeneratedClass);
+			Component->RegisterComponentWithWorld(World);
+			Component->InitAnim(true);
+			Component->TickAnimation(0.0f, false);
+			Component->RefreshBoneTransforms();
+
+			Sampled[Pass] = Component->GetComponentSpaceTransforms();
+
+			Component->UnregisterComponent();
+			World->DestroyWorld(false);
+		}
+
+		TArray<TPair<float, int32>> Moved;
+
+		for (int32 Bone = 0; Bone < FMath::Min(Sampled[0].Num(), Sampled[1].Num()); ++Bone) {
+			const float Distance = static_cast<float>(FVector::Dist(Sampled[1][Bone].GetTranslation(), Sampled[0][Bone].GetTranslation()));
+
+			if (Distance > 0.005f) {
+				Moved.Emplace(Distance, Bone);
+			}
+		}
+
+		Moved.Sort([](const TPair<float, int32>& A, const TPair<float, int32>& B) { return A.Key > B.Key; });
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  control '%s': %d bones moved"), *CurveName, Moved.Num());
+
+		for (int32 Index = 0; Index < FMath::Min(3, Moved.Num()); ++Index) {
+			const int32 Bone = Moved[Index].Value;
+			const FVector Delta = Sampled[1][Bone].GetTranslation() - Sampled[0][Bone].GetTranslation();
+
+			UE_LOG(LogRigImportTest, Display, TEXT("      '%s' %.3f cm, direction X=%.2f Y=%.2f Z=%.2f"),
+				*RefSkeleton.GetBoneName(Bone).ToString(), Moved[Index].Key,
+				Delta.X / FMath::Max(Delta.Size(), UE_SMALL_NUMBER),
+				Delta.Y / FMath::Max(Delta.Size(), UE_SMALL_NUMBER),
+				Delta.Z / FMath::Max(Delta.Size(), UE_SMALL_NUMBER));
+		}
+	}
+#endif
+}
+
+/* Runs the mesh through a real RigLogic node and reports what it does to the skeleton.
+ *
+ * Reasoning about what the node computes is what got this wrong repeatedly, so nothing here is
+ * reasoned: an anim blueprint with the node in it is built, played on a component, and the bones
+ * it produces are measured against the pose the mesh is bound at. A rig with every control at rest
+ * has to leave the mesh exactly where it was bound, so anything above a rounding error is the node
+ * disagreeing with the DNA it was given. */
+static void ReportRigLogicResult(USkeletalMesh* Mesh) {
+#if REFLECTION_RIG_LOGIC
+	USkeleton* Skeleton = Mesh->GetSkeleton();
+	if (Skeleton == nullptr) return;
+
+	UPackage* Package = CreatePackage(TEXT("/Game/ReflectedRigs/RigLogicProbe_AnimBP"));
+
+	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+		UAnimInstance::StaticClass(), Package, TEXT("RigLogicProbe_AnimBP"),
+		BPTYPE_Normal, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass()));
+
+	if (AnimBlueprint == nullptr) {
+		UE_LOG(LogRigImportTest, Error, TEXT("rig logic probe: could not make an anim blueprint"));
+
+		return;
+	}
+
+	AnimBlueprint->TargetSkeleton = Skeleton;
+
+	/* The graph the node goes in, and the node the pose comes out of */
+	UEdGraph* AnimGraph = nullptr;
+
+	for (UEdGraph* Graph : AnimBlueprint->FunctionGraphs) {
+		if (Graph != nullptr && Graph->GetFName() == UEdGraphSchema_K2::GN_AnimGraph) {
+			AnimGraph = Graph;
+
+			break;
+		}
+	}
+
+	if (AnimGraph == nullptr) {
+		UE_LOG(LogRigImportTest, Error, TEXT("rig logic probe: the blueprint has no anim graph"));
+
+		return;
+	}
+
+	UAnimGraphNode_Root* Result = nullptr;
+
+	for (UEdGraphNode* Node : AnimGraph->Nodes) {
+		if (UAnimGraphNode_Root* Root = Cast<UAnimGraphNode_Root>(Node)) {
+			Result = Root;
+
+			break;
+		}
+	}
+
+	UAnimGraphNode_RigLogic* RigLogicNode = NewObject<UAnimGraphNode_RigLogic>(AnimGraph);
+
+	RigLogicNode->CreateNewGuid();
+	RigLogicNode->PostPlacedNewNode();
+	RigLogicNode->AllocateDefaultPins();
+	RigLogicNode->NodePosX = -300;
+
+	AnimGraph->AddNode(RigLogicNode, false, false);
+
+	UAnimGraphNode_SequencePlayer* Player = nullptr;
+
+	/* The rig reads the controls off the curves in the pose handed to it, so a face animation
+	 * playing into it is what actually drives the DNA */
+	UAnimSequence* Face = FParse::Param(FCommandLine::Get(), TEXT("norig"))
+		? nullptr
+		: LoadObject<UAnimSequence>(nullptr, TEXT("/Game/Animation/Game/MainPlayer/Menu/Facial/Frontend_Default_3L_Face_Idle.Frontend_Default_3L_Face_Idle"));
+
+	if (Face != nullptr) {
+		if (Face->GetSkeleton() != Skeleton) {
+			Face->SetSkeleton(Skeleton);
+		}
+
+		int32 ControlCurves = 0;
+
+		const TArray<FFloatCurve>& Curves = Face->GetDataModel()->GetFloatCurves();
+
+		for (const FFloatCurve& Curve : Curves) {
+			if (Curve.GetName().ToString().StartsWith(TEXT("CTRL_"))) ControlCurves++;
+		}
+
+		UE_LOG(LogRigImportTest, Display, TEXT("face animation: %s, %.2f seconds, %d curves, %d of them controls"),
+			*Face->GetName(), Face->GetPlayLength(), Curves.Num(), ControlCurves);
+
+		Player = NewObject<UAnimGraphNode_SequencePlayer>(AnimGraph);
+
+		Player->CreateNewGuid();
+		Player->PostPlacedNewNode();
+		Player->Node.SetSequence(Face);
+		Player->AllocateDefaultPins();
+		Player->NodePosX = -600;
+
+		AnimGraph->AddNode(Player, false, false);
+
+		UEdGraphPin* PlayerPose = Player->FindPin(TEXT("Pose"), EGPD_Output);
+		UEdGraphPin* RigLogicPose = RigLogicNode->FindPin(TEXT("AnimSequence"), EGPD_Input);
+
+		if (PlayerPose != nullptr && RigLogicPose != nullptr) {
+			PlayerPose->MakeLinkTo(RigLogicPose);
+		} else {
+			UE_LOG(LogRigImportTest, Warning, TEXT("rig logic probe: could not wire the animation into the node"));
+		}
+	} else {
+		UE_LOG(LogRigImportTest, Warning, TEXT("rig logic probe: no face animation, measuring the rig at rest only"));
+	}
+
+	if (Result != nullptr) {
+		UEdGraphPin* Source = RigLogicNode->FindPin(TEXT("Pose"), EGPD_Output);
+		UEdGraphPin* Target = Result->FindPin(TEXT("Result"), EGPD_Input);
+
+		if (Source != nullptr && Target != nullptr) {
+			Source->MakeLinkTo(Target);
+		} else {
+			UE_LOG(LogRigImportTest, Warning, TEXT("rig logic probe: could not wire the node to the result"));
+		}
+	}
+
+	FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+
+	if (AnimBlueprint->GeneratedClass == nullptr) {
+		UE_LOG(LogRigImportTest, Error, TEXT("rig logic probe: the blueprint did not compile"));
+
+		return;
+	}
+
+	/* Played on a component, the way anything else would play it */
+	UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
+	if (World == nullptr) return;
+
+	USkeletalMeshComponent* Component = NewObject<USkeletalMeshComponent>(World);
+
+	Component->SetSkeletalMesh(Mesh);
+	Component->SetAnimInstanceClass(AnimBlueprint->GeneratedClass);
+	Component->RegisterComponentWithWorld(World);
+	Component->InitAnim(true);
+	Component->RefreshBoneTransforms();
+
+	const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
+
+	TArray<FTransform> BoundPose;
+	BoundPose.SetNum(RefSkeleton.GetNum());
+
+	for (int32 Bone = 0; Bone < RefSkeleton.GetNum(); ++Bone) {
+		const int32 Parent = RefSkeleton.GetParentIndex(Bone);
+
+		BoundPose[Bone] = Parent == INDEX_NONE
+			? RefSkeleton.GetRefBonePose()[Bone]
+			: RefSkeleton.GetRefBonePose()[Bone] * BoundPose[Parent];
+	}
+
+	/* Sampled across the animation: a face moves, so what is being looked for is movement on the
+	 * scale a face makes, not the scale a skeleton in the wrong frame makes */
+	for (int32 Sample = 0; Sample < 5; ++Sample) {
+		Component->TickAnimation(Sample == 0 ? 0.0f : 0.25f, false);
+		Component->RefreshBoneTransforms();
+
+		const TArray<FTransform>& Posed = Component->GetComponentSpaceTransforms();
+
+		if (Posed.Num() == 0) {
+			UE_LOG(LogRigImportTest, Error, TEXT("rig logic probe: the component produced no pose"));
+
+			return;
+		}
+
+		float Worst = 0.0f;
+		float Total = 0.0f;
+		int32 Counted = 0;
+		FString WorstBone;
+
+		for (int32 Bone = 0; Bone < FMath::Min(Posed.Num(), BoundPose.Num()); ++Bone) {
+			const FName BoneName = RefSkeleton.GetBoneName(Bone);
+			if (!BoneName.ToString().StartsWith(TEXT("FACIAL_"))) continue;
+
+			const float Distance = static_cast<float>(FVector::Dist(Posed[Bone].GetTranslation(), BoundPose[Bone].GetTranslation()));
+
+			Total += Distance;
+
+			if (Distance > Worst) {
+				Worst = Distance;
+				WorstBone = BoneName.ToString();
+			}
+
+			Counted++;
+		}
+
+		UE_LOG(LogRigImportTest, Display, TEXT("rig logic at %.2fs: %d facial bones, mean %.4f cm off the bind pose, worst '%s' at %.4f cm"),
+			Sample * 0.25f, Counted, Counted > 0 ? Total / Counted : 0.0f, *WorstBone, Worst);
+
+		/* Where the displacement enters the chain: the first bone from the root down that the node
+		 * put somewhere else is the one carrying everything below it */
+		if (Sample == 0) {
+			for (int32 Bone = 0; Bone < FMath::Min(Posed.Num(), BoundPose.Num()); ++Bone) {
+				const float Distance = static_cast<float>(FVector::Dist(Posed[Bone].GetTranslation(), BoundPose[Bone].GetTranslation()));
+
+				if (Distance <= 0.05f) continue;
+
+				const FTransform Local = Posed[Bone].GetRelativeTransform(
+					RefSkeleton.GetParentIndex(Bone) == INDEX_NONE ? FTransform::Identity : Posed[RefSkeleton.GetParentIndex(Bone)]);
+
+				const float LocalError = static_cast<float>(FVector::Dist(Local.GetTranslation(), RefSkeleton.GetRefBonePose()[Bone].GetTranslation()));
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  chain '%s': %.4f cm in component space, %.4f cm of it its own"),
+					*RefSkeleton.GetBoneName(Bone).ToString(), Distance, LocalError);
+
+				if (Bone > 20) break;
+			}
+		}
+	}
+
+	Component->UnregisterComponent();
+	World->DestroyWorld(false);
+
+	/* What the curves actually drive */
+	ReportControlDirections(Mesh, AnimBlueprint, Player);
 #endif
 }
 
@@ -402,6 +836,7 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		ReportMorphTargets(Mesh, TEXT(" "));
 		ReportDna(Mesh, TEXT(" "));
 		ReportDnaNeutral(Mesh);
+		ReportRigLogicResult(Mesh);
 		ReportPoseAsset(Mesh->GetPackage()->GetName(), TEXT(" "), true);
 		UE_LOG(LogRigImportTest, Display, TEXT("lods: %d, materials: %d, sockets: %d, vertex colors: %d"),
 			Model ? Model->LODModels.Num() : 0, Mesh->GetMaterials().Num(),
