@@ -420,6 +420,20 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 	DNAAsset->DnaFileName = SkeletalMesh->GetName() + TEXT(".dna");
 	DNAAsset->SetBehaviorReader(Behavior);
 
+	/* Some heads keep the DNA in a package of its own and only the definition with it: the names,
+	 * the hierarchy and the pose, and a behavior layer that is a stub. There is a DNA on the mesh
+	 * either way, and nothing in it for a rig to run. */
+	if (Behavior->GetJointGroupCount() == 0) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("The mesh's DNA has no rig in it"),
+			FString::Printf(
+				TEXT("'%s' carries the face's joints and neutral pose but no behavior, so RigLogic has nothing to drive them with. The head imports and holds still."),
+				*SkeletalMesh->GetName()
+			)
+		);
+	}
+
 	if (const TSharedPtr<IDNAReader> Geometry = ReadDNAFromBuffer(&Dna, EDNADataLayer::Geometry, 0u)) {
 		DNAAsset->SetGeometryReader(Geometry);
 	}
@@ -602,6 +616,12 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 	const int32 ControlCount = Behavior->GetRawControlCount();
 	if (ControlCount == 0) return nullptr;
+
+	/* Controls with no joint groups behind them evaluate to nothing, and asking the rig to run
+	 * anyway walks off the end of tables it never built */
+	if (Behavior->GetJointGroupCount() == 0 || Behavior->GetLODCount() == 0) {
+		return nullptr;
+	}
 
 	FRigLogic RigLogic(Behavior.Get());
 	FRigInstance Instance(&RigLogic);
@@ -917,6 +937,20 @@ bool ISkeletalMeshImporter::Import() {
 	 * the same work the Skeletal Mesh Data tool does against a mesh that already exists */
 	TSkeletalMeshData MeshData;
 	MeshData.Process(SkeletalMesh, GetContainer()->JsonObjects);
+
+	/* Dropped to the best LOD the mesh has, rather than wherever the game's quality settings
+	 * started it drawing */
+	if (GetSettings()->AssetSettings.SkeletalMesh.IgnoreMinQualityLevelLODDefault) {
+		SkeletalMesh->SetMinLod(FPerPlatformInt(0));
+
+#if ENGINE_UE5
+		FPerQualityLevelInt MinQualityLevelLod = SkeletalMesh->GetQualityLevelMinLod();
+
+		MinQualityLevelLod.Default = 0;
+
+		SkeletalMesh->SetQualityLevelMinLod(MinQualityLevelLod);
+#endif
+	}
 
 	SkeletalMesh->CalculateInvRefMatrices();
 	SkeletalMesh->PostEditChange();

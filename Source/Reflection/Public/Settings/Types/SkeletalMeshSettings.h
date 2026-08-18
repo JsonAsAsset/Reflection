@@ -11,6 +11,12 @@ USTRUCT()
 struct FRSkeletalMeshSettings {
 	GENERATED_BODY()
 public:
+	/* Meshes often ship with a minimum LOD, which hides their most detailed LODs on lower quality
+	 * settings. Turn this on to show the best LOD the mesh has, or off to leave it as the game had
+	 * it. */
+	UPROPERTY(EditAnywhere, DisplayName = "Show Best LOD", Config, Category = SkeletalMeshSettings)
+	bool IgnoreMinQualityLevelLODDefault = true;
+
 	/* A MetaHuman head animates through RigLogic, which reads the mesh's DNA and poses the face's
 	 * joints. Turn this on to bake that rig down into a pose asset beside the mesh: every control
 	 * the DNA names is evaluated on its own and the joints it moves are kept as a pose.
