@@ -106,7 +106,7 @@ FString ICurveExpressionImporter::GetAssignments(TArray<FName>& OutTargets) {
 
 	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetCurveExpressionsBlocking(FetchPath);
 
-	const TArray<TSharedPtr<FJsonValue>>* Expressions;
+	const TArray<TSharedPtr<FJsonValue>>* Expressions = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("expressions"), Expressions)) {
 		return FString();

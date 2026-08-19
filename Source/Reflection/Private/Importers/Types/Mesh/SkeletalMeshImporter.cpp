@@ -84,7 +84,7 @@ void ISkeletalMeshImporter::BuildMaterialSlots(USkeletalMesh* SkeletalMesh, cons
 }
 
 int32 ISkeletalMeshImporter::BuildMorphTargets(USkeletalMesh* SkeletalMesh, const TSharedPtr<FJsonObject>& Payload) {
-	const TArray<TSharedPtr<FJsonValue>>* Morphs;
+	const TArray<TSharedPtr<FJsonValue>>* Morphs = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("morphs"), Morphs)) {
 		return 0;
@@ -99,7 +99,12 @@ int32 ISkeletalMeshImporter::BuildMorphTargets(USkeletalMesh* SkeletalMesh, cons
 	TSet<FString> Written;
 
 	for (int32 LodIndex = 0; LodIndex < ImportedModel->LODModels.Num(); ++LodIndex) {
+		/* 5.4 renamed the question. Before it, the same thing is asked of the imported data. */
+#if UE5_4_BEYOND
 		if (!SkeletalMesh->HasMeshDescription(LodIndex)) continue;
+#else
+		if (SkeletalMesh->IsLODImportedDataEmpty(LodIndex)) continue;
+#endif
 
 		FSkeletalMeshImportData ImportData;
 		SkeletalMesh->LoadLODImportedData(LodIndex, ImportData);
@@ -483,7 +488,7 @@ namespace {
 bool ISkeletalMeshImporter::ApplyCookedBindPose(USkeletalMesh* SkeletalMesh, USkeleton* Skeleton, const FString& FetchPath) {
 	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetReferenceSkeletonBlocking(FetchPath);
 
-	const TArray<TSharedPtr<FJsonValue>>* Bones;
+	const TArray<TSharedPtr<FJsonValue>>* Bones = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("bones"), Bones) || Bones->Num() == 0) {
 		return false;

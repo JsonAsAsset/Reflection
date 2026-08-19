@@ -307,7 +307,7 @@ TMap<FName, FTransform> IPoseAssetImporter::GetSourceMeshBindPose() {
 
 	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetReferenceSkeletonBlocking(MeshPath);
 
-	const TArray<TSharedPtr<FJsonValue>>* Bones;
+	const TArray<TSharedPtr<FJsonValue>>* Bones = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("bones"), Bones)) {
 		UE_LOG(LogReflection, Warning, TEXT("\"%s\" found no mesh at %s to read a bind pose from"), *GetAssetName(), *MeshPath);
@@ -467,7 +467,7 @@ UAnimSequence* IPoseAssetImporter::CreateAnimSequenceFromPose(USkeleton* Skeleto
 			/* Older data says it the other way round, per pose */
 			for (const TSharedPtr<FJsonValue>& PoseValue : *PosesJson) {
 				const TSharedPtr<FJsonObject> Pose = PoseValue.IsValid() ? PoseValue->AsObject() : nullptr;
-				const TArray<TSharedPtr<FJsonValue>>* Buffer;
+				const TArray<TSharedPtr<FJsonValue>>* Buffer = nullptr;
 
 				if (!Pose.IsValid() || !Pose->TryGetArrayField(TEXT("TrackToBufferIndex"), Buffer)) continue;
 
