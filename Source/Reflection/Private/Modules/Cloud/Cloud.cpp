@@ -175,6 +175,16 @@ TSharedPtr<FJsonObject> Cloud::Export::GetLodModelBlocking(const FString& Path) 
 	return Response;
 }
 
+TSharedPtr<FJsonObject> Cloud::Export::GetCurveExpressionsBlocking(const FString& Path) {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(ExpressionsURL, { { TEXT("path"), Path } }, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("expressions"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
 TSharedPtr<FJsonObject> Cloud::Export::GetReferenceSkeletonBlocking(const FString& Path) {
 	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(ReferenceSkeletonURL, { { TEXT("path"), Path } }, {});
 

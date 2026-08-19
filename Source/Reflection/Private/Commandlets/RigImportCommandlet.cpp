@@ -16,6 +16,10 @@
 #include "Rendering/SkeletalMeshLODModel.h"
 #include "Animation/MorphTarget.h"
 #include "Animation/PoseAsset.h"
+#include "Engine/DataAsset.h"
+#if REFLECTION_CURVE_EXPRESSION
+#include "CurveExpressionsDataAsset.h"
+#endif
 #include "Animation/AnimSequence.h"
 #include "Animation/AnimData/IAnimationDataModel.h"
 #include "Engine/AssetUserData.h"
@@ -1057,9 +1061,79 @@ static void ReportPoseSequence(UPoseAsset* PoseAsset) {
 		Worst, *WorstBone.ToString(), WorstAngle, *WorstAngleBone.ToString(), TotalFlips, WorstIdle, *WorstIdleBone.ToString());
 }
 
+#if REFLECTION_CURVE_EXPRESSION
+/* Whether the syntax the Cloud writes out is syntax the plugin takes back.
+ *
+ * CompileExpressions only keeps assignments that parsed, so a line that comes out the far side is a
+ * line the plugin understood. Fortnite only ever stores a constant, so the operators and functions
+ * are put in by hand here rather than waiting for an asset that uses them. */
+static void ReportExpressionSyntax() {
+	static const TCHAR* Lines[] = {
+		TEXT("t01 = a + b * c"),
+		TEXT("t02 = (a + b) * c"),
+		TEXT("t03 = a - b - c"),
+		TEXT("t04 = -a * b"),
+		TEXT("t05 = a ** b ** c"),
+		TEXT("t06 = (a ** b) ** c"),
+		TEXT("t07 = a // b"),
+		TEXT("t08 = a % b * c"),
+		TEXT("t09 = clamp(x, 0, 1)"),
+		TEXT("t10 = max(a, b * 2)"),
+		TEXT("t11 = exp(a)"),
+		TEXT("t12 = pi()"),
+		TEXT("t13 = 'has space' + 1.5"),
+		TEXT("t14 = -(b - c)"),
+
+		/* The parser reads a bracket after a curve name as a call to a function of that name, so
+		 * this one is turned down with "Unknown function 'a'". Left in as the reminder that a
+		 * bracket cannot follow a name. */
+		TEXT("t15 = a - (b - c)")
+	};
+
+	TArray<FString> Assignments;
+
+	for (const TCHAR* Line : Lines) Assignments.Add(Line);
+
+	UCurveExpressionsDataAsset* Asset = NewObject<UCurveExpressionsDataAsset>(GetTransientPackage(), NAME_None, RF_Transient);
+
+	Asset->Expressions.AssignmentExpressions = FString::Join(Assignments, LINE_TERMINATOR);
+
+	if (FProperty* Property = FCurveExpressionList::StaticStruct()->FindPropertyByName(
+		GET_MEMBER_NAME_CHECKED(FCurveExpressionList, AssignmentExpressions))) {
+		FPropertyChangedEvent PropertyChangedEvent(Property);
+
+		Asset->PostEditChangeProperty(PropertyChangedEvent);
+	}
+
+	const TSharedPtr<const FExpressionData> Data = Asset->GetCompiledExpressionData();
+	const int32 Compiled = Data.IsValid() ? Data->ExpressionMap.Num() : 0;
+
+	UE_LOG(LogRigImportTest, Display, TEXT("expression syntax: %d of %d lines parsed, %d constants seen"),
+		Compiled, Assignments.Num(), Data.IsValid() ? Data->NamedConstants.Num() : 0);
+
+	for (const FString& Line : Assignments) {
+		FString Target, Body;
+
+		if (!Line.Split(TEXT(" = "), &Target, &Body)) continue;
+
+		const bool bParsed = Data.IsValid() && Data->ExpressionMap.Contains(FName(*Target));
+
+		if (!bParsed) UE_LOG(LogRigImportTest, Display, TEXT("  REJECTED: %s"), *Body);
+	}
+}
+#endif
+
 int32 URigImportCommandlet::Main(const FString& Params) {
 	/* Load-only mode: a separate process reading the saved asset cold, exactly the way the user's
 	 * editor does. Nothing from the importing process is alive here. */
+#if REFLECTION_CURVE_EXPRESSION
+	if (FParse::Param(*Params, TEXT("expressionsyntax"))) {
+		ReportExpressionSyntax();
+
+		return 0;
+	}
+#endif
+
 	FString LoadPath;
 
 	if (FParse::Value(*Params, TEXT("load="), LoadPath)) {
@@ -1247,6 +1321,40 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		return 1;
 	}
 
+#if REFLECTION_CURVE_EXPRESSION
+	if (UCurveExpressionsDataAsset* Expressions = Cast<UCurveExpressionsDataAsset>(Importer->GetAsset())) {
+		const TSharedPtr<const FExpressionData> Data = Expressions->GetCompiledExpressionData();
+
+		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *Expressions->GetPathName());
+		int32 SourceLines = 0;
+
+		if (!Expressions->Expressions.AssignmentExpressions.IsEmpty()) {
+			TArray<FString> Lines;
+
+			Expressions->Expressions.AssignmentExpressions.ParseIntoArrayLines(Lines);
+
+			SourceLines = Lines.Num();
+		}
+
+		UE_LOG(LogRigImportTest, Display, TEXT("source lines: %d, compiled expressions: %d, named constants: %d"),
+			SourceLines,
+			Data.IsValid() ? Data->ExpressionMap.Num() : 0,
+			Data.IsValid() ? Data->NamedConstants.Num() : 0);
+
+		if (Data.IsValid()) {
+			int32 Shown = 0;
+
+			for (const TPair<FName, CurveExpression::Evaluator::FExpressionObject>& Pair : Data->ExpressionMap) {
+				if (Shown++ >= 3) break;
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  compiled '%s'"), *Pair.Key.ToString());
+			}
+		}
+
+		return 0;
+	}
+#endif
+
 	if (UPoseAsset* ImportedPose = Cast<UPoseAsset>(Importer->GetAsset())) {
 		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *ImportedPose->GetPathName());
 		UE_LOG(LogRigImportTest, Display, TEXT("poses: %d, tracks: %d, additive %d, base pose %d, skeleton %s"),
@@ -1333,6 +1441,49 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 			const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
 
 			UE_LOG(LogRigImportTest, Display, TEXT("saved %s: %d"), *FileName, UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs) ? 1 : 0);
+		}
+
+		return 0;
+	}
+
+	/* Anything with no report of its own is described by walking its class, which is enough to see
+	 * whether the properties an asset is made of survived the trip */
+	if (UDataAsset* Generic = Cast<UDataAsset>(Importer->GetAsset())) {
+		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s (%s)"), *Generic->GetPathName(), *Generic->GetClass()->GetName());
+
+		for (TFieldIterator<FProperty> It(Generic->GetClass()); It; ++It) {
+			FProperty* Property = *It;
+
+			if (const FArrayProperty* ArrayProperty = CastField<FArrayProperty>(Property)) {
+				FScriptArrayHelper Helper(ArrayProperty, ArrayProperty->ContainerPtrToValuePtr<void>(Generic));
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  %s: %d entries"), *Property->GetName(), Helper.Num());
+			}
+			else if (const FMapProperty* MapProperty = CastField<FMapProperty>(Property)) {
+				FScriptMapHelper Helper(MapProperty, MapProperty->ContainerPtrToValuePtr<void>(Generic));
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  %s: %d pairs"), *Property->GetName(), Helper.Num());
+			}
+			else if (const FStructProperty* StructProperty = CastField<FStructProperty>(Property)) {
+				int32 Entries = 0;
+
+				for (TFieldIterator<FArrayProperty> Inner(StructProperty->Struct); Inner; ++Inner) {
+					FScriptArrayHelper Helper(*Inner, Inner->ContainerPtrToValuePtr<void>(StructProperty->ContainerPtrToValuePtr<void>(Generic)));
+
+					UE_LOG(LogRigImportTest, Display, TEXT("  %s.%s: %d entries"), *Property->GetName(), *Inner->GetName(), Helper.Num());
+
+					Entries++;
+				}
+
+				if (Entries == 0) UE_LOG(LogRigImportTest, Display, TEXT("  %s: struct"), *Property->GetName());
+			}
+			else {
+				FString Value;
+
+				Property->ExportTextItem_Direct(Value, Property->ContainerPtrToValuePtr<void>(Generic), nullptr, Generic, PPF_None);
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  %s = %s"), *Property->GetName(), *Value);
+			}
 		}
 
 		return 0;

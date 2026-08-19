@@ -60,6 +60,7 @@ public:
 	static inline FString StaticMeshURL = TEXT("/api/export/staticmesh");
 	static inline FString DnaURL = TEXT("/api/export/dna");
 	static inline FString ReferenceSkeletonURL = TEXT("/api/export/refskeleton");
+	static inline FString ExpressionsURL = TEXT("/api/export/expressions");
 
 	class REFLECTION_API Export {
 	public:
@@ -97,6 +98,10 @@ public:
 		/* The pose the mesh itself is bound at, which is not the one its skeleton carries. Null
 		 * when the Cloud has no mesh at Path. */
 		static TSharedPtr<FJsonObject> GetReferenceSkeletonBlocking(const FString& Path);
+
+		/* The arithmetic a curve expression asset drives its curves with, which cooking leaves
+		 * only as compiled instructions */
+		static TSharedPtr<FJsonObject> GetCurveExpressionsBlocking(const FString& Path);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

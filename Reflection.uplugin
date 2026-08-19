@@ -59,6 +59,11 @@
 			"Name": "PluginUtils",
 			"Enabled": true,
 			"Optional": true
+		},
+		{
+			"Name": "CurveExpression",
+			"Enabled": true,
+			"Optional": true
 		}
 	]
 }

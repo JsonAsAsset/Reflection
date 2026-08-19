@@ -40,6 +40,17 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_RIG_LOGIC=" + (bRigLogic ? "1" : "0"));
 
+		/* CurveExpression compiles the arithmetic that drives one curve from others. It started out
+		 * an experimental plugin and has been promoted since, so both homes are looked at. */
+		var bCurveExpression = false;
+
+#if UE_5_0_OR_LATER
+		bCurveExpression = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "CurveExpression"))
+			|| Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Experimental", "Animation", "CurveExpression"));
+#endif
+
+		PublicDefinitions.Add("REFLECTION_CURVE_EXPRESSION=" + (bCurveExpression ? "1" : "0"));
+
 #if UE_5_0_OR_LATER
 	    /* Unreal Engine 5 and later */
 	    CppStandard = CppStandardVersion.Cpp20;
@@ -176,6 +187,13 @@ public class Reflection : ModuleRules {
 
 				/* UAnimGraphNode_RigLogic, which is how the node is put in a graph to test it */
 				"RigLogicDeveloper"
+			});
+		}
+
+		if (bCurveExpression) {
+			PrivateDependencyModuleNames.AddRange(new[] {
+				/* UCurveExpressionsDataAsset, and the list its expressions are written into */
+				"CurveExpression"
 			});
 		}
 
