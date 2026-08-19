@@ -46,6 +46,12 @@
 	#define UE5_8_BEYOND 0
 #endif
 
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 7
+	#define UE5_7_BEYOND 1
+#else
+	#define UE5_7_BEYOND 0
+#endif
+
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 6
 	#define UE5_6_BEYOND 1
 #else

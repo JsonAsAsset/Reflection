@@ -417,7 +417,11 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 		SkeletalMesh->AddAssetUserData(DNAAsset);
 	}
 
+#if UE5_8_BEYOND
+	DNAAsset->DnaFileName_DEPRECATED = SkeletalMesh->GetName() + TEXT(".dna");
+#else
 	DNAAsset->DnaFileName = SkeletalMesh->GetName() + TEXT(".dna");
+#endif
 	DNAAsset->SetBehaviorReader(Behavior);
 
 	/* Some heads keep the DNA in a package of its own and only the definition with it: the names,
@@ -569,7 +573,11 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 	 * two do not report a rotation the same way round, and this is the pair that has to agree. */
 	FRigLogic RigLogic(Behavior.Get());
 
+#if UE5_5_BEYOND
+	const TArrayView<const float> Neutral = RigLogic.GetNeutralJointValues();
+#else
 	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+#endif
 
 	int32 Aligned = 0;
 
@@ -626,7 +634,11 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	FRigLogic RigLogic(Behavior.Get());
 	FRigInstance Instance(&RigLogic);
 
+#if UE5_5_BEYOND
+	const TArrayView<const float> Neutral = RigLogic.GetNeutralJointValues();
+#else
 	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+#endif
 
 	/* A DNA names the joints it drives, and the mesh knows them as bones. Only those get a track:
 	 * everything else stays wherever the pose it is played over left it. */
@@ -698,7 +710,11 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 		RigLogic.Calculate(&Instance);
 
+#if UE5_5_BEYOND
+		WriteFrame(Instance.GetJointOutputs());
+#else
 		WriteFrame(Instance.GetRawJointOutputs());
+#endif
 
 		/* A control is named with a dot between its group and itself, which reads as a path
 		 * everywhere a curve name is typed */

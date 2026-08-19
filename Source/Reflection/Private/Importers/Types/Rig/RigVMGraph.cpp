@@ -4,7 +4,11 @@
 
 #if REFLECTION_CONTROL_RIG
 
+#if UE5_7_BEYOND
+#include "ControlRigBlueprintLegacy.h"
+#else
 #include "ControlRigBlueprint.h"
+#endif
 
 #include "RigVMCore/RigVMDispatchFactory.h"
 #include "RigVMCore/RigVMRegistry.h"
@@ -17,9 +21,12 @@
 #include "Serializers/PropertySerializer.h"
 
 namespace {
-	/* The registry grew a read and a write half in 5.5, and every use here only reads */
+	/* The registry grew a read and a write half in 5.5, and every use here only reads.
+	 * 5.8 dropped the read-only entry point and folded the registry back into the RW lock. */
 	FORCEINLINE decltype(auto) GetRigVMRegistry() {
-#if UE5_5_BEYOND
+#if UE5_8_BEYOND
+		return FRigVMRegistry::Get();
+#elif UE5_5_BEYOND
 		return FRigVMRegistry::GetForRead();
 #else
 		return FRigVMRegistry::Get();
@@ -466,7 +473,11 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 			}
 
 			if (Function->Factory != nullptr) {
+#if UE5_7_BEYOND
+				for (const FRigVMTemplateArgumentInfo& Info : Function->Factory->GetArgumentInfos(FRigVMRegistry::Get().GetHandle_NoLock())) {
+#else
 				for (const FRigVMTemplateArgumentInfo& Info : Function->Factory->GetArgumentInfos()) {
+#endif
 					if (Info.Name.ToString() == ArgumentName) {
 						return Info.Direction == ERigVMPinDirection::Output || Info.Direction == ERigVMPinDirection::IO;
 					}
@@ -512,7 +523,12 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 				Node.ArgumentIsOutput.Add(true);
 			} else {
 				for (int32 OperandIndex = 0; OperandIndex < OperandCount; ++OperandIndex) {
+				/* 5.7 gave the name lookup a registry handle to read through */
+#if UE5_7_BEYOND
+					const FString ArgumentName = Function->GetArgumentNameForOperandIndex(OperandIndex, OperandCount, FRigVMRegistry::Get().GetHandle_NoLock()).ToString();
+#else
 					const FString ArgumentName = Function->GetArgumentNameForOperandIndex(OperandIndex, OperandCount).ToString();
+#endif
 
 					Node.Arguments.Add(ArgumentName);
 					Node.ArgumentIsOutput.Add(IsOutputArgument(ArgumentName));
