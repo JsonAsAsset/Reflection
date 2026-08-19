@@ -6,6 +6,7 @@
 
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/ImportIssues.h"
+#include "Importers/Constructor/Asset.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/SettingsAccess.h"
 
@@ -15,6 +16,8 @@
 #include "Rendering/SkeletalMeshLODModel.h"
 #include "Animation/MorphTarget.h"
 #include "Animation/PoseAsset.h"
+#include "Animation/AnimSequence.h"
+#include "Animation/AnimData/IAnimationDataModel.h"
 #include "Engine/AssetUserData.h"
 
 #if REFLECTION_RIG_LOGIC
@@ -122,7 +125,8 @@ static void ReportDna(USkeletalMesh* Mesh, const TCHAR* Prefix) {
 
 /* The pose asset a baked DNA leaves beside the mesh */
 static void ReportPoseAsset(const FString& MeshPath, const TCHAR* Prefix, bool bSave) {
-	const FString PosePath = MeshPath + TEXT("_DNA_PoseAsset.") + FPackageName::GetShortName(MeshPath) + TEXT("_DNA_PoseAsset");
+	const FString PoseName = FPackageName::GetShortName(MeshPath) + TEXT("_DNA_Facial_Pose_Export_PoseAsset");
+	const FString PosePath = FPackageName::GetLongPackagePath(MeshPath) / PoseName + TEXT(".") + PoseName;
 
 	UPoseAsset* PoseAsset = LoadObject<UPoseAsset>(nullptr, *PosePath);
 
@@ -949,6 +953,110 @@ static void ReportTangentFidelity(USkeletalMesh* Mesh, const FString& FetchPath)
 	}
 }
 
+/* How far the sequence beside a pose asset moves each bone away from where the skeleton rests.
+ *
+ * The poses are facial correctives, so every key belongs within a few millimetres of the reference
+ * pose. A bone sitting centimetres off, on every frame, means the poses were composed onto the
+ * wrong rest pose rather than that the poses are large. */
+static void ReportPoseSequence(UPoseAsset* PoseAsset) {
+	UAnimSequence* Sequence = Cast<UAnimSequence>(PoseAsset->SourceAnimation);
+
+	if (Sequence == nullptr) {
+		UE_LOG(LogRigImportTest, Display, TEXT("pose sequence: none beside %s"), *PoseAsset->GetName());
+
+		return;
+	}
+
+	USkeleton* Skeleton = Sequence->GetSkeleton();
+	const IAnimationDataModel* Model = Sequence->GetDataModel();
+
+	if (Skeleton == nullptr || Model == nullptr) return;
+
+	const FReferenceSkeleton& ReferenceSkeleton = Skeleton->GetReferenceSkeleton();
+	const TArray<FTransform>& ReferencePose = Skeleton->GetRefLocalPoses();
+
+	float Worst = 0.0f;
+	FName WorstBone;
+	float WorstIdle = 0.0f;
+	FName WorstIdleBone;
+	float WorstAngle = 0.0f;
+	FName WorstAngleBone;
+	int32 TotalFlips = 0;
+
+	TArray<FName> TrackNames;
+	Model->GetBoneTrackNames(TrackNames);
+
+	for (const FName& TrackName : TrackNames) {
+		const int32 BoneIndex = ReferenceSkeleton.FindBoneIndex(TrackName);
+		if (!ReferencePose.IsValidIndex(BoneIndex)) continue;
+
+		TArray<FTransform> Keys;
+		Model->GetBoneTrackTransforms(TrackName, Keys);
+
+		if (Keys.Num() == 0) continue;
+
+		/* Measured against the pose the sequence was built on, not the skeleton's: base_pose is the
+		 * last of them and influences nothing, so its key is that base. Comparing to the skeleton
+		 * instead folds in however far the mesh is bound from it, which is not what the poses say. */
+		const FTransform& Rest = Keys.Last();
+
+		float Furthest = 0.0f;
+		float Nearest = TNumericLimits<float>::Max();
+		float WidestAngle = 0.0f;
+		int32 Flips = 0;
+		FQuat Previous(0, 0, 0, 0);
+
+		for (const FTransform& Key : Keys) {
+			const float Distance = static_cast<float>(FVector::Distance(Key.GetTranslation(), Rest.GetTranslation()));
+
+			Furthest = FMath::Max(Furthest, Distance);
+			Nearest = FMath::Min(Nearest, Distance);
+
+			/* How far the key turns the bone from where it rests, by the short way round */
+			const FQuat Delta = Key.GetRotation() * Rest.GetRotation().Inverse();
+			const float Angle = static_cast<float>(FMath::RadiansToDegrees(2.0 * FMath::Acos(FMath::Min(1.0, FMath::Abs(Delta.W)))));
+
+			WidestAngle = FMath::Max(WidestAngle, Angle);
+
+			/* Neighbouring keys on opposite sides of the double cover are the same pose, but
+			 * anything reading between them travels the long way round */
+			if (Previous.W != 0.0 || Previous.X != 0.0) {
+				if ((Previous | Key.GetRotation()) < 0.0) Flips++;
+			}
+
+			Previous = Key.GetRotation();
+		}
+
+		/* base_pose is the last one and influences nothing, so its key is the base itself */
+		const FVector Base = Keys.Num() > 0 ? Keys.Last().GetTranslation() : FVector::ZeroVector;
+
+		UE_LOG(LogRigImportTest, Display, TEXT("  %-24s moves %6.3f cm, turns %6.3f deg, base (%.4f, %.4f, %.4f)"),
+			*TrackName.ToString(), Furthest, WidestAngle, Base.X, Base.Y, Base.Z);
+
+		TotalFlips += Flips;
+
+		if (Furthest > Worst) {
+			Worst = Furthest;
+			WorstBone = TrackName;
+		}
+
+		if (WidestAngle > WorstAngle) {
+			WorstAngle = WidestAngle;
+			WorstAngleBone = TrackName;
+		}
+
+		/* The closest any frame gets: a bone the poses leave alone should reach its rest pose */
+		if (Nearest != TNumericLimits<float>::Max() && Nearest > WorstIdle) {
+			WorstIdle = Nearest;
+			WorstIdleBone = TrackName;
+		}
+	}
+
+	UE_LOG(LogRigImportTest, Display, TEXT("pose sequence '%s': %d tracks, %d frames, furthest key %.3f cm on '%s', widest turn %.3f deg on '%s', %d sign flips, never closer than %.3f cm on '%s'"),
+		*Sequence->GetName(), Model->GetNumBoneTracks(), Model->GetNumberOfFrames(),
+		Worst, *WorstBone.ToString(), WorstAngle, *WorstAngleBone.ToString(), TotalFlips, WorstIdle, *WorstIdleBone.ToString());
+}
+
 int32 URigImportCommandlet::Main(const FString& Params) {
 	/* Load-only mode: a separate process reading the saved asset cold, exactly the way the user's
 	 * editor does. Nothing from the importing process is alive here. */
@@ -1124,6 +1232,12 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		UE_LOG(LogRigImportTest, Display, TEXT("baking dna to a pose asset"));
 	}
 
+	if (FParse::Param(*Params, TEXT("norefs"))) {
+		FAssetUtilities::bImportReferences = false;
+
+		UE_LOG(LogRigImportTest, Display, TEXT("not reflecting referenced assets"));
+	}
+
 	IImporter* Importer = nullptr;
 	IImportReader::ReadExportsAndImport(Exports, TEXT("/Game/ReflectedRigs/Rig.json"), Importer, true, false);
 
@@ -1131,6 +1245,17 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		UE_LOG(LogRigImportTest, Error, TEXT("no importer ran"));
 
 		return 1;
+	}
+
+	if (UPoseAsset* ImportedPose = Cast<UPoseAsset>(Importer->GetAsset())) {
+		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *ImportedPose->GetPathName());
+		UE_LOG(LogRigImportTest, Display, TEXT("poses: %d, tracks: %d, additive %d, base pose %d, skeleton %s"),
+			ImportedPose->GetNumPoses(), ImportedPose->GetTrackNames().Num(), ImportedPose->IsValidAdditive() ? 1 : 0,
+			ImportedPose->GetBasePoseIndex(), ImportedPose->GetSkeleton() ? *ImportedPose->GetSkeleton()->GetName() : TEXT("<none>"));
+
+		ReportPoseSequence(ImportedPose);
+
+		return 0;
 	}
 
 	/* Skeletal meshes report what they were built out of and stop there */
@@ -1157,12 +1282,22 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 			}
 		}
 
+		/* What the game shipped per LOD, which only survives if the LOD list was deserialized */
+		for (int32 Index = 0; Index < Mesh->GetLODNum(); ++Index) {
+			if (const FSkeletalMeshLODInfo* Info = Mesh->GetLODInfo(Index)) {
+				UE_LOG(LogRigImportTest, Display, TEXT("  lod info %d: screen size %.4f, hysteresis %.3f, materials mapped %d, recompute normals %d/tangents %d, remove degenerates %d"),
+					Index, Info->ScreenSize.Default, Info->LODHysteresis, Info->LODMaterialMap.Num(),
+					Info->BuildSettings.bRecomputeNormals ? 1 : 0, Info->BuildSettings.bRecomputeTangents ? 1 : 0,
+					Info->BuildSettings.bRemoveDegenerates ? 1 : 0);
+			}
+		}
+
 		ReportTangentFidelity(Mesh, CookedPath);
 		ReportMorphTargets(Mesh, TEXT(" "));
 		ReportDna(Mesh, TEXT(" "));
 		ReportDnaNeutral(Mesh);
 		ReportRigLogicResult(Mesh);
-		ComparePoseAssetToRig(Mesh, Mesh->GetPackage()->GetName() + TEXT("_DNA_PoseAsset.") + FPackageName::GetShortName(Mesh->GetPackage()->GetName()) + TEXT("_DNA_PoseAsset"));
+		ComparePoseAssetToRig(Mesh, FPackageName::GetLongPackagePath(Mesh->GetPackage()->GetName()) / (Mesh->GetName() + TEXT("_DNA_Facial_Pose_Export_PoseAsset.") + Mesh->GetName() + TEXT("_DNA_Facial_Pose_Export_PoseAsset")));
 		ReportPoseAsset(Mesh->GetPackage()->GetName(), TEXT(" "), true);
 		UE_LOG(LogRigImportTest, Display, TEXT("lods: %d, materials: %d, sockets: %d, vertex colors: %d"),
 			Model ? Model->LODModels.Num() : 0, Mesh->GetMaterials().Num(),

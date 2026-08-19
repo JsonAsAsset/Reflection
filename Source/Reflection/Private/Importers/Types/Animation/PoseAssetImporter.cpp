@@ -48,7 +48,7 @@ bool IPoseAssetImporter::Import() {
 	return OnAssetCreation(PoseAsset);
 }
 
-void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
+void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) {
 	/* If PoseContainer or Tracks don't exist, no need to perform any operations */
 	if (
 		!GetAssetData()->HasField(TEXT("PoseContainer")) ||
@@ -98,7 +98,8 @@ void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
 		}
 	}
 
-	/* The reference pose the difference was cooked against, by name rather than by bone order */
+	/* What the poses were actually taken against, best first */
+	const TMap<FName, FTransform> MeshBindPose = GetSourceMeshBindPose();
 	const TMap<FName, FTransform> CookedReferencePose = GetCookedReferencePose();
 
 	/* Curves have a cooked and a source side just like the transforms do, and the engine reads the
@@ -158,7 +159,10 @@ void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
 
 			/* DefaultTransform can either be default, or extracted from the base skeleton */
 			FTransform DefaultTransform = FTransform::Identity; {
-				if (const FTransform* CookedTransform = CookedReferencePose.Find(TrackName)) {
+				if (const FTransform* BoundTransform = MeshBindPose.Find(TrackName)) {
+					DefaultTransform = *BoundTransform;
+				}
+				else if (const FTransform* CookedTransform = CookedReferencePose.Find(TrackName)) {
 					DefaultTransform = *CookedTransform;
 				}
 				else if (Skeleton) {
@@ -194,7 +198,7 @@ void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
 					FTransform FullTransform = DefaultTransform; {
 						FullTransform.SetRotation(AdditiveTransform.GetRotation() * DefaultTransform.GetRotation());
 						FullTransform.SetTranslation(DefaultTransform.GetTranslation() + AdditiveTransform.GetTranslation());
-						FullTransform.SetScale3D(DefaultTransform.GetScale3D() + AdditiveTransform.GetScale3D());
+						FullTransform.SetScale3D(DefaultTransform.GetScale3D() * (AdditiveTransform.GetScale3D() + FVector::OneVector));
 
 						if (!PoseAsset->IsValidAdditive()) {
 							FullTransform.SetRotation(AdditiveTransform.GetRotation());
@@ -265,6 +269,81 @@ void IPoseAssetImporter::ReverseCookLocalSpacePose(USkeleton* Skeleton) const {
 	if (UAnimSequence* AnimSequence = CreateAnimSequenceFromPose(Skeleton, CleanName, PoseContainer, AnimPackage)) {
 		PoseAsset->SourceAnimation = AnimSequence;
 	}
+}
+
+/* The pose the mesh these poses were made for is bound at.
+ *
+ * A pose asset stores its differences against the mesh's neutral face, and cooking drops the pose
+ * they were taken from. The skeleton's own is no substitute: heads share a skeleton and each is
+ * built at its own proportions, so composing onto it moves every bone by however far this head sits
+ * from whichever one the skeleton was saved at. The mesh sits beside the pose asset and is named by
+ * it, so it can be asked for directly. */
+TMap<FName, FTransform> IPoseAssetImporter::GetSourceMeshBindPose() {
+	TMap<FName, FTransform> BindPose;
+
+	FString FetchPath = GetAssetExport()->HasField(TEXT("Package"))
+		? GetAssetExport()->GetStringField(TEXT("Package"))
+		: FString();
+
+	if (FetchPath.IsEmpty()) return BindPose;
+
+	/* "<mesh>_Facial_Poses_PoseAsset" sits next to "<mesh>" */
+	FString MeshPath = FetchPath;
+
+	for (const TCHAR* Suffix : { TEXT("_Facial_Poses_PoseAsset"), TEXT("_PoseAsset") }) {
+		if (MeshPath.EndsWith(Suffix)) {
+			MeshPath.LeftChopInline(FCString::Strlen(Suffix));
+
+			break;
+		}
+	}
+
+	if (MeshPath == FetchPath) return BindPose;
+
+	const FBlockingRequestScope BlockingScope(FText::Format(
+		NSLOCTEXT("Reflection", "FetchingBindPose", "Reading bind pose from {0}"),
+		FText::FromString(MeshPath)
+	));
+
+	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetReferenceSkeletonBlocking(MeshPath);
+
+	const TArray<TSharedPtr<FJsonValue>>* Bones;
+
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("bones"), Bones)) {
+		UE_LOG(LogReflection, Warning, TEXT("\"%s\" found no mesh at %s to read a bind pose from"), *GetAssetName(), *MeshPath);
+
+		return BindPose;
+	}
+
+	const auto ReadNumber = [](const TArray<TSharedPtr<FJsonValue>>* Values, const int32 Index, const double Fallback) {
+		return Values != nullptr && Values->IsValidIndex(Index) ? (*Values)[Index]->AsNumber() : Fallback;
+	};
+
+	for (const TSharedPtr<FJsonValue>& Value : *Bones) {
+		const TSharedPtr<FJsonObject> Bone = Value.IsValid() ? Value->AsObject() : nullptr;
+		if (!Bone.IsValid()) continue;
+
+		FString Name;
+		if (!Bone->TryGetStringField(TEXT("Name"), Name)) continue;
+
+		const TArray<TSharedPtr<FJsonValue>>* Translation = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Rotation = nullptr;
+		const TArray<TSharedPtr<FJsonValue>>* Scale = nullptr;
+
+		Bone->TryGetArrayField(TEXT("Translation"), Translation);
+		Bone->TryGetArrayField(TEXT("Rotation"), Rotation);
+		Bone->TryGetArrayField(TEXT("Scale"), Scale);
+
+		BindPose.Add(FName(*Name), FTransform(
+			FQuat(ReadNumber(Rotation, 0, 0.0), ReadNumber(Rotation, 1, 0.0), ReadNumber(Rotation, 2, 0.0), ReadNumber(Rotation, 3, 1.0)),
+			FVector(ReadNumber(Translation, 0, 0.0), ReadNumber(Translation, 1, 0.0), ReadNumber(Translation, 2, 0.0)),
+			FVector(ReadNumber(Scale, 0, 1.0), ReadNumber(Scale, 1, 1.0), ReadNumber(Scale, 2, 1.0))
+		));
+	}
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" read a bind pose of %d bones from %s"), *GetAssetName(), BindPose.Num(), *MeshPath);
+
+	return BindPose;
 }
 
 TMap<FName, FTransform> IPoseAssetImporter::GetCookedReferencePose() const {
@@ -367,10 +446,51 @@ UAnimSequence* IPoseAssetImporter::CreateAnimSequenceFromPose(USkeleton* Skeleto
 	TArray<int32> TrackToBone;
 	TrackToBone.Init(INDEX_NONE, NumTracks);
 
+	/* Which tracks any pose actually moves. The rest sit at the reference pose in every pose, and a
+	 * track that never changes is not free: the animation writes it over whatever the mesh was
+	 * bound at, which is not the skeleton's reference pose on a head. */
+	TSet<int32> MovedTracks;
+
+	{
+		const TArray<TSharedPtr<FJsonValue>>* InfluenceIndices;
+
+		if (PoseContainer->TryGetArrayField(TEXT("TrackPoseInfluenceIndices"), InfluenceIndices)) {
+			for (int32 TrackIndex = 0; TrackIndex < InfluenceIndices->Num(); TrackIndex++) {
+				const TSharedPtr<FJsonObject> Influences = (*InfluenceIndices)[TrackIndex]->AsObject();
+				const TArray<TSharedPtr<FJsonValue>>* Entries;
+
+				if (Influences.IsValid() && Influences->TryGetArrayField(TEXT("Influences"), Entries) && Entries->Num() > 0) {
+					MovedTracks.Add(TrackIndex);
+				}
+			}
+		} else {
+			/* Older data says it the other way round, per pose */
+			for (const TSharedPtr<FJsonValue>& PoseValue : *PosesJson) {
+				const TSharedPtr<FJsonObject> Pose = PoseValue.IsValid() ? PoseValue->AsObject() : nullptr;
+				const TArray<TSharedPtr<FJsonValue>>* Buffer;
+
+				if (!Pose.IsValid() || !Pose->TryGetArrayField(TEXT("TrackToBufferIndex"), Buffer)) continue;
+
+				for (const TSharedPtr<FJsonValue>& Entry : *Buffer) {
+					const TSharedPtr<FJsonObject> Pair = Entry.IsValid() ? Entry->AsObject() : nullptr;
+
+					if (Pair.IsValid()) {
+						MovedTracks.Add(FCString::Atoi(*Pair->GetStringField(TEXT("Key"))));
+					}
+				}
+			}
+		}
+	}
+
 	int32 SkippedTracks = 0;
 
 	for (int32 TrackIndex = 0; TrackIndex < NumTracks; TrackIndex++) {
 		const FName BoneName(*(*TracksJson)[TrackIndex]->AsString());
+
+		/* Only what moves. With nothing to say about a bone, the animation leaves it alone. */
+		if (MovedTracks.Num() > 0 && !MovedTracks.Contains(TrackIndex)) {
+			continue;
+		}
 
 		/* A track the project's skeleton has no bone for has nowhere to go */
 		if (Skeleton->GetReferenceSkeleton().FindBoneIndex(BoneName) == INDEX_NONE) {
@@ -398,6 +518,8 @@ UAnimSequence* IPoseAssetImporter::CreateAnimSequenceFromPose(USkeleton* Skeleto
 	if (SkippedTracks > 0) {
 		UE_LOG(LogReflection, Warning, TEXT("\"%s\" left out %d of %d tracks, \"%s\" has no bone by those names"), *SequenceName, SkippedTracks, NumTracks, *Skeleton->GetName());
 	}
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" animates %d of %d tracks over %d frame(s)"), *SequenceName, BoneNames.Num(), NumTracks, NumFrames);
 
 	for (int32 FrameIndex = 0; FrameIndex < NumFrames; FrameIndex++) {
 		const TSharedPtr<FJsonObject> Pose = (*PosesJson)[FrameIndex]->AsObject();

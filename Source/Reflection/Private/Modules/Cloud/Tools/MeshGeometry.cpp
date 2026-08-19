@@ -78,15 +78,15 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		(*Vertices)->TryGetArrayField(TEXT("Bones"), Bones);
 		(*Vertices)->TryGetArrayField(TEXT("Weights"), Weights);
 
-		/* LODInfo grows with the models: the build asserts on a model without one */
+		/* LODInfo grows with the models: the build asserts on a model without one, and a source
+		 * model clears its mesh data against the model, so the model comes first. */
 		while (ImportedModel->LODModels.Num() <= LodIndex) {
 			ImportedModel->LODModels.Add(new FSkeletalMeshLODModel());
 		}
 
-		/* 5.4 keeps a source model per LOD alongside the info, and saving imported data goes
-		 * through it. Deserialized properties can leave a mesh with the infos and none of those,
-		 * and adding by info count alone then leaves the save indexing off the end. Adding covers
-		 * both, so the shorter of the two is what decides. */
+		/* Newer engines keep a source model per LOD alongside the info, and saving imported data
+		 * goes through it. Deserialized properties can fill in the infos alone, so the shorter of
+		 * the two is what decides; AddLODInfo is the only thing that grows either. */
 		while (SkeletalMesh->GetLODNum() <= LodIndex
 #if UE5_4_BEYOND
 			|| SkeletalMesh->GetNumSourceModels() <= LodIndex
@@ -94,6 +94,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			) {
 			SkeletalMesh->AddLODInfo();
 		}
+
 
 		/* The build regenerates the LOD model out of this, so this is the layer worth writing.
 		 * One point per cooked vertex and one wedge pointing at it, which keeps the splits the
@@ -290,6 +291,10 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			 * the mesh was authored with. */
 			LodInfo->BuildSettings.bRecomputeNormals = false;
 			LodInfo->BuildSettings.bRecomputeTangents = false;
+
+			/* The triangles are the game's too. Dropping the degenerate ones would renumber what
+			 * is left, and the morph deltas below name their vertices by that numbering. */
+			LodInfo->BuildSettings.bRemoveDegenerates = false;
 		}
 
 		if (ImportData.bHasVertexColors) {
@@ -297,6 +302,12 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		}
 
 		RebuiltLods++;
+	}
+
+	/* AddLODInfo appends, so bringing the source models up can leave an info the geometry has no
+	 * LOD for. Those are dropped rather than left as an empty LOD on the mesh. */
+	while (SkeletalMesh->GetLODNum() > Lods->Num()) {
+		SkeletalMesh->RemoveLODInfo(SkeletalMesh->GetLODNum() - 1);
 	}
 
 	/* Otherwise the build hands back the geometry it cached against the old source data */

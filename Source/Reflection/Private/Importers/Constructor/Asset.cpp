@@ -234,6 +234,10 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 	 * The asset itself exists by this point, since it is created before its graph is filled in, so
 	 * what is in memory is what the reference wants. It is handed back half built and the import
 	 * that owns it finishes it. */
+	if (!bImportReferences && Type != TEXT("Skeleton")) {
+		return false;
+	}
+
 	const FConstructionScope ConstructionScope(Path);
 
 	if (!ConstructionScope.bOwned) {

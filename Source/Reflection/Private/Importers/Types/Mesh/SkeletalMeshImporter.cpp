@@ -705,10 +705,22 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 		PoseNames.Add(FName(*Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_"))));
 	}
 
-	/* A pose asset is built out of an animation, one pose per frame. The animation is a means to
-	 * an end here, so it is left in the transient package and the link to it dropped below. */
-	UAnimSequence* Sequence = NewObject<UAnimSequence>(GetTransientPackage(), NAME_None, RF_Transient);
+	/* A pose asset is built out of an animation, one pose per frame, and keeps pointing at it: the
+	 * poses can be rebuilt from the animation, and the animation is the only place the frames stay
+	 * readable once the poses are additive. Both land beside the mesh. */
+	const FString Folder = FPackageName::GetLongPackagePath(GetPackage()->GetName());
+
+	const FString SequenceName = GetAssetName() + TEXT("_DNA_Facial_Pose_Export");
+	const FString PoseAssetName = SequenceName + TEXT("_PoseAsset");
+
+	UPackage* SequencePackage = CreatePackage(*(Folder / SequenceName));
+	if (SequencePackage == nullptr) return nullptr;
+
+	SequencePackage->FullyLoad();
+
+	UAnimSequence* Sequence = NewObject<UAnimSequence>(SequencePackage, FName(*SequenceName), RF_Public | RF_Standalone);
 	Sequence->SetSkeleton(Skeleton);
+	Sequence->SetPreviewMesh(SkeletalMesh);
 
 	{
 		IAnimationDataController& Controller = Sequence->GetController();
@@ -728,10 +740,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 		Controller.CloseBracket(false);
 	}
 
-	const FString PoseAssetName = GetAssetName() + TEXT("_DNA_PoseAsset");
-	const FString PoseAssetPath = FPackageName::GetLongPackagePath(GetPackage()->GetName()) / PoseAssetName;
-
-	UPackage* PosePackage = CreatePackage(*PoseAssetPath);
+	UPackage* PosePackage = CreatePackage(*(Folder / PoseAssetName));
 	if (PosePackage == nullptr) return nullptr;
 
 	/* Re-importing lands on the package the last import wrote, and a package read back off disk
@@ -748,12 +757,13 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	 * the rig rather than each replacing the last */
 	PoseAsset->ConvertSpace(true, 0);
 
-	/* Built from the DNA, not from an animation that outlives this import */
-	PoseAsset->SourceAnimation = nullptr;
+	PoseAsset->SourceAnimation = Sequence;
 
+	HandleAssetCreation(Sequence, SequencePackage);
 	HandleAssetCreation(PoseAsset, PosePackage);
 
 	if (GetSettings()->AssetSettings.SaveAssets) {
+		SavePackage(SequencePackage);
 		SavePackage(PosePackage);
 	}
 
@@ -818,12 +828,27 @@ bool ISkeletalMeshImporter::Import() {
 	/* Everything the mesh is besides its geometry: the LOD it starts drawing at, whether it was
 	 * cooked with vertex colours, the physics it collides with. What this import builds itself, or
 	 * what the tool below owns, is left out rather than written over. */
+	/* The LOD list carries the screen sizes, hysteresis, material map and build settings the game
+	 * shipped. Whichever name it arrives under, it is the same list, and this engine reads it as
+	 * LODInfo. */
+	if (!GetAssetData()->HasField(TEXT("LODInfo"))) {
+		const TArray<TSharedPtr<FJsonValue>>* Models;
+
+		if (GetAssetData()->TryGetArrayField(TEXT("SourceModels"), Models)) {
+			GetAssetData()->SetArrayField(TEXT("LODInfo"), *Models);
+		}
+	}
+
 	GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(GetAssetData(), {
 		/* Built here, out of the geometry */
 		"LODModels",
 		"NaniteResources",
-		"SourceModels",
 		"SamplingInfo",
+
+		/* Read as LODInfo below instead. A newer engine keeps the LOD list under this name, and
+		 * this one keeps the mesh data the build owns under it, so deserializing it as written
+		 * fills engine structures with somebody else's fields. */
+		"SourceModels",
 
 		/* Already set, and the reference in the export points at the cooked package */
 		"Skeleton",

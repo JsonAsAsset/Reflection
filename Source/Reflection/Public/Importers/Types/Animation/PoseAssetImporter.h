@@ -12,7 +12,7 @@ public:
 	virtual bool Import() override;
 
 protected:
-	void ReverseCookLocalSpacePose(USkeleton* Skeleton) const;
+	void ReverseCookLocalSpacePose(USkeleton* Skeleton);
 	static UAnimSequence* CreateAnimSequenceFromPose(USkeleton* Skeleton, const FString& SequenceName, const TSharedPtr<FJsonObject>& PoseContainer, UPackage* Outer);
 
 	/* The reference pose of the skeleton this asset was cooked against, keyed by bone name.
@@ -21,6 +21,7 @@ protected:
 	 * difference from the reference pose, so the wrong reference bends every bone it touches, and
 	 * the parent skeleton moves around enough between builds that the one sitting in the project
 	 * is rarely the one the pose was built on. Names survive that, bone order doesn't. */
+	TMap<FName, FTransform> GetSourceMeshBindPose();
 	TMap<FName, FTransform> GetCookedReferencePose() const;
 };
 
