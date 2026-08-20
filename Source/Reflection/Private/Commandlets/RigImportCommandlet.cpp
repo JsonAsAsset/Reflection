@@ -1446,6 +1446,32 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		return 0;
 	}
 
+	if (UAnimSequence* ImportedAnim = Cast<UAnimSequence>(Importer->GetAsset())) {
+		const IAnimationDataModel* Model = ImportedAnim->GetDataModel();
+
+		TArray<FName> TrackNames;
+		if (Model != nullptr) Model->GetBoneTrackNames(TrackNames);
+
+		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *ImportedAnim->GetPathName());
+		UE_LOG(LogRigImportTest, Display, TEXT("bone tracks: %d, float curves: %d, frames: %d, skeleton %s"),
+			TrackNames.Num(),
+			Model != nullptr ? Model->GetNumberOfFloatCurves() : 0,
+			Model != nullptr ? Model->GetNumberOfFrames() : 0,
+			ImportedAnim->GetSkeleton() ? *ImportedAnim->GetSkeleton()->GetName() : TEXT("<none>"));
+
+		if (Model != nullptr) {
+			int32 Shown = 0;
+
+			for (const FFloatCurve& Curve : Model->GetFloatCurves()) {
+				if (Shown++ >= 4) break;
+
+				UE_LOG(LogRigImportTest, Display, TEXT("  curve '%s': %d key(s)"), *Curve.GetName().ToString(), Curve.FloatCurve.Keys.Num());
+			}
+		}
+
+		return 0;
+	}
+
 	/* Anything with no report of its own is described by walking its class, which is enough to see
 	 * whether the properties an asset is made of survived the trip */
 	if (UDataAsset* Generic = Cast<UDataAsset>(Importer->GetAsset())) {

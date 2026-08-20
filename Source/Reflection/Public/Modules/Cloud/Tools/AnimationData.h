@@ -8,59 +8,12 @@
 #include "Modules/Tools/SelectedAssetsBase.h"
 #include "Utilities/JsonHelpers.h"
 
-inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSelectedAsset, const IImporter* Importer = nullptr) {
-	/* Animation Sequence Base reference, either by using the selected asset in the browser, or through an importer */
-	UAnimSequenceBase* AnimSequenceBase = nullptr;
-
-	if (UseSelectedAsset) {
-		AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(false, Container->GetAssetName());
-	} else {
-		if (Container->GetAsset()) {
-			AnimSequenceBase = Cast<UAnimSequenceBase>(Container->GetAsset());
-		}
-	}
-
-	/* Animation Montages: If we're importing a montage, create it */
-	if (!AnimSequenceBase && Container->GetAssetClass()->IsChildOf<UAnimMontage>()) {
-		AnimSequenceBase = NewObject<UAnimMontage>(Container->GetPackage(), Container->GetAssetClass(), *Container->GetAssetName(), RF_Public | RF_Standalone);
-	}
-
-	if (UseSelectedAsset) {
-		if (!AnimSequenceBase) {
-			return false;
-		}
-	}
-
-	if (!AnimSequenceBase) return false;
-
-	/* Empty all Notifies */
-	if (UAnimSequence* CastedAnimSequence = Cast<UAnimSequence>(AnimSequenceBase)) {
-		CastedAnimSequence->AuthoredSyncMarkers.Empty();
-		CastedAnimSequence->Notifies.Empty();
-	}
-
-	Container->DeserializeExports(AnimSequenceBase);
-
-	/* Update Sequence Length */
-	if (const auto& Data = Container->GetAssetData(); Data->HasField(TEXT("SequenceLength"))) {
-		const float SequenceLength = Data->GetNumberField(TEXT("SequenceLength"));
-
-		SetAnimSequenceLength(AnimSequenceBase, SequenceLength);
-	}
-	
-	/* Deserialize properties */
-	Container->GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(Container->GetAssetData(), {
-		"NumFrames",
-		"TrackToSkeletonMapTable",
-		"SequenceLength",
-		"SkeletonGuid",
-		"CompressedTrackToSkeletonMapTable",
-		"CompressedDataStructure",
-		"CompressedRawDataSize",
-		"RawCurveData"
-	}), AnimSequenceBase);
-
-	BuildAnimNotifyTracks(AnimSequenceBase);
+/* The curves a sequence carries, read out of whichever field the export put them in.
+ *
+ * Split out of ReadAnimationData so an importer that builds the rest of the sequence itself can
+ * still get them. It has to run after any InitializeModel: that resets the model, curves included. */
+inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBase* AnimSequenceBase) {
+	if (AnimSequenceBase == nullptr) return false;
 
 	USkeleton* Skeleton = AnimSequenceBase->GetSkeleton();
 
@@ -223,6 +176,65 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 		Controller.CloseBracket();
 #endif
 	}
+
+	return true;
+}
+
+inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSelectedAsset, const IImporter* Importer = nullptr) {
+	/* Animation Sequence Base reference, either by using the selected asset in the browser, or through an importer */
+	UAnimSequenceBase* AnimSequenceBase = nullptr;
+
+	if (UseSelectedAsset) {
+		AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(false, Container->GetAssetName());
+	} else {
+		if (Container->GetAsset()) {
+			AnimSequenceBase = Cast<UAnimSequenceBase>(Container->GetAsset());
+		}
+	}
+
+	/* Animation Montages: If we're importing a montage, create it */
+	if (!AnimSequenceBase && Container->GetAssetClass()->IsChildOf<UAnimMontage>()) {
+		AnimSequenceBase = NewObject<UAnimMontage>(Container->GetPackage(), Container->GetAssetClass(), *Container->GetAssetName(), RF_Public | RF_Standalone);
+	}
+
+	if (UseSelectedAsset) {
+		if (!AnimSequenceBase) {
+			return false;
+		}
+	}
+
+	if (!AnimSequenceBase) return false;
+
+	/* Empty all Notifies */
+	if (UAnimSequence* CastedAnimSequence = Cast<UAnimSequence>(AnimSequenceBase)) {
+		CastedAnimSequence->AuthoredSyncMarkers.Empty();
+		CastedAnimSequence->Notifies.Empty();
+	}
+
+	Container->DeserializeExports(AnimSequenceBase);
+
+	/* Update Sequence Length */
+	if (const auto& Data = Container->GetAssetData(); Data->HasField(TEXT("SequenceLength"))) {
+		const float SequenceLength = Data->GetNumberField(TEXT("SequenceLength"));
+
+		SetAnimSequenceLength(AnimSequenceBase, SequenceLength);
+	}
+	
+	/* Deserialize properties */
+	Container->GetObjectSerializer()->DeserializeObjectProperties(RemovePropertiesShared(Container->GetAssetData(), {
+		"NumFrames",
+		"TrackToSkeletonMapTable",
+		"SequenceLength",
+		"SkeletonGuid",
+		"CompressedTrackToSkeletonMapTable",
+		"CompressedDataStructure",
+		"CompressedRawDataSize",
+		"RawCurveData"
+	}), AnimSequenceBase);
+
+	BuildAnimNotifyTracks(AnimSequenceBase);
+
+	if (!ReadAnimationCurves(Container, AnimSequenceBase)) return false;
 
 	UpdateAnimationCaching(AnimSequenceBase);
 	
