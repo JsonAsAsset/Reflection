@@ -56,7 +56,12 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 
 		const int32 VertexCount = (*Vertices)->GetIntegerField(TEXT("Count"));
 		const int32 BonesPerVertex = (*Vertices)->GetIntegerField(TEXT("BonesPerVertex"));
-		const int32 NumTexCoords = FMath::Clamp((*Vertices)->GetIntegerField(TEXT("NumTexCoords")), 1, static_cast<int32>(MAX_TEXCOORDS));
+		/* Two counts, because they are not always the same number. The payload writes every set the
+		 * mesh was cooked with, one after another per vertex, and that stride is what the UVs have
+		 * to be read at; a wedge only holds four of them, which is what ends up on the mesh. Read
+		 * at the wrong stride, every UV after the first vertex comes off the wrong set. */
+		const int32 PayloadTexCoords = FMath::Max((*Vertices)->GetIntegerField(TEXT("NumTexCoords")), 1);
+		const int32 NumTexCoords = FMath::Min(PayloadTexCoords, static_cast<int32>(MAX_TEXCOORDS));
 
 		if (VertexCount == 0 || BonesPerVertex == 0) continue;
 
@@ -153,7 +158,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			VertexTangents.Add(FVector3f(ReadFloat(Tangents, Vertex * 3), ReadFloat(Tangents, Vertex * 3 + 1), ReadFloat(Tangents, Vertex * 3 + 2)));
 
 			for (int32 UV = 0; UV < NumTexCoords; ++UV) {
-				const int32 Offset = (Vertex * NumTexCoords + UV) * 2;
+				const int32 Offset = (Vertex * PayloadTexCoords + UV) * 2;
 
 				VertexUVs.Add(FVector2f(ReadFloat(UVs, Offset), ReadFloat(UVs, Offset + 1)));
 			}
@@ -184,6 +189,12 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			Material.MaterialImportName = Slots.IsValidIndex(MaterialIndex)
 				? Slots[MaterialIndex].MaterialSlotName.ToString()
 				: FString::Printf(TEXT("Material_%d"), MaterialIndex);
+
+			/* What the build reads to decide which slot the section draws with, written out so a
+			 * section that comes back wearing somebody else's material can be traced to whichever
+			 * of the two it was: the slot the cook named, or the name the build matched it by. */
+			UE_LOG(LogReflection, Display, TEXT("LOD %d section %d: cooked material %d of %d, matched by slot name \"%s\""),
+				LodIndex, SectionIndex, MaterialIndex, Slots.Num(), *Material.MaterialImportName);
 		}
 
 		ImportData.MaxMaterialIndex = FMath::Max(ImportData.Materials.Num() - 1, 0);
@@ -277,6 +288,18 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 
 
 		SkeletalMesh->SaveLODImportedData(LodIndex, ImportData);
+
+		/* What says the imported data is new enough for the builder to read.
+		 *
+		 * A build asks the LOD whether its source data was written by an importer that knows the
+		 * current format, and an asset old enough to predate the question answers no and is left
+		 * alone. Nothing here fills that in, so the versions are stamped by hand: without them the
+		 * build walks past the LOD without a word and hands back an empty mesh. */
+		SkeletalMesh->SetLODImportedDataVersions(
+			LodIndex,
+			ESkeletalMeshGeoImportVersions::LatestVersion,
+			ESkeletalMeshSkinningImportVersions::LatestVersion
+		);
 
 		/* BuildLODModel skips a LOD it thinks was generated from a lower one, and an importer that
 		 * set this leaves the new source data unread. Cleared here, the same way a real build

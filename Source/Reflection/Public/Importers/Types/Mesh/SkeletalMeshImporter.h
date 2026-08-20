@@ -24,9 +24,18 @@ public:
 	virtual bool Import() override;
 
 private:
+	/* Gives up on a mesh that was made but never finished, leaving nothing behind that can be
+	 * drawn. Called on the way out of a failed import, before it reports what went wrong. */
+	void Abandon(USkeletalMesh* SkeletalMesh);
+
 	/* The skeleton the mesh is skinned to, imported through the Cloud when the project doesn't
-	 * have it. Null when it could not be reached, which is the end of the import. */
+	 * have it. Null when the export names none, or when the one it names could not be reached. */
 	USkeleton* ResolveSkeleton();
+
+	/* A skeleton made out of the mesh's own reference pose, saved beside it. For a mesh whose
+	 * export names no skeleton at all: there is nothing to go and fetch, and the bones the mesh
+	 * carries are the whole of what a skeleton for it would hold anyway. */
+	USkeleton* BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh);
 
 	/* One slot per exported material, named before the geometry arrives: a wedge names the slot it
 	 * belongs to, so the names have to be there for the sections to land on the right material.

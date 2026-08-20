@@ -2,6 +2,7 @@
 
 #include "Importers/Types/Mesh/SkeletalMeshImporter.h"
 #include "Rendering/SkeletalMeshLODImporterData.h"
+#include "Rendering/SkeletalMeshRenderData.h"
 #include "Engine/AssetUserData.h"
 
 #if REFLECTION_RIG_LOGIC
@@ -43,6 +44,70 @@ UObject* ISkeletalMeshImporter::CreateAsset(UObject* CreatedAsset) {
 	return IImporter::CreateAsset(NewObject<USkeletalMesh>(GetPackage(), USkeletalMesh::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
 
+/* A half built mesh is still drawn.
+ *
+ * The Content Browser renders a thumbnail of whatever its package holds, and an import that waits
+ * on the Cloud keeps the editor ticking while it waits, so the mesh is posed and handed to the
+ * renderer long before anything reads the failure this is called for. Neither half of one survives
+ * being drawn: bones with no LOD to name the ones the mesh needs walk off the end of a required
+ * bone list the engine never filled in, and an empty LOD asks the renderer for the inverse bind
+ * matrices the bones would have carried. Both are emptied here, and the export lets go of the mesh
+ * so the package it was made in is dropped along with it. */
+void ISkeletalMeshImporter::Abandon(USkeletalMesh* SkeletalMesh) {
+	if (SkeletalMesh == nullptr) return;
+
+	/* Nothing to pose */
+	SkeletalMesh->SetRefSkeleton(FReferenceSkeleton());
+	SkeletalMesh->CalculateInvRefMatrices();
+
+	/* Nothing to draw: the renderer is only asked to update a LOD the mesh says it has */
+	SkeletalMesh->GetLODInfoArray().Empty();
+
+	SkeletalMesh->ClearFlags(RF_Public | RF_Standalone);
+
+	/* Not marked for destruction, however tempting: the Content Browser draws thumbnails through a
+	 * component that keeps a mesh object of its own, and that object holds the mesh's render data
+	 * by pointer. Marking the mesh clears the component's reference to it out from under that
+	 * pointer on the next collection, and the vertex factories the mesh object made are then
+	 * released against render data that is gone -- which the engine finds out about by deleting a
+	 * render resource that was never released, and stops the editor over. Emptied of everything
+	 * that can be drawn, it is collected on its own once the package below lets go of it. */
+
+	/* What the reader watches to decide whether the import built anything worth keeping */
+	SetAsset(nullptr);
+}
+
+USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh) {
+	if (SkeletalMesh == nullptr || SkeletalMesh->GetRefSkeleton().GetNum() == 0) return nullptr;
+
+	const FString SkeletonName = GetAssetName() + TEXT("_Skeleton");
+	const FString Folder = FPackageName::GetLongPackagePath(GetPackage()->GetName());
+
+	UPackage* SkeletonPackage = FAssetUtilities::CreateAssetPackage(Folder / SkeletonName);
+	if (SkeletonPackage == nullptr) return nullptr;
+
+	/* Re-importing lands on the package the last import wrote, and a package read back off disk
+	 * comes in on demand: saving one that was never finished reading is fatal */
+	SkeletonPackage->FullyLoad();
+
+	USkeleton* Skeleton = NewObject<USkeleton>(SkeletonPackage, StringToName(SkeletonName), RF_Public | RF_Standalone);
+
+	/* Builds the bone tree out of the mesh's reference skeleton, which is the same thing the
+	 * editor does for a mesh imported without one */
+	if (!Skeleton->MergeAllBonesToBoneTree(SkeletalMesh)) return nullptr;
+
+	HandleAssetCreation(Skeleton, SkeletonPackage);
+
+	if (GetSettings()->AssetSettings.SaveAssets) {
+		SavePackage(SkeletonPackage);
+	}
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" named no skeleton, so \"%s\" was made from its %d bone(s)"),
+		*GetAssetName(), *SkeletonName, SkeletalMesh->GetRefSkeleton().GetNum());
+
+	return Skeleton;
+}
+
 USkeleton* ISkeletalMeshImporter::ResolveSkeleton() {
 	const FUObjectJsonValueExport SkeletonReference = GetAssetDataAsValue().GetObject(TEXT("Skeleton"));
 
@@ -70,7 +135,12 @@ void ISkeletalMeshImporter::BuildMaterialSlots(USkeletalMesh* SkeletalMesh, cons
 			Slot->TryGetStringField(TEXT("MaterialSlotName"), SlotName);
 		}
 
-		if (SlotName.IsEmpty()) {
+		/* A cook keeps the slots and drops the names they were imported under, so every one of them
+		 * comes back called None. The build hands a face to a slot by matching that name, and a
+		 * name every slot answers to sends every section to the first of them: the mesh draws with
+		 * one material and the rest go unused. Named by their place instead, which is the same
+		 * thing the static mesh import does with slots a cook left unnamed. */
+		if (SlotName.IsEmpty() || SlotName == TEXT("None")) {
 			SlotName = FString::Printf(TEXT("Material_%d"), SlotIndex);
 		}
 
@@ -780,25 +850,11 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 bool ISkeletalMeshImporter::Import() {
 #if UE4_27_AND_UE5
-	USkeletalMesh* SkeletalMesh = Create<USkeletalMesh>();
-	if (SkeletalMesh == nullptr) return false;
-
-	/* The reference pose comes with the skeleton, and everything below is skinned against it:
-	 * the bone map a section names, the influences a vertex carries, the inverse matrices the
-	 * renderer poses with. Without one there is no mesh to build. */
+	/* The skeleton the mesh names, if it names one. Plenty of cooked meshes do not: the bones they
+	 * are skinned to are written into the mesh itself, and the reference to a skeleton asset is
+	 * something only the editor kept. One is made further down for those, out of the mesh's own
+	 * pose, rather than the import stopping to ask for an asset that was never there. */
 	USkeleton* Skeleton = ResolveSkeleton();
-
-	if (Skeleton == nullptr) {
-		FImportIssues::Report(
-			EImportIssue::MissingAsset,
-			TEXT("The mesh's skeleton isn't in this project"),
-			TEXT("A skeletal mesh is skinned to its skeleton's reference pose, so the import stops here rather than building a mesh with no bones. Reflect the skeleton first.")
-		);
-
-		return false;
-	}
-
-	SkeletalMesh->SetSkeleton(Skeleton);
 
 	/* Asked for by the path the game cooked it under. The export names that itself; only when it
 	 * doesn't is the path the asset landed at turned back into one, which is a guess the moment an
@@ -813,12 +869,68 @@ bool ISkeletalMeshImporter::Import() {
 		FRRedirects::Reverse(FetchPath);
 	}
 
+	/* Asked for before the mesh is made rather than after it is half filled in. A mesh carrying the
+	 * skeleton's bones with no LOD to say which of them it needs is still what the Content Browser
+	 * draws a thumbnail from, and posing one for that thumbnail reads the first entry of a required
+	 * bone list the engine never filled in: the editor goes down with it. Nothing is created until
+	 * the geometry is in hand, so a Cloud that isn't running leaves the last import standing. */
+	const TSharedPtr<FJsonObject> Geometry = Cloud::Export::GetLodModelBlocking(FetchPath);
+
+	if (!Geometry.IsValid()) {
+		FImportIssues::Report(
+			EImportIssue::Failed,
+			TEXT("No geometry from the Cloud"),
+			TEXT("The Cloud has to be running, and the mesh needs cooked render data to read.")
+		);
+
+		return false;
+	}
+
+	USkeletalMesh* SkeletalMesh = Create<USkeletalMesh>();
+	if (SkeletalMesh == nullptr) return false;
+
+	if (Skeleton != nullptr) {
+		SkeletalMesh->SetSkeleton(Skeleton);
+	}
+
 	/* The mesh's own bind pose if the Cloud can serve it, and the skeleton's only as a fallback:
 	 * the skeleton is shared and built at nobody's proportions in particular. */
 	const bool bCookedBindPose = ApplyCookedBindPose(SkeletalMesh, Skeleton, FetchPath);
 
 	if (!bCookedBindPose) {
+		if (Skeleton == nullptr) {
+			FImportIssues::Report(
+				EImportIssue::Failed,
+				TEXT("The mesh has no bones to skin to"),
+				TEXT("The export names no skeleton, and the Cloud served no reference pose for the mesh either, so there is nothing to bind it against.")
+			);
+
+			Abandon(SkeletalMesh);
+
+			return false;
+		}
+
 		SkeletalMesh->SetRefSkeleton(Skeleton->GetReferenceSkeleton());
+	}
+
+	/* Named no skeleton and now holding the bones it was cooked with: the asset the editor would
+	 * have pointed at is made here out of exactly those bones, and saved beside the mesh. */
+	if (Skeleton == nullptr) {
+		Skeleton = BuildSkeletonFromMesh(SkeletalMesh);
+
+		if (Skeleton == nullptr) {
+			FImportIssues::Report(
+				EImportIssue::Failed,
+				TEXT("A skeleton couldn't be made for this mesh"),
+				TEXT("The export names none, so one is built out of the mesh's own bones, and the engine would not take them into a bone tree.")
+			);
+
+			Abandon(SkeletalMesh);
+
+			return false;
+		}
+
+		SkeletalMesh->SetSkeleton(Skeleton);
 	}
 
 	SkeletalMesh->CalculateInvRefMatrices();
@@ -864,18 +976,6 @@ bool ISkeletalMeshImporter::Import() {
 		"SkinWeightProfiles",
 	}), SkeletalMesh);
 
-	const TSharedPtr<FJsonObject> Geometry = Cloud::Export::GetLodModelBlocking(FetchPath);
-
-	if (!Geometry.IsValid()) {
-		FImportIssues::Report(
-			EImportIssue::Failed,
-			TEXT("No geometry from the Cloud"),
-			TEXT("The Cloud has to be running, and the mesh needs cooked render data to read.")
-		);
-
-		return false;
-	}
-
 	const int32 BuiltLods = TMeshGeometry::RebuildLodModels(SkeletalMesh, Geometry);
 
 	if (BuiltLods == 0) {
@@ -884,6 +984,8 @@ bool ISkeletalMeshImporter::Import() {
 			TEXT("The mesh has no LOD to build"),
 			TEXT("Every LOD the payload carries was missing the vertices or the sections to describe it.")
 		);
+
+		Abandon(SkeletalMesh);
 
 		return false;
 	}
@@ -950,6 +1052,39 @@ bool ISkeletalMeshImporter::Import() {
 	}
 
 	SkeletalMesh->Build();
+
+	/* What the build made of it, which is not the same question as whether there was anything to
+	 * build. A LOD whose influences all named bones the mesh hasn't got, or whose triangles the
+	 * builder threw out, comes back with nothing on the other side, and a mesh carrying bones with
+	 * no LOD to say which of them it needs is one the Content Browser crashes on when it draws the
+	 * thumbnail. Reported and given up on here rather than left in the project to be drawn. */
+	bool bBuilt = false;
+
+	if (const FSkeletalMeshRenderData* RenderData = SkeletalMesh->GetResourceForRendering()) {
+		for (int32 Lod = 0; Lod < RenderData->LODRenderData.Num(); ++Lod) {
+			const FSkeletalMeshLODRenderData& LodData = RenderData->LODRenderData[Lod];
+
+			if (LodData.GetNumVertices() > 0 && LodData.RequiredBones.Num() > 0) {
+				bBuilt = true;
+
+				break;
+			}
+		}
+	}
+
+	if (!bBuilt) {
+		FImportIssues::Report(
+			EImportIssue::Failed,
+			TEXT("The build made nothing out of the geometry"),
+			TEXT("The vertices arrived, and the mesh the engine built out of them is empty. A LOD whose influences name no bone the skeleton has is the usual reason.")
+		);
+
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" built %d LOD(s) from the Cloud and the engine made an empty mesh out of them"), *GetAssetName(), BuiltLods);
+
+		Abandon(SkeletalMesh);
+
+		return false;
+	}
 
 	if (bHasMorphTargets && WrittenMorphs < ExportedMorphTargets->Num()) {
 		FImportIssues::Report(

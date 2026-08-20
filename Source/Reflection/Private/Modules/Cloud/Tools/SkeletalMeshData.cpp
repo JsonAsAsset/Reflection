@@ -73,8 +73,15 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 				if (Materials.IsValidIndex(SkeletalMaterialIndex)) {
 					FSkeletalMaterial& MaterialSlot = Materials[SkeletalMaterialIndex];
 
-					MaterialSlot.MaterialSlotName = FName(*SkeletalMaterialObject->GetStringField(TEXT("MaterialSlotName")));
-					MaterialSlot.ImportedMaterialSlotName = MaterialSlot.MaterialSlotName;
+					/* Only a name worth having: a cooked slot is called None, and letting that back
+					 * over the one the import gave it puts every slot under the same name again,
+					 * which is what a rebuild reads to decide which slot a section draws with. */
+					const FString ExportedSlotName = SkeletalMaterialObject->GetStringField(TEXT("MaterialSlotName"));
+
+					if (!ExportedSlotName.IsEmpty() && ExportedSlotName != TEXT("None")) {
+						MaterialSlot.MaterialSlotName = FName(*ExportedSlotName);
+						MaterialSlot.ImportedMaterialSlotName = MaterialSlot.MaterialSlotName;
+					}
 
 					TSharedPtr<FJsonObject> SkeletalMaterial = SkeletalMaterialObject->GetObjectField(TEXT("Material"));
 
