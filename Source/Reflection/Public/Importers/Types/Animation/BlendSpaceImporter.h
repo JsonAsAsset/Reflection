@@ -37,6 +37,9 @@ private:
 	 * the engine says only that one of them is empty, never which, and the grid drops it the moment
 	 * the asset is opened. Whatever is still missing after this is named outright instead. */
 	void ResolveEmptySamples(UReflectionBlendSpace* BlendSpace);
+
+	/* Puts the grid into the order this engine reads it in.  */
+	void AlignGridToEngine(UReflectionBlendSpace* BlendSpace);
 };
 
 REGISTER_IMPORTER(IBlendSpaceImporter, (TArray<FString>{
