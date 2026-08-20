@@ -43,6 +43,17 @@
 
 static TWeakPtr<SNotificationItem> WaitingForCloud;
 
+/* When the press that is still waiting on an answer went in, or zero when none is. */
+static double ImportActionStartedAt = 0.0;
+
+/* An answer that hasn't arrived by now isn't coming, and a button that never works again is worse than a second window */
+static constexpr double ImportActionTimeoutSeconds = 60.0;
+
+/* Whether the wait loop below has a status request out. The loop asks every fifth of a second,
+ * which is faster than a starting Cloud answers, so without this the answers stack up and each one
+ * starts the run again. */
+static bool ReadyCheckPending = false;
+
 /* The button is a readout, not a switch: nothing about it turns the Cloud on or off, because
  * whether the app is running is not this editor's decision to make. Pressed while it is down, the
  * useful thing to do is say where to get one. */
@@ -460,7 +471,15 @@ void UReflectionToolbar::WaitForCloudTimerCallback() {
 		return;
 	}
 
+	if (ReadyCheckPending) {
+		return;
+	}
+
+	ReadyCheckPending = true;
+
 	Cloud::Status::IsReady([this](const bool bReady) {
+		ReadyCheckPending = false;
+
 		if (!bReady) {
 			return;
 		}
@@ -499,8 +518,19 @@ void UReflectionToolbar::IsFitToFunction(TFunction<void(bool)> OnResponse) {
 
 void UReflectionToolbar::ImportAction() {
 	if (WaitingForCloud.IsValid()) return;
-	
+
+	const double Now = FPlatformTime::Seconds();
+
+	/* A press already on its way in */
+	if (ImportActionStartedAt != 0.0 && Now - ImportActionStartedAt < ImportActionTimeoutSeconds) {
+		return;
+	}
+
+	ImportActionStartedAt = Now;
+
 	IsFitToFunction([this](const bool bAllowed) {
+		ImportActionStartedAt = 0.0;
+
 		if (!bAllowed) {
 			HandleCloudWaiting();
 			
