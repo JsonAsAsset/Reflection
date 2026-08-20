@@ -7,6 +7,10 @@
 
 #if REFLECTION_RIG_LOGIC
 #include "DNAAsset.h"
+#if REFLECTION_DNA_USER_DATA
+#include "DNA.h"
+#include "DNAAssetUserData.h"
+#endif
 #include "DNAUtils.h"
 #include "RigLogic.h"
 #include "RigInstance.h"
@@ -490,6 +494,31 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 		return false;
 	}
 
+#if REFLECTION_DNA_USER_DATA
+	/* Where the engine has one, the DNA belongs in a UDNA named by a UDNAAssetUserData. The anim
+	 * node takes that user data over the old UDNAAsset and does not fall back when it finds one:
+	 *
+	 *     if (UDNAAssetUserData* UserData = SkeletalMesh->GetAssetUserData<UDNAAssetUserData>()) {
+	 *         if (UDNA* DNA = UserData->DNAAsset) { ... }
+	 *     } else if (UDNAAsset* Legacy = ...) { ... }
+	 *
+	 * Deserializing the mesh's properties makes that user data with nothing in it, since the DNA it
+	 * names lives in a package of its own. Left that way it shadows anything written the old way,
+	 * and the face holds still. */
+	UDNAAssetUserData* DnaUserData = SkeletalMesh->GetAssetUserData<UDNAAssetUserData>();
+
+	if (DnaUserData == nullptr) {
+		DnaUserData = NewObject<UDNAAssetUserData>(SkeletalMesh, TEXT("DNAAssetUserData"), RF_Public);
+
+		SkeletalMesh->AddAssetUserData(DnaUserData);
+	}
+
+	if (DnaUserData->DNAAsset == nullptr) {
+		DnaUserData->DNAAsset = NewObject<UDNA>(SkeletalMesh, TEXT("DNA"), RF_Public);
+	}
+
+	DnaUserData->DNAAsset->SetDNAReader(Behavior);
+#else
 	UDNAAsset* DNAAsset = nullptr;
 
 	/* The mesh's AssetUserData names the DNA asset, so deserializing the properties has usually
@@ -512,6 +541,7 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 
 	DNAAsset->DnaFileName = SkeletalMesh->GetName() + TEXT(".dna");
 	DNAAsset->SetBehaviorReader(Behavior);
+#endif
 
 	/* Some heads keep the DNA in a package of its own and only the definition with it: the names,
 	 * the hierarchy and the pose, and a behavior layer that is a stub. There is a DNA on the mesh
@@ -527,9 +557,11 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 		);
 	}
 
+#if !REFLECTION_DNA_USER_DATA
 	if (const TSharedPtr<IDNAReader> Geometry = ReadDNAFromBuffer(&Dna, EDNADataLayer::Geometry, 0u)) {
 		DNAAsset->SetGeometryReader(Geometry);
 	}
+#endif
 
 	return true;
 #else

@@ -40,6 +40,14 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_RIG_LOGIC=" + (bRigLogic ? "1" : "0"));
 
+		/* Newer RigLogic keeps the DNA in an asset of its own and hangs a UDNAAssetUserData off the
+		 * mesh to name it. The anim node reads that in preference to the old UDNAAsset, so which one
+		 * a DNA has to be written into depends on whether the engine has it. */
+		var bDnaUserData = bRigLogic && File.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic",
+			"Source", "RigLogicModule", "Public", "DNAAssetUserData.h"));
+
+		PublicDefinitions.Add("REFLECTION_DNA_USER_DATA=" + (bDnaUserData ? "1" : "0"));
+
 		/* CurveExpression compiles the arithmetic that drives one curve from others. It started out
 		 * an experimental plugin and has been promoted since, so both homes are looked at. */
 		var bCurveExpression = false;
