@@ -275,10 +275,12 @@ TArray<FString> Cloud::Folder::GetPathsBlocking(const FString& Path) {
 
 /* Metadata ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 static void ApplyMetadata(const TSharedPtr<FJsonObject>& MetadataResponse) {
-	/* The project the files came out of, which is what every Cloud path is spelled with */
-	if (MetadataResponse->HasField(TEXT("name"))) {
-		GReflectionRuntime.Profile.ProjectName = MetadataResponse->GetStringField(TEXT("name"));
-	}
+	/* The project the files came out of, which is what every Cloud path is spelled with. Taken
+	 * from the answer either way: keeping the last one is how a name from another profile ends up
+	 * being applied to paths it has nothing to do with. */
+	GReflectionRuntime.Profile.ProjectName = MetadataResponse->HasField(TEXT("name"))
+		? MetadataResponse->GetStringField(TEXT("name"))
+		: FString();
 
 	if (MetadataResponse->HasField(TEXT("major_version"))) {
 		const int MajorVersion = MetadataResponse->GetIntegerField(TEXT("major_version"));
@@ -299,11 +301,11 @@ static void ApplyMetadata(const TSharedPtr<FJsonObject>& MetadataResponse) {
 	}
 }
 
+/* Asked every time rather than remembered. The Cloud can be pointed at a different profile between
+ * one press and the next, and a project name held over from the last one stops matching the paths
+ * coming down, which is enough to turn the project's own folder into a plugin. One request against
+ * a local server, once per press. */
 bool Cloud::EnsureMetadataBlocking() {
-	if (!GReflectionRuntime.Profile.ProjectName.IsEmpty()) {
-		return true;
-	}
-
 	const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "AskingCloudMetadata", "Asking Cloud which project it has loaded"));
 
 	const TSharedPtr<FJsonObject> Response = GetBlocking(MetadataURL);
