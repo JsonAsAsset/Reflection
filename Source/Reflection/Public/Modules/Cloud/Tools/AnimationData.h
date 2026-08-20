@@ -60,6 +60,8 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 		"RawCurveData"
 	}), AnimSequenceBase);
 
+	BuildAnimNotifyTracks(AnimSequenceBase);
+
 	USkeleton* Skeleton = AnimSequenceBase->GetSkeleton();
 
 	if (!Skeleton) {

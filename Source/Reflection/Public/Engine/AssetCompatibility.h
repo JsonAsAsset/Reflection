@@ -58,6 +58,41 @@ inline FString GetAssetObjectPath(const FAssetData& AssetData) {
 #endif
 }
 
+/* Lays out the rows an animation's notifies sit on in the editor.
+ *
+ * A cook keeps the notifies and drops the rows, so every notify comes back naming a row that isn't
+ * there. The engine works that out for itself the first time it refreshes the animation, and says
+ * so first, through an ensure that stops a debugger on every import of an animation carrying
+ * notifies. Laid out here instead, one row per row the notifies ask for, so there is nothing left
+ * for it to work out.
+ *
+ * Kept the same shape as the engine's own recovery, down to the row names and the point past which
+ * it stops believing an index, so the two agree about where a notify ended up. */
+inline void BuildAnimNotifyTracks(UAnimSequenceBase* Sequence) {
+#if WITH_EDITORONLY_DATA
+	if (!Sequence) {
+		return;
+	}
+
+	int32 RowCount = Sequence->Notifies.Num() > 0 ? 1 : 0;
+
+	for (FAnimNotifyEvent& Notify : Sequence->Notifies) {
+		if (Notify.TrackIndex < 0 || Notify.TrackIndex > 20) {
+			Notify.TrackIndex = 0;
+		}
+
+		RowCount = FMath::Max(RowCount, Notify.TrackIndex + 1);
+	}
+
+	while (Sequence->AnimNotifyTracks.Num() < RowCount) {
+		Sequence->AnimNotifyTracks.Add(FAnimNotifyTrack(
+			*FString::FromInt(Sequence->AnimNotifyTracks.Num() + 1),
+			FLinearColor::White
+		));
+	}
+#endif
+}
+
 inline void SetAnimSequenceLength(UAnimSequenceBase* Sequence, const float NewLength) {
 	if (!Sequence || NewLength <= 0.f) {
 		return;
