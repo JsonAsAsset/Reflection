@@ -23,7 +23,7 @@
 
 </div>
 
-Reflection is an [Unreal Engine](https://www.unrealengine.com/en-US) plugin that reads [JSON](https://www.json.org/json-en.html) files exported from FModel [(UEParse)](https://github.com/FabianFG/CUE4Parse), and **rebuilds them as real assets** in your project: materials, data tables, physics assets, and more. Connect it to a [Cloud](#cloud) instance to **fetch references automatically**, **reflect extra data** onto assets you've already imported.
+Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
 <a href="#"><img width="1000" alt="image" src="https://github.com/user-attachments/assets/c27df423-eeb1-4025-9c69-3231e59b646a"/></a>
 

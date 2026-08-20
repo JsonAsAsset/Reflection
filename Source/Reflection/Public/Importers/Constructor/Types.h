@@ -7,11 +7,7 @@ struct ImportTypes {
 	static TMap<FString, TArray<FString>> Templated;
 	
 	struct Cloud {
-		static inline TArray<FString> Blacklisted = {
-			"AnimBlueprintGeneratedClass",
-			"BlueprintGeneratedClass",
-			"WidgetBlueprintGeneratedClass",
-		};
+		static inline TArray<FString> Blacklisted = { };
 
 		static bool Allowed(const FString& Type);
 	};
