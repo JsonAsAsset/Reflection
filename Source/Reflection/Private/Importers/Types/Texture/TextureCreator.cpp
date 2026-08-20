@@ -489,6 +489,12 @@ bool FTextureCreator::BuildSourceFromRawMip(UTexture* Texture, const TArray<uint
 
 	Texture->UpdateResource();
 
+	/* An import keeps the editor drawn while it waits on the Cloud, so the renderer is drawing the
+	 * whole time this runs, and updating a texture swaps the resource a material has already cached
+	 * the handles of. Waited on here, so the swap is finished before the next thing drawn can read
+	 * what a material points at. */
+	FlushRenderingCommands();
+
 	return true;
 }
 
