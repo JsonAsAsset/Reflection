@@ -25,17 +25,9 @@
 
 Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
+### [Tutorial](https://www.youtube.com/watch?v=M28If8DOUXk)
+
 <a href="#"><img width="1000" alt="image" src="https://github.com/user-attachments/assets/c27df423-eeb1-4025-9c69-3231e59b646a"/></a>
-
-
-### Use
-
-* Importing **materials**, data assets, and data tables — [see more](#asset-types)
-* Porting **physics assets** for skeletal meshes
-* Porting **sound effects** to Unreal Engine
-* Automating asset porting workflows
-
-This project aims to streamline the porting and modding experience, making it easier to bring game assets into Unreal Engine.
 
 -----------------
 
@@ -44,6 +36,16 @@ This project aims to streamline the porting and modding experience, making it ea
 > 1. [Asset Types](#asset-types)  
 > 2. [Installation](#installation)  
 > 3. [→ Workflow](#workflow)
+
+-----------------
+
+### Uses
+* Importing **materials**, data assets, and data tables — [see more](#asset-types)
+* Porting **physics assets** for skeletal meshes
+* Porting **sound effects** to Unreal Engine
+* Automating asset porting workflows
+
+This project aims to streamline the porting and modding experience, making it easier to bring game assets into Unreal Engine.
 
 -----------------
 
@@ -106,8 +108,6 @@ See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/U
 > If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
 
 We strongly recommend using the latest **commit** of Reflection to ensure compatibility with recent Unreal updates and access to the newest features.
-
-### [Tutorial](https://www.youtube.com/watch?v=M28If8DOUXk)
 
 Follow these steps to install **Reflection**:
 
