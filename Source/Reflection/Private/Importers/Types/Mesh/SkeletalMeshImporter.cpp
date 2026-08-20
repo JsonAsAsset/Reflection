@@ -41,6 +41,24 @@
 #endif
 
 UObject* ISkeletalMeshImporter::CreateAsset(UObject* CreatedAsset) {
+	/* Reflecting the same mesh twice lands on the package the first import wrote, and making an
+	 * object over one already sitting there destroys the one already sitting there: the name is
+	 * taken, so the engine tears the old mesh down where it stands and builds the new one in its
+	 * place. The Content Browser draws that mesh through a component whose mesh object holds its
+	 * render data by pointer, and nothing tells the pointer. The vertex factories that object made
+	 * are then released against freed memory, the release is skipped, and deleting the object
+	 * afterwards stops the editor on a render resource that was never released.
+	 *
+	 * Moved aside rather than destroyed: whatever is still drawing the old mesh keeps a mesh that
+	 * is still there to draw, and it goes on its own once nothing is. */
+	if (UObject* Existing = StaticFindObjectFast(USkeletalMesh::StaticClass(), GetPackage(), StringToName(GetAssetName()))) {
+		Existing->Rename(
+			nullptr,
+			GetTransientPackage(),
+			REN_ForceNoResetLoaders | REN_DoNotDirty | REN_DontCreateRedirectors | REN_NonTransactional
+		);
+	}
+
 	return IImporter::CreateAsset(NewObject<USkeletalMesh>(GetPackage(), USkeletalMesh::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
 
