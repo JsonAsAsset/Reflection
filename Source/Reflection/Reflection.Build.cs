@@ -190,6 +190,15 @@ public class Reflection : ModuleRules {
 			});
 		}
 
+		/* A build may carry work of its own beside the module. What that work needs comes with it,
+		 * so nothing here is asked of a build that hasn't got it. */
+		if (Directory.Exists(Path.Combine(ModuleDirectory, "Extensions"))) {
+			PrivateDependencyModuleNames.AddRange(new[] {
+				/* SObjectPropertyEntryBox and the rest of the editor's asset pickers */
+				"PropertyEditor"
+			});
+		}
+
 		if (bCurveExpression) {
 			PrivateDependencyModuleNames.AddRange(new[] {
 				/* UCurveExpressionsDataAsset, and the list its expressions are written into */

@@ -42,8 +42,22 @@ inline TMap<TArray<FString>, FImporterRegistrationInfo>& GetFactoryRegistry() {
 	return Registry;
 }
 
+/* Importers that take a type off whatever else registered it. Empty unless something in this build
+ * put itself there. */
+inline TMap<TArray<FString>, FImporterRegistrationInfo>& GetFactoryOverrides() {
+	static TMap<TArray<FString>, FImporterRegistrationInfo> Overrides;
+
+	return Overrides;
+}
+
 inline FImporterFactoryDelegate* FindFactoryForAssetType(const FString& AssetType) {
 	const UReflectionSettings* Settings = GetSettings();
+
+	for (auto& Pair : GetFactoryOverrides()) {
+		if (Pair.Key.Contains(AssetType)) {
+			return &Pair.Value.Factory;
+		}
+	}
 
 	for (auto& Pair : GetFactoryRegistry()) {
 		if (!Settings->EnableExperiments) {

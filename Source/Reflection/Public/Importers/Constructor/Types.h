@@ -8,8 +8,6 @@ struct ImportTypes {
 	
 	struct Cloud {
 		static inline TArray<FString> Blacklisted = {
-			"AnimSequence",
-			"AnimMontage",
 			"AnimBlueprintGeneratedClass",
 			"BlueprintGeneratedClass",
 			"WidgetBlueprintGeneratedClass",

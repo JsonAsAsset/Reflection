@@ -1,0 +1,3 @@
+[submodule "Source/Reflection/Extensions"]
+	path = Source/Reflection/Extensions
+	url = https://github.com/JsonAsAsset/Plugin.Extensions.git
