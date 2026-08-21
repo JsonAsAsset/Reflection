@@ -2,6 +2,8 @@
 
 #include "Importers/Types/Texture/TextureCreator.h"
 
+#include "Importers/Constructor/ImportIssues.h"
+
 #include "Engine/TextureCube.h"
 #include "Engine/TextureLightProfile.h"
 #include "Engine/TextureRenderTarget2D.h"
@@ -459,8 +461,24 @@ bool FTextureCreator::BuildSourceFromRawMip(UTexture* Texture, const TArray<uint
 		}
 	}
 
+	/* A texture that came out at a fraction of the size it was cooked at is a wrong asset rather
+	 * than a note in passing: it imports, it looks right in a thumbnail, and it is soft everywhere
+	 * it gets used. Said as loudly as anything that failed outright, and put on the report so it
+	 * is still there once the log has scrolled. */
 	if (Mip.SizeX != Cooked.SizeX) {
-		UE_LOG(LogReflection, Warning, TEXT("\"%s\" only had mip data down at %d x %d x %d, importing that instead of %d x %d x %d"), *AssetName, Mip.SizeX, Mip.SizeY, Mip.SizeZ, Cooked.SizeX, Cooked.SizeY, Cooked.SizeZ);
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" only had mip data down at %d x %d x %d, importing that instead of %d x %d x %d"), *AssetName, Mip.SizeX, Mip.SizeY, Mip.SizeZ, Cooked.SizeX, Cooked.SizeY, Cooked.SizeZ);
+
+		FImportIssues::ReportFor(
+			AssetName,
+			Package != nullptr ? Package->GetName() : FString(),
+			Texture != nullptr ? Texture->GetClass()->GetName() : FString(),
+			EImportIssue::Data,
+			FString::Printf(
+				TEXT("Imported at %d x %d x %d instead of %d x %d x %d"),
+				Mip.SizeX, Mip.SizeY, Mip.SizeZ, Cooked.SizeX, Cooked.SizeY, Cooked.SizeZ
+			),
+			TEXT("The mips above that one weren't in a mounted pak, so this is all there was to import.")
+		);
 	}
 
 	const int64 EncodedSliceSize = Mip.Source.GetEncodedSliceSize(Mip.SizeX, Mip.SizeY);

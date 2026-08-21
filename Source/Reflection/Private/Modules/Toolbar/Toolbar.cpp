@@ -10,6 +10,7 @@
 #include "Modules/UI/StyleModule.h"
 #include "ContentBrowserModule.h"
 #include "Engine/AssetCompatibility.h"
+#include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/ImportJob.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Modules/Metadata.h"
@@ -196,6 +197,11 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 			TArray<FAssetData> SelectedAssets;
 			ContentBrowser.Get().GetSelectedAssets(SelectedAssets);
 
+			/* Reached without going through either reflect tool, so the report is opened and
+			 * closed here as well, or whatever the selection had to say would sit unshown until
+			 * the next run cleared it */
+			FImportIssues::Begin();
+
 			/* One at a time, so a miss does not take the rest of the selection with it */
 			for (const FAssetData& AssetData : SelectedAssets) {
 				const FString ObjectPath = GetAssetObjectPath(AssetData);
@@ -203,6 +209,8 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 
 				TToolImportFromPath::Import(ObjectPath);
 			}
+
+			FImportIssues::Finish();
 		}
 	);
 

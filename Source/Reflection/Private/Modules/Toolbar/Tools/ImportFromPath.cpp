@@ -78,6 +78,28 @@ bool TToolImportFromPath::Import(const FString& InPath, const TSet<FString>& All
 		return false;
 	}
 
+	FString AssetName;
+	PackagePath.Split(TEXT("/"), nullptr, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
+
+	/* Put on the report as well as in the log. A path Cloud has nothing at is the ordinary way a
+	 * reflect comes back with nothing, and the notification only ever says how many, so the reason
+	 * lived in the output log and nowhere a person would think to look. */
+	const auto ReportUnreachable = [&AssetName, &PackagePath, &InPath](const EImportIssue Kind, const TCHAR* Summary) {
+		UE_LOG(LogReflection, Error, TEXT("%s: \"%s\""), Summary, *PackagePath);
+
+		const FString Pasted = InPath.TrimStartAndEnd();
+
+		FImportIssues::ReportFor(
+			AssetName.IsEmpty() ? PackagePath : AssetName,
+			PackagePath,
+			FString(),
+			Kind,
+			Summary,
+			/* Only worth saying when the path was cut down to get here */
+			Pasted == PackagePath ? FString() : TEXT("Reflected from ") + Pasted
+		);
+	};
+
 	/* Reached straight off a menu click, so nothing here has a continuation to hand a callback to.
 	 * The scope is what keeps the editor drawn and cancellable while the requests run. */
 	const FBlockingRequestScope BlockingScope(FText::Format(
@@ -87,14 +109,14 @@ bool TToolImportFromPath::Import(const FString& InPath, const TSet<FString>& All
 
 	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRawBlocking(PackagePath);
 	if (Response == nullptr || !Response->HasField(TEXT("exports"))) {
-		UE_LOG(LogReflection, Error, TEXT("Cloud has nothing at \"%s\""), *PackagePath);
+		ReportUnreachable(EImportIssue::MissingAsset, TEXT("Cloud has nothing at this path"));
 
 		return false;
 	}
 
 	const TArray<TSharedPtr<FJsonValue>> Exports = Response->GetArrayField(TEXT("exports"));
 	if (Exports.Num() == 0) {
-		UE_LOG(LogReflection, Error, TEXT("Cloud has nothing at \"%s\""), *PackagePath);
+		ReportUnreachable(EImportIssue::MissingAsset, TEXT("Cloud has nothing at this path"));
 
 		return false;
 	}
@@ -103,6 +125,8 @@ bool TToolImportFromPath::Import(const FString& InPath, const TSet<FString>& All
 
 	FString Type;
 	if (!Export.IsValid() || !Export->TryGetStringField(TEXT("Type"), Type)) {
+		ReportUnreachable(EImportIssue::Data, TEXT("Cloud returned an export with no type"));
+
 		return false;
 	}
 
@@ -113,9 +137,6 @@ bool TToolImportFromPath::Import(const FString& InPath, const TSet<FString>& All
 
 		return false;
 	}
-
-	FString AssetName;
-	PackagePath.Split(TEXT("/"), nullptr, &AssetName, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 
 	if (FTextureTypes::IsSupported(Type)) {
 		UTexture* Texture = nullptr;
