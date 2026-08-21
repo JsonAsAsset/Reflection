@@ -192,9 +192,6 @@ Anything that couldn't be rebuilt is collected into a **Reflection Errors** wind
 | **A whole folder of the game files** | **Folder**, under the Reflection dropdown. Reflects everything under a game path, not one in your project. |
 | **JSON files off disk** | Save an asset out of FModel with `Save Properties`, then use **Reflect Folder of JSON Files** under the Reflection dropdown's Asset Tools. |
 
-> [!TIP]
-> Prefer the old file picker? Set `bCloudServer` to `false` in [Reflection.Build.cs](Source/Reflection/Reflection.Build.cs) and rebuild, the Reflection button then asks for a JSON file instead of a path. Nothing else about Cloud changes.
-
 -----------------
 
 <a name="contributors"></a>
