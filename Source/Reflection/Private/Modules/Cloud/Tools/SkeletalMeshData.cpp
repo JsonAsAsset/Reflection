@@ -11,7 +11,11 @@
 
 /* Profiles are two halves: the entries on the mesh, the weights on the imported model */
 #if UE4_27_AND_UE5
+#if UE5_8_BEYOND
+#include "Rendering/SkinWeightProfile.h"
+#else
 #include "Animation/SkinWeightProfile.h"
+#endif
 #include "GPUSkinPublicDefs.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Rendering/SkeletalMeshModel.h"

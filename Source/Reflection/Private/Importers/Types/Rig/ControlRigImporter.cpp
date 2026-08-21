@@ -5,7 +5,13 @@
 #if REFLECTION_CONTROL_RIG
 
 #include "ControlRig.h"
+
+#if UE5_7_BEYOND
+#include "ControlRigBlueprintLegacy.h"
+#else
 #include "ControlRigBlueprint.h"
+#endif
+
 #include "ControlRigBlueprintFactory.h"
 #include "Rigs/RigHierarchyController.h"
 

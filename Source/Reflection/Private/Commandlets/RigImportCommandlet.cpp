@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "RigImportCommandlet.h"
+#include "Engine/Compatibility.h"
 
 #if REFLECTION_CONTROL_RIG
 
@@ -10,7 +11,11 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/SettingsAccess.h"
 
+#if UE5_7_BEYOND
+#include "ControlRigBlueprintLegacy.h"
+#else
 #include "ControlRigBlueprint.h"
+#endif
 #include "Engine/SkeletalMesh.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "Rendering/SkeletalMeshLODModel.h"
@@ -94,16 +99,22 @@ static void ReportDna(USkeletalMesh* Mesh, const TCHAR* Prefix) {
 		UDNAAsset* DNAAsset = Cast<UDNAAsset>(Entry);
 		if (DNAAsset == nullptr) continue;
 
+#if UE5_8_BEYOND
+		const FString& DnaFileName = DNAAsset->DnaFileName_DEPRECATED;
+#else
+		const FString& DnaFileName = DNAAsset->DnaFileName;
+#endif
+
 		const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
 
 		if (!Behavior.IsValid()) {
-			UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': no behavior"), Prefix, *DNAAsset->DnaFileName);
+			UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': no behavior"), Prefix, *DnaFileName);
 
 			continue;
 		}
 
 		UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': name %s, db %s, %d lods, %d joints, %d blend shapes, %d raw controls, %d meshes"),
-			Prefix, *DNAAsset->DnaFileName, *Behavior->GetName(), *Behavior->GetDBName(),
+			Prefix, *DnaFileName, *Behavior->GetName(), *Behavior->GetDBName(),
 			Behavior->GetLODCount(), Behavior->GetJointCount(), Behavior->GetBlendShapeChannelCount(),
 			Behavior->GetRawControlCount(), Behavior->GetMeshCount());
 
@@ -178,7 +189,11 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 
 	FRigLogic RigLogic(Behavior.Get());
 
+#if UE5_5_BEYOND
+	const TArrayView<const float> Neutral = RigLogic.GetNeutralJointValues();
+#else
 	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+#endif
 	const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
 
 	int32 Compared = 0;
@@ -1663,8 +1678,14 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 				const FRigVMExecuteOp& Op = Code.GetOpAt<FRigVMExecuteOp>(Instruction);
 				const TArray<const FRigVMFunction*>& Functions = VM->GetFunctions();
 
-				if (Functions.IsValidIndex(Op.FunctionIndex) && Functions[Op.FunctionIndex] != nullptr) {
-					Calls.FindOrAdd(Functions[Op.FunctionIndex]->Name)++;
+#if UE5_8_BEYOND
+				const int32 FunctionIndex = Op.CallableIndex;
+#else
+				const int32 FunctionIndex = Op.FunctionIndex;
+#endif
+
+				if (Functions.IsValidIndex(FunctionIndex) && Functions[FunctionIndex] != nullptr) {
+					Calls.FindOrAdd(Functions[FunctionIndex]->Name)++;
 				}
 			}
 
