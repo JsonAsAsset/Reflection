@@ -5,7 +5,7 @@
 #if REFLECTION_CONTROL_RIG
 
 #include "ControlRig.h"
-#include "ControlRigBlueprint.h"
+#include "Engine/ControlRigCompatibility.h"
 #include "ControlRigBlueprintFactory.h"
 #include "Rigs/RigHierarchyController.h"
 

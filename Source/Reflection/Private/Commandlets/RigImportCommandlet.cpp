@@ -10,7 +10,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/SettingsAccess.h"
 
-#include "ControlRigBlueprint.h"
+#include "Engine/ControlRigCompatibility.h"
 #include "Engine/SkeletalMesh.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "Rendering/SkeletalMeshLODModel.h"
@@ -40,7 +40,7 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "DNAAsset.h"
 #include "DNAReader.h"
-#include "RigLogic.h"
+#include "Engine/RigLogicCompatibility.h"
 #include "SkelMeshDNAUtils.h"
 #endif
 #if UE5_1_BEYOND
@@ -178,7 +178,7 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 
 	FRigLogic RigLogic(Behavior.Get());
 
-	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+	const TArrayView<const float> Neutral = GetDnaNeutralJoints(RigLogic);
 	const FReferenceSkeleton& RefSkeleton = Mesh->GetRefSkeleton();
 
 	int32 Compared = 0;

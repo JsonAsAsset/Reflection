@@ -12,8 +12,7 @@
 #include "DNAAssetUserData.h"
 #endif
 #include "DNAUtils.h"
-#include "RigLogic.h"
-#include "RigInstance.h"
+#include "Engine/RigLogicCompatibility.h"
 #include "SkelMeshDNAUtils.h"
 #include "FMemoryResource.h"
 #include "riglogic/RigLogic.h"
@@ -694,7 +693,7 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 	 * two do not report a rotation the same way round, and this is the pair that has to agree. */
 	FRigLogic RigLogic(Behavior.Get());
 
-	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+	const TArrayView<const float> Neutral = GetDnaNeutralJoints(RigLogic);
 
 	int32 Aligned = 0;
 
@@ -751,7 +750,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	FRigLogic RigLogic(Behavior.Get());
 	FRigInstance Instance(&RigLogic);
 
-	const TArrayView<const float> Neutral = RigLogic.GetRawNeutralJointValues();
+	const TArrayView<const float> Neutral = GetDnaNeutralJoints(RigLogic);
 
 	/* A DNA names the joints it drives, and the mesh knows them as bones. Only those get a track:
 	 * everything else stays wherever the pose it is played over left it. */
@@ -823,7 +822,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 		RigLogic.Calculate(&Instance);
 
-		WriteFrame(Instance.GetRawJointOutputs());
+		WriteFrame(GetDnaJointOutputs(Instance));
 
 		/* A control is named with a dot between its group and itself, which reads as a path
 		 * everywhere a curve name is typed */

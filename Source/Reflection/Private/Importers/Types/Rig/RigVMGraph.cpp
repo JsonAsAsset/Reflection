@@ -4,7 +4,7 @@
 
 #if REFLECTION_CONTROL_RIG
 
-#include "ControlRigBlueprint.h"
+#include "Engine/ControlRigCompatibility.h"
 
 #include "RigVMCore/RigVMDispatchFactory.h"
 #include "RigVMCore/RigVMRegistry.h"
@@ -17,12 +17,37 @@
 #include "Serializers/PropertySerializer.h"
 
 namespace {
-	/* The registry grew a read and a write half in 5.5, and every use here only reads */
+	/* The registry grew a read and a write half in 5.5, and every use here only reads. 5.7 deleted
+	 * both halves again and put the locking back behind the registry's own accessors, so the plain
+	 * one is what to ask for either side of that. */
 	FORCEINLINE decltype(auto) GetRigVMRegistry() {
-#if UE5_5_BEYOND
+#if UE5_5_BEYOND && !UE5_7_BEYOND
 		return FRigVMRegistry::GetForRead();
 #else
 		return FRigVMRegistry::Get();
+#endif
+	}
+
+	/* What a dispatch's arguments are called, and what the argument behind an operand is called.
+	 *
+	 * 5.7 made both of these take the registry handle the caller is reading under rather than
+	 * reach for the registry themselves. Taken by value so the read lock is only held for as long
+	 * as the copy takes, which is what the engine does with them too. */
+	TArray<FRigVMTemplateArgumentInfo> GetFactoryArgumentInfos(const FRigVMDispatchFactory* Factory) {
+#if UE5_7_BEYOND
+		FRigVMRegistryReadLock ReadLock(FRigVMRegistry::Get());
+		return Factory->GetArgumentInfos(ReadLock);
+#else
+		return Factory->GetArgumentInfos();
+#endif
+	}
+
+	FName GetFunctionArgumentName(const FRigVMFunction* Function, const int32 OperandIndex, const int32 OperandCount) {
+#if UE5_7_BEYOND
+		FRigVMRegistryReadLock ReadLock(FRigVMRegistry::Get());
+		return Function->GetArgumentNameForOperandIndex(OperandIndex, OperandCount, ReadLock);
+#else
+		return Function->GetArgumentNameForOperandIndex(OperandIndex, OperandCount);
 #endif
 	}
 
@@ -466,7 +491,7 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 			}
 
 			if (Function->Factory != nullptr) {
-				for (const FRigVMTemplateArgumentInfo& Info : Function->Factory->GetArgumentInfos()) {
+				for (const FRigVMTemplateArgumentInfo& Info : GetFactoryArgumentInfos(Function->Factory)) {
 					if (Info.Name.ToString() == ArgumentName) {
 						return Info.Direction == ERigVMPinDirection::Output || Info.Direction == ERigVMPinDirection::IO;
 					}
@@ -512,7 +537,7 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 				Node.ArgumentIsOutput.Add(true);
 			} else {
 				for (int32 OperandIndex = 0; OperandIndex < OperandCount; ++OperandIndex) {
-					const FString ArgumentName = Function->GetArgumentNameForOperandIndex(OperandIndex, OperandCount).ToString();
+					const FString ArgumentName = GetFunctionArgumentName(Function, OperandIndex, OperandCount).ToString();
 
 					Node.Arguments.Add(ArgumentName);
 					Node.ArgumentIsOutput.Add(IsOutputArgument(ArgumentName));
