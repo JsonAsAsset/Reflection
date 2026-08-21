@@ -3,8 +3,6 @@
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 
 #include "Importers/Constructor/Importer.h"
-#include "Importers/Constructor/ImportJob.h"
-#include "Importers/Constructor/ImportReader.h"
 
 #if ENGINE_UE4
 #include "Modules/Toolbar/Dropdowns/CloudToolsDropdownBuilder.h"
@@ -48,34 +46,6 @@ void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 						FExecuteAction::CreateLambda([] {
 							TToolFixUpAssetData* Tool = new TToolFixUpAssetData();
 							Tool->Execute();
-						})
-					),
-					NAME_None
-				);
-
-				InnerMenuBuilder.AddMenuEntry(
-					FText::FromString("Reflect Folder of JSON Files"),
-					FText::FromString(""),
-					FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
-
-					FUIAction(
-						FExecuteAction::CreateLambda([] {
-							TArray<FString> JsonFiles;
-
-							for (const FString& Folder : OpenFolderDialog("Folder of JSON files")) {
-								IFileManager::Get().FindFilesRecursive(
-									JsonFiles,
-									*Folder,
-									TEXT("*.json"),
-									true,
-									true,
-									/* bClearFileNames */ false
-								);
-							}
-
-							/* A folder of JSON is exactly the case that used to lock the editor up
-							 * for minutes, so it goes through the sliced job */
-							FImportJob::Enqueue(JsonFiles);
 						})
 					),
 					NAME_None

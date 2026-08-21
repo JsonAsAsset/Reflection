@@ -2,8 +2,6 @@
 
 #include "Importers/Constructor/Graph/SoundGraph.h"
 
-#include "AssetToolsModule.h"
-#include "IAssetTools.h"
 #include "Misc/MessageDialog.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Sound/SoundCue.h"
@@ -259,26 +257,21 @@ void ISoundGraph::SetupNodes(const USoundCue* SoundCueAsset, TMap<FString, USoun
 					continue;
 				}
 
-				USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
-				
-				/* Already exists */
+				TObjectPtr<USoundWave> SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
+
+				/* Asked for the way every other reference is, so a wave under a cue comes through
+				 * the wave importer and lands with its settings on it like one reflected on its own */
+				if (SoundWave == nullptr) {
+					FString WavePath;
+					FString WaveName; {
+						AssetPtr.Split(".", &WavePath, &WaveName);
+					}
+
+					SoundWave = DownloadWrapper<USoundWave>(SoundWave, TEXT("SoundWave"), WaveName, WavePath);
+				}
+
 				if (SoundWave != nullptr) {
 					WavePlayerNode->SetSoundWave(SoundWave);
-				} else {
-					const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRawBlocking(AssetPtr, {
-						{
-							"save",
-							"true"
-						}
-					});
-					
-					if (Response == nullptr) continue;
-
-					FString SavePath;
-
-					if (!Response->TryGetStringField(TEXT("file"), SavePath)) continue;
-
-					OnDownloadSoundWave(SavePath, AssetPtr, WavePlayerNode);
 				}
 			}
 		}
@@ -313,61 +306,4 @@ void ISoundGraph::ConnectSoundNode(const USoundNode* NodeToConnect, const USound
 	}
 
 	ConnectEdGraphNode(NodeToConnect->GetGraphNode(), NodeToConnectTo->GetGraphNode(), Pin);
-}
-
-void ISoundGraph::OnDownloadSoundWave(const FString& SavePath, FString AssetPtr, USoundNodeWavePlayer* Node) {
-	/* Waves reach here on their own as well as through a cue, and they are what the groups act on */
-	NotifySoundGroupsUnconfigured();
-
-	if (!FPaths::FileExists(SavePath)) {
-		FImportIssues::Report(EImportIssue::MissingAsset, TEXT("Couldn't download a sound wave"), AssetPtr);
-
-		return;
-	}
-
-	IAssetTools& AssetTools = FModuleManager::GetModuleChecked<FAssetToolsModule>("AssetTools").Get();
-	UAutomatedAssetImportData* ImportData = NewObject<UAutomatedAssetImportData>();
-	ImportData->Filenames.Add(SavePath);
-	
-	FRRedirects::Redirect(AssetPtr);
-	
-	ImportData->DestinationPath = FPaths::GetPath(AssetPtr);
-	ImportData->bReplaceExisting = true;
-	
-	auto AssetsImported = AssetTools.ImportAssetsAutomated(ImportData);
-	if (!AssetsImported.IsValidIndex(0)) {
-		USoundWave* SoundWave = LoadObjectByPath<USoundWave>(AssetPtr);
-		if (Node) {
-			Node->SetSoundWave(SoundWave);
-		}
-		
-		return;
-	}
-	
-	USoundWave* ImportedWave = Cast<USoundWave>(AssetsImported[0]);
-
-	if (!ImportedWave) {
-		FImportIssues::Report(EImportIssue::Failed, TEXT("Couldn't reflect a sound wave"), AssetPtr);
-
-		return;
-	}
-
-	ImportedWave->AssetImportData = nullptr;
-
-	if (Node) {
-		Node->SetSoundWave(ImportedWave);
-	}
-
-	const FString Type = "SoundWave";
-	const FSlateBrush* IconBrush = FSlateIconFinder::FindCustomIconBrushForClass(FindObject<UClass>(nullptr, *("/Script/Engine." + Type)), TEXT("ClassThumbnail"));
-
-	AppendNotification(
-		FText::FromString("Sound Downloaded: " + ImportedWave->GetName()),
-		FText::FromString(""),
-		2.0f,
-		IconBrush,
-		SNotificationItem::CS_Success,
-		false,
-		310.0f
-	);
 }

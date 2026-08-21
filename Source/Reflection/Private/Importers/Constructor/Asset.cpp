@@ -20,7 +20,6 @@
 #include "Engine/FontFace.h"
 #include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/ImportReader.h"
-#include "Importers/Constructor/Graph/SoundGraph.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/Runtime.h"
 
@@ -285,21 +284,6 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 
 		if (Response->HasField(TEXT("errored"))) {
 			UE_LOG(LogReflection, Log, TEXT("Error from response \"%s\""), *Path);
-			return true;
-		}
-
-		if (Type == "SoundWave") {
-			const TSharedPtr<FJsonObject> ObjectResponse = Cloud::Export::GetRawBlocking(Path, {
-				{
-					"save",
-					"true"
-				}
-			});
-					
-			if (ObjectResponse == nullptr) return true;
-					
-			ISoundGraph::OnDownloadSoundWave(ObjectResponse->GetStringField(TEXT("file")), Path, nullptr);
-			
 			return true;
 		}
 
