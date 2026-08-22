@@ -48,6 +48,16 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_DNA_USER_DATA=" + (bDnaUserData ? "1" : "0"));
 
+		/* Newer RigLogic converts a DNA into UE's axes as RigLogic reads it, through a wrapper the
+		 * engine puts between the two, and its anim node writes the pose without flipping anything
+		 * itself. Older engines hand the DNA straight to RigLogic and let the node do the axes. So
+		 * anything evaluating the rig outside the node has to know which of the two it is looking
+		 * at, or it reads every rotation and every sideways offset the wrong way round. */
+		var bUeSpaceReader = bRigLogic && File.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic",
+			"Source", "RigLogicModule", "Public", "RigLogicDNAReader.h"));
+
+		PublicDefinitions.Add("REFLECTION_RIG_LOGIC_UE_SPACE_READER=" + (bUeSpaceReader ? "1" : "0"));
+
 		/* CurveExpression compiles the arithmetic that drives one curve from others. It started out
 		 * an experimental plugin and has been promoted since, so both homes are looked at. */
 		var bCurveExpression = false;

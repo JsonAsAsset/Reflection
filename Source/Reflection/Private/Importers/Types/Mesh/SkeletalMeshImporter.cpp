@@ -622,8 +622,27 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 }
 
 #if REFLECTION_RIG_LOGIC
-/* What RigLogic hands back per joint: translation, rotation and scale, three floats each */
-static constexpr int32 GDnaJointAttributes = 9;
+/* What RigLogic hands back per joint, which is not the same on every engine.
+ *
+ * Up to 5.6 it is nine floats, translation, euler rotation and scale, three each and the anim
+ * node is what puts them in UE axes as it writes the pose. From 5.7 rotation comes back as a
+ * quaternion instead, which makes it ten, moves scale along by one, and leaves the node nothing to
+ * flip because RigLogicDNAReader already did it on the way in.
+ *
+ * Read off the data rather than off a version macro: the neutral pose is one entry per attribute
+ * per joint, so its length over the joint count is the stride, whatever engine produced it. */
+static constexpr int32 GDnaJointAttributesEuler = 9;
+static constexpr int32 GDnaJointAttributesQuaternion = 10;
+
+static int32 DnaJointAttributeCount(const TArrayView<const float>& Neutral, const int32 JointCount) {
+	if (JointCount <= 0) {
+		return GDnaJointAttributesEuler;
+	}
+
+	return (Neutral.Num() / JointCount) >= GDnaJointAttributesQuaternion
+		? GDnaJointAttributesQuaternion
+		: GDnaJointAttributesEuler;
+}
 
 namespace {
 	/* A joint's local transform: the DNA's neutral, then whatever the controls evaluated to on top.
@@ -631,10 +650,42 @@ namespace {
 	 * These are the signs FAnimNode_RigLogic uses, and they have to be: by the time anything reads
 	 * a joint here the DNA has already been rewritten into that node's axes, so reading it any
 	 * other way inverts every rotation and every sideways offset. */
-	FTransform ComposeDnaJoint(const TArrayView<const float>& Neutral, const TArrayView<const float>& Delta, const int32 Attribute) {
+	FTransform ComposeDnaJoint(const TArrayView<const float>& Neutral, const TArrayView<const float>& Delta, const int32 Attribute, const int32 Stride) {
 		const auto Read = [](const TArrayView<const float>& Values, const int32 Index) {
 			return Values.IsValidIndex(Index) ? Values[Index] : 0.0f;
 		};
+
+		/* 5.7 and up: rotation is a quaternion at 3..6 with scale behind it, and everything is
+		 * already in the node's axes, so nothing is negated here */
+		if (Stride >= GDnaJointAttributesQuaternion) {
+			const FVector QTranslation(
+				Read(Neutral, Attribute + 0) + Read(Delta, Attribute + 0),
+				Read(Neutral, Attribute + 1) + Read(Delta, Attribute + 1),
+				Read(Neutral, Attribute + 2) + Read(Delta, Attribute + 2)
+			);
+
+			/* A rotation that isn't there reads as four zeroes, and a zero quaternion is not a
+			 * rotation at all: composed as one it multiplies the neutral away rather than leaving
+			 * it where it is. The base pose is written with no deltas at all, so that frame is
+			 * exactly where it shows. Euler never had the problem, three zero angles are the
+			 * identity which is why it only appears once rotation comes back as a quaternion. */
+			const auto ReadRotation = [&Read](const TArrayView<const float>& Values, const int32 At) {
+				const FQuat Quaternion(Read(Values, At + 3), Read(Values, At + 4), Read(Values, At + 5), Read(Values, At + 6));
+
+				return Quaternion.SizeSquared() > SMALL_NUMBER ? Quaternion.GetNormalized() : FQuat::Identity;
+			};
+
+			const FQuat QRotation = ReadRotation(Neutral, Attribute) * ReadRotation(Delta, Attribute);
+
+			const FVector QScale(
+				Read(Neutral, Attribute + 7) + Read(Delta, Attribute + 7),
+				Read(Neutral, Attribute + 8) + Read(Delta, Attribute + 8),
+				Read(Neutral, Attribute + 9) + Read(Delta, Attribute + 9)
+			);
+
+
+			return FTransform(QRotation, QTranslation, QScale);
+		}
 
 		const FVector Translation(
 			Read(Neutral, Attribute + 0) + Read(Delta, Attribute + 0),
@@ -744,9 +795,10 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 	 * on its side. Only the joints are taken, in the frame the skeleton already has them. */
 	/* The same numbers the rig evaluates against, rather than the reader's own accessors: those
 	 * two do not report a rotation the same way round, and this is the pair that has to agree. */
-	FRigLogic RigLogic(Behavior.Get());
+	FRigLogic RigLogic = MakeDnaRigLogic(Behavior);
 
 	const TArrayView<const float> Neutral = GetDnaNeutralJoints(RigLogic);
+	const int32 Stride = DnaJointAttributeCount(Neutral, Behavior->GetJointCount());
 
 	int32 Aligned = 0;
 
@@ -763,7 +815,7 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 		if (Bone == INDEX_NONE) continue;
 
 		/* Where the rig rests, which is where the mesh has to be bound */
-		Modifier.UpdateRefPoseTransform(Bone, ComposeDnaJoint(Neutral, {}, Joint * GDnaJointAttributes));
+		Modifier.UpdateRefPoseTransform(Bone, ComposeDnaJoint(Neutral, {}, Joint * Stride, Stride));
 
 		Aligned++;
 	}
@@ -800,10 +852,16 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 		return nullptr;
 	}
 
-	FRigLogic RigLogic(Behavior.Get());
+	FRigLogic RigLogic = MakeDnaRigLogic(Behavior);
 	FRigInstance Instance(&RigLogic);
 
 	const TArrayView<const float> Neutral = GetDnaNeutralJoints(RigLogic);
+	const int32 Stride = DnaJointAttributeCount(Neutral, Behavior->GetJointCount());
+
+	UE_LOG(LogReflection, Display,
+		TEXT("\"%s\" rig reports %d attribute(s) per joint (%s rotation)"),
+		*GetAssetName(), Stride,
+		Stride >= GDnaJointAttributesQuaternion ? TEXT("quaternion") : TEXT("euler"));
 
 	/* A DNA names the joints it drives, and the mesh knows them as bones. Only those get a track:
 	 * everything else stays wherever the pose it is played over left it. */
@@ -855,7 +913,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	 * bone. The mesh is bound to the same neutral these are composed from. */
 	const auto WriteFrame = [&](const TArrayView<const float>& Delta) {
 		for (int32 Bone = 0; Bone < BoneNames.Num(); ++Bone) {
-			const FTransform Local = ComposeDnaJoint(Neutral, Delta, BoneJoints[Bone] * GDnaJointAttributes);
+			const FTransform Local = ComposeDnaJoint(Neutral, Delta, BoneJoints[Bone] * Stride, Stride);
 
 			PositionKeys[Bone].Add(Local.GetTranslation());
 			RotationKeys[Bone].Add(Local.GetRotation());
