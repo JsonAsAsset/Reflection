@@ -7,6 +7,7 @@
 #include "TimerManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "Settings/Runtime.h"
+#include "Engine/Log.h"
 #include "Engine/EngineUtilities.h"
 #include "Modules/Cloud/Remote.h"
 
@@ -195,22 +196,56 @@ TSharedPtr<FJsonObject> Cloud::Export::GetReferenceSkeletonBlocking(const FStrin
 	return Response;
 }
 
+/* Fortnite cooks its heads with a RigLogic newer than this engine's. That cook leaves the DNA's
+ * behavior layer empty and bakes the rig into a RigLogic dump behind it, at a file version and with
+ * layers this RigLogic has never seen, so the DNA as packaged reads as a face that has joints, a
+ * neutral pose, and nothing to move them with.
+ *
+ * Everything the behavior layer held is still in that dump, only rearranged, so the Cloud can put
+ * the layer back and write the result at a version this engine does read. Ask for that where the
+ * engine needs it, and take the DNA as packaged where it does not.
+ *
+ * A rig in a shape the Cloud does not recognise is refused rather than guessed at, so a failure
+ * falls back to the packaged DNA: a head that holds still beats no head. */
 TArray<uint8> Cloud::Export::GetDnaBlocking(const FString& Path) {
-	const FReflectionHttpRequest Request = BuildRequest(DnaURL, { { TEXT("path"), Path } }, {});
-	Request->SetVerb(TEXT("GET"));
+	/* A lambda rather than a free function so it keeps this member's access to BuildRequest */
+	const auto Fetch = [&Path](const bool bRebuiltForThisEngine) -> TArray<uint8> {
+		TMap<FString, FString> Parameters = { { TEXT("path"), Path } };
 
-	const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+		if (bRebuiltForThisEngine) {
+			Parameters.Add(TEXT("legacy"), TEXT("true"));
+		}
 
-	if (!Response.IsValid() || Response->GetResponseCode() != 200) {
-		return {};
+		const FReflectionHttpRequest Request = BuildRequest(DnaURL, Parameters, {});
+		Request->SetVerb(TEXT("GET"));
+
+		const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+
+		if (!Response.IsValid() || Response->GetResponseCode() != 200) {
+			return {};
+		}
+
+		/* Json means the Cloud answered about the mesh rather than with a DNA */
+		if (Response->GetContentType().StartsWith(TEXT("application/json"))) {
+			return {};
+		}
+
+		return Response->GetContent();
+	};
+
+#if REFLECTION_DNA_USER_DATA
+	/* This engine's own RigLogic is what wrote the cook, so it reads it as it stands */
+	return Fetch(false);
+#else
+	if (TArray<uint8> Rebuilt = Fetch(true); Rebuilt.Num() != 0) {
+		return Rebuilt;
 	}
 
-	/* Json means the Cloud answered about the mesh rather than with a DNA */
-	if (Response->GetContentType().StartsWith(TEXT("application/json"))) {
-		return {};
-	}
+	UE_LOG(LogReflection, Warning,
+		TEXT("The rig in \"%s\" could not be rebuilt for this engine, falling back to the DNA as packaged"), *Path);
 
-	return Response->GetContent();
+	return Fetch(false);
+#endif
 }
 
 TSharedPtr<FJsonObject> Cloud::Export::GetMorphTargetsBlocking(const FString& Path) {

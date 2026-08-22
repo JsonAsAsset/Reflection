@@ -447,8 +447,19 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 	TArray<uint8> Cooked = Cloud::Export::GetDnaBlocking(FetchPath);
 
 	if (Cooked.Num() == 0) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("The mesh's DNA did not come back"),
+			TEXT("The Cloud returned nothing for this head's DNA, so there is no face rig to apply.")
+		);
+
 		return false;
 	}
+
+	/* Which DNA arrived is the first thing worth knowing when a face ends up holding still: a head
+	 * cooked by a newer RigLogic only carries a rig if the Cloud rebuilt one, and that is a
+	 * different size to the one the package ships. */
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" fetched %d byte(s) of DNA"), *GetAssetName(), Cooked.Num());
 
 	/* A DNA kept in a package of its own has a few bytes of that package's own ahead of the stream,
 	 * where one hung straight off the mesh starts at it. The reader wants the stream. */
@@ -489,9 +500,25 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 	 * animates and the design time half is simply not there to rebuild. */
 	const TSharedPtr<IDNAReader> Behavior = ReadDNAFromBuffer(&Dna, EDNADataLayer::Behavior | EDNADataLayer::MachineLearnedBehavior, 0u);
 
+	/* The only silent way out of here, and the one that leaves a mesh with no DNA on it at all */
 	if (!Behavior.IsValid()) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("RigLogic would not read the mesh's DNA"),
+			FString::Printf(
+				TEXT("'%s' came back as %d byte(s) that this engine's RigLogic rejected: %s. Nothing is put on the mesh, so it has no DNA at all."),
+				*GetAssetName(),
+				Dna.Num(),
+				ANSI_TO_TCHAR(rl4::Status::get().message)
+			)
+		);
+
 		return false;
 	}
+
+	UE_LOG(LogReflection, Display,
+		TEXT("\"%s\" read a DNA with %d joint group(s) and %d joint(s)"),
+		*GetAssetName(), Behavior->GetJointGroupCount(), Behavior->GetJointCount());
 
 #if REFLECTION_DNA_USER_DATA
 	/* Where the engine has one, the DNA belongs in a UDNA named by a UDNAAssetUserData. The anim
@@ -540,6 +567,32 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 
 	DNAAsset->DnaFileName = SkeletalMesh->GetName() + TEXT(".dna");
 	DNAAsset->SetBehaviorReader(Behavior);
+
+	/* The cook names the mesh's DNA user data by a class this engine does not have: newer RigLogic
+	 * hangs a UDNAAssetUserData off the mesh pointing at a UDNA, where this one keeps a UDNAAsset
+	 * directly. Whatever the properties made of that reference is still sitting in this array next
+	 * to the DNA that did attach, and an entry the details panel cannot draw is what reads as an
+	 * asset user data slot it does not recognise. Named here rather than guessed at. */
+	{
+		const UDNAAsset* Found = SkeletalMesh->GetAssetUserData<UDNAAsset>();
+		const TArray<UAssetUserData*>* All = SkeletalMesh->GetAssetUserDataArray();
+
+		UE_LOG(LogReflection, Display,
+			TEXT("\"%s\" attached DNA as \"MetaHuman DNA Data\": lookup %s, %d entr(ies) of asset user data"),
+			*GetAssetName(),
+			Found != nullptr ? TEXT("found it") : TEXT("FOUND NOTHING"),
+			All != nullptr ? All->Num() : -1);
+
+		if (All != nullptr) {
+			for (int32 Index = 0; Index < All->Num(); ++Index) {
+				const UAssetUserData* Entry = (*All)[Index];
+
+				UE_LOG(LogReflection, Display, TEXT("    user data %d: %s"),
+					Index,
+					Entry != nullptr ? *Entry->GetClass()->GetName() : TEXT("<empty slot>"));
+			}
+		}
+	}
 #endif
 
 	/* Some heads keep the DNA in a package of its own and only the definition with it: the names,
@@ -1101,6 +1154,13 @@ bool ISkeletalMeshImporter::Import() {
 	}
 
 	SkeletalMesh->Build();
+
+	/* The build re-makes the mesh's render data, and anything hung off the mesh before it has to
+	 * still be there afterwards */
+	UE_LOG(LogReflection, Display,
+		TEXT("\"%s\" after Build(): DNA lookup %s"),
+		*GetAssetName(),
+		SkeletalMesh->GetAssetUserData<UDNAAsset>() != nullptr ? TEXT("found it") : TEXT("FOUND NOTHING"));
 
 	/* What the build made of it, which is not the same question as whether there was anything to
 	 * build. A LOD whose influences all named bones the mesh hasn't got, or whose triangles the
