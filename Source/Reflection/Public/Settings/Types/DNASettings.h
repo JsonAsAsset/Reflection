@@ -24,39 +24,7 @@ public:
 
 	/* The curve mapping to read the correspondence out of. Any CurveExpressionsDataAsset whose curves are written in terms of the rig's controls works. */
 	UPROPERTY(EditAnywhere, DisplayName = "Curve Mapping", Config, Category = DNASettings, meta = (EditCondition = "BackportPoses", HideEditConditionToggle))
-	FString CurveMapping = TEXT("/Game/Characters/Player/Common/Fortnite_Base_Head/Facials/CurveMappings/FN_3LToLegacy_Main_Mapping");
-
-	/* A mapping says what an older head's curve is made of, not how far it should be pushed, and
-	 * taken at face value some of them overshoot: a blink driven the whole way the mapping allows
-	 * closes past the eye rather than onto it. The game gets away with it because nothing drives
-	 * those curves to one on their own.
-	 *
-	 * Turn this on to bake the poses at a strength that reads properly on its own instead, scaling
-	 * the controls behind a curve by the amount below before the rig is asked what it looks like.
-	 * A pose with no entry is baked as the mapping has it. */
-	UPROPERTY(EditAnywhere, DisplayName = "Adjust Pose Strengths", Config, Category = DNASettings, meta = (EditCondition = "BackportPoses", HideEditConditionToggle))
-	bool AdjustPoseStrengths = true;
-
-	/* How far to drive each named pose, as a fraction of what the mapping asks for. Keyed by the
-	 * curve's name, which is matched however it is typed. */
-	UPROPERTY(EditAnywhere, DisplayName = "Pose Strengths", Config, Category = DNASettings, meta = (EditCondition = "BackportPoses && AdjustPoseStrengths", HideEditConditionToggle))
-	TMap<FString, float> PoseStrengths =
-	{
-		{ "C_glabella_down_pose", 0.7 },
-		{ "C_glabella_up_pose", 0.5 },
-		
-		{ "L_blink_pose", 0.815 },
-		{ "R_blink_pose", 0.815 },
-		
-		{ "L_wide_pose", 0.7 },
-        { "R_wide_pose", 0.7 },
-
-		{ "L_frown_pose", 0.5 },
-		{ "R_frown_pose", 0.7 },
-
-		{ "R_smile_pose", 0.5 },
-		{ "L_smile_pose", 0.7 }
-	};
+	FString CurveMapping = "/Game/Characters/Player/Common/Fortnite_Base_Head/Facials/CurveMappings/FN_LegacyTo3L_Main_Mapping";
 };
 
 /* Settings for the face rig a MetaHuman head carries. */
@@ -74,7 +42,22 @@ public:
 	UPROPERTY(EditAnywhere, DisplayName = "Bake to Pose Asset", Config, Category = DNASettings)
 	bool BakeToPoseAsset = false;
 
-	/* Which poses to bake, when there is a mapping to bake them from */
-	UPROPERTY(EditAnywhere, DisplayName = "Backport", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset", HideEditConditionToggle))
+	/* Bake a pose for every column of the rig's joint matrix rather than one per control.
+	 *
+	 * The joints are that matrix times the rig's whole input vector, controls and correctives
+	 * alike, so a pose per column driven by its own column's value reproduces RigLogic exactly.
+	 * A pose per control cannot: the correctives are products of controls, and products do not
+	 * survive being scaled and added the way a pose asset scales and adds. On a MetaHuman head
+	 * that is the difference between a face that is close and one that is right.
+	 *
+	 * The correctives have to be driven, so a curve expression asset is written beside the poses
+	 * that works each of them out from the controls. Feed that the rig's control curves and the
+	 * poses it drives come out as the rig would have posed them. */
+	UPROPERTY(EditAnywhere, DisplayName = "Exact Poses", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset", HideEditConditionToggle))
+	bool ExactPoses = false;
+
+	/* Which poses to bake, when there is a mapping to bake them from. Ignored once the poses are
+	 * exact, since those are named by the rig's own controls and the mapping drives them instead. */
+	UPROPERTY(EditAnywhere, DisplayName = "Backport", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset && !ExactPoses", HideEditConditionToggle))
 	FRDnaBackportSettings Backport;
 };

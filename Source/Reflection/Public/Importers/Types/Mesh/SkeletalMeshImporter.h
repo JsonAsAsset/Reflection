@@ -77,6 +77,10 @@ private:
 
 	/* The same poses for an engine with no RigLogic, worked out by the Cloud instead of here */
 	UPoseAsset* BakeDnaPoseAssetFromCloud(USkeletalMesh* SkeletalMesh, const FString& FetchPath);
+
+	/* The curves that drive the corrective poses, which are products of controls and so cannot be
+	 * poses of their own without something to work them out */
+	UObject* WriteDnaCorrectiveCurves(const TArray<TSharedPtr<class FJsonValue>>& Correctives, const FString& Folder, const FString& Name);
 };
 
 REGISTER_IMPORTER(ISkeletalMeshImporter, {

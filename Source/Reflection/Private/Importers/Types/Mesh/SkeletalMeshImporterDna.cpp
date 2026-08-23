@@ -26,6 +26,11 @@
 #include "trio/streams/MemoryStream.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/PoseAsset.h"
+
+#if REFLECTION_CURVE_EXPRESSION
+#include "CurveExpressionsDataAsset.h"
+#include "ExpressionEvaluator.h"
+#endif
 #include "Animation/AnimData/IAnimationDataController.h"
 #endif
 
@@ -583,59 +588,54 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 
 	if (MappingPath.IsEmpty()) return false;
 
-	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetCurveExpressionsBlocking(MappingPath);
+#if REFLECTION_CURVE_EXPRESSION
+	/* The mapping is read as the asset rather than as text, and run by the engine's own evaluator,
+	 * because that is the thing that decides what these expressions mean. Reading coefficients off
+	 * them instead only works while they stay a weighted sum, and they do not: half of them clamp. */
+	UCurveExpressionsDataAsset* Mapping = LoadObject<UCurveExpressionsDataAsset>(nullptr, *MappingPath);
 
-	const TArray<TSharedPtr<FJsonValue>>* Expressions = nullptr;
+	const TSharedPtr<const FExpressionData> Data = Mapping != nullptr ? Mapping->GetCompiledExpressionData() : nullptr;
 
-	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("expressions"), Expressions)) {
+	if (!Data.IsValid() || Data->ExpressionMap.IsEmpty()) {
 		FImportIssues::Report(
 			EImportIssue::Data,
-			TEXT("The backport mapping didn't come back"),
+			TEXT("The backport mapping isn't in the project"),
 			FString::Printf(
-				TEXT("'%s' is what says how this rig's controls line up with the older head's curves. Without it the rig's own controls are baked instead."),
+				TEXT("'%s' is what says how the older head's curves drive this rig, and nothing is there to read. Import it first, or the rig's own controls are baked instead."),
 				*MappingPath)
 		);
 
 		return false;
 	}
 
+	/* A pose per curve of the older head, which is what the mapping reads rather than what it
+	 * writes: the expressions are named for this rig's controls and driven by the older head's
+	 * curves, so the curves are the constants in them.
+	 *
+	 * Taken off the compiled data rather than asked of each expression, because the call that would
+	 * ask is not one the plugin exports and nothing outside its own module can link it. */
 	const TMap<FString, uint16> ByName = MapControlsByName(Behavior);
 
-	const FRDnaSettings& DnaSettings = GetSettings()->AssetSettings.DNA;
-	const bool bAdjust = DnaSettings.Backport.AdjustPoseStrengths;
+	TArray<FName> Ordered = Data->NamedConstants;
+	Ordered.Sort(FNameLexicalLess());
 
 	int32 Unresolved = 0;
-	int32 Adjusted = 0;
 
-	for (const TSharedPtr<FJsonValue>& Value : *Expressions) {
-		const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
-		if (!Entry.IsValid()) continue;
-
-		FString Target;
-		if (!Entry->TryGetStringField(TEXT("target"), Target) || Target.IsEmpty()) continue;
-
-		const TSharedPtr<FJsonObject>* Weights = nullptr;
-		if (!Entry->TryGetObjectField(TEXT("weights"), Weights) || !Weights->IsValid()) continue;
-
+	for (const FName& Source : Ordered) {
 		FDnaPosePlan Pose;
-		Pose.Name = FName(*Target);
+		Pose.Name = Source;
 
-		/* How hard to drive this one. A map keyed by FString matches however the name was typed,
-		 * so the strengths can be written in whatever case reads best. */
-		float Strength = 1.0f;
+		/* That one curve the whole way up and nothing else, which is what the pose means */
+		const auto DriveOne = [&Source](const FName Constant) -> TOptional<float> {
+			return Constant == Source ? TOptional<float>(1.0f) : TOptional<float>(0.0f);
+		};
 
-		if (bAdjust) {
-			if (const float* Override = DnaSettings.Backport.PoseStrengths.Find(Target)) {
-				Strength = *Override;
+		for (const TTuple<FName, CurveExpression::Evaluator::FExpressionObject>& Assignment : Data->ExpressionMap) {
+			const float Value = CurveExpression::Evaluator::FEngine().Execute(Assignment.Value, DriveOne);
 
-				Adjusted++;
-			}
-		}
+			if (FMath::IsNearlyZero(Value)) continue;
 
-		for (const TPair<FString, TSharedPtr<FJsonValue>>& Weight : (*Weights)->Values) {
-			if (!Weight.Value.IsValid()) continue;
-
-			const uint16* Control = ByName.Find(Weight.Key);
+			const uint16* Control = ByName.Find(Assignment.Key.ToString());
 
 			/* A mapping covers a whole family of heads, so a curve naming a control this DNA has
 			 * not got is the mapping being broader than this face rather than a fault */
@@ -645,13 +645,7 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 				continue;
 			}
 
-			/* Scaling what the controls are driven with rather than the pose that comes out:
-			 * the rig is not linear in its controls, so asking it for a softer expression is not
-			 * the same as taking a full one and halving every bone it moved. */
-			const double Amount = Weight.Value->AsNumber() * Strength;
-			if (FMath::IsNearlyZero(Amount)) continue;
-
-			Pose.Drive.Add({ *Control, static_cast<float>(Amount) });
+			Pose.Drive.Add({ *Control, Value });
 		}
 
 		/* A curve none of whose controls this rig has is a pose that would come out as the neutral,
@@ -664,14 +658,15 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 	if (OutPlan.Num() == 0) return false;
 
 	UE_LOG(LogReflection, Display,
-		TEXT("\"%s\" backporting %d pose(s) from \"%s\"%s%s"),
+		TEXT("\"%s\" backporting %d pose(s) from \"%s\"%s"),
 		*GetAssetName(), OutPlan.Num(), *FPaths::GetBaseFilename(MappingPath),
-		Adjusted > 0 ? *FString::Printf(TEXT(", %d at an adjusted strength"), Adjusted) : TEXT(""),
 		Unresolved > 0 ? *FString::Printf(TEXT(", %d control reference(s) this DNA hasn't got"), Unresolved) : TEXT(""));
 
 	return true;
+#else
+	return false;
+#endif
 }
-
 #else
 
 bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>&, TArray<FDnaPosePlan>&) {

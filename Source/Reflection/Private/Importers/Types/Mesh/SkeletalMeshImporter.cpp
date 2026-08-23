@@ -555,7 +555,12 @@ bool ISkeletalMeshImporter::Import() {
 		bool bBakedPoses = false;
 
 		if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
-			const UPoseAsset* PoseAsset = bAppliedDna
+			/* Exact poses go through the Cloud whatever this engine has, because RigLogic will not
+			 * give a corrective's column: setting a raw control only ever recomputes the
+			 * correctives from it, so the one thing needed here is the one thing it cannot do. */
+			const bool bExact = GetSettings()->AssetSettings.DNA.ExactPoses;
+
+			const UPoseAsset* PoseAsset = bAppliedDna && !bExact
 				? BakeDnaPoseAsset(SkeletalMesh)
 				: BakeDnaPoseAssetFromCloud(SkeletalMesh, FetchPath);
 

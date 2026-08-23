@@ -23,6 +23,10 @@
 #include "Animation/AnimData/IAnimationDataController.h"
 #endif
 
+#if REFLECTION_CURVE_EXPRESSION
+#include "CurveExpressionsDataAsset.h"
+#endif
+
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/Types/DNASettings.h"
 #include "Utilities/JsonHelpers.h"
@@ -100,6 +104,90 @@ namespace {
 	}
 }
 
+/* The curve that drives each corrective pose, as an asset the engine can evaluate.
+ *
+ * A corrective is a product of controls, and that is the whole of why a pose per control cannot
+ * reproduce the rig: scaling and adding poses is linear and a product is not. Written out here as
+ * expressions rather than worked out anywhere else, so the engine's own evaluator is what computes
+ * them, from the same control curves that drive the control poses. */
+UObject* ISkeletalMeshImporter::WriteDnaCorrectiveCurves(const TArray<TSharedPtr<FJsonValue>>& Correctives, const FString& Folder, const FString& Name) {
+#if REFLECTION_CURVE_EXPRESSION
+	TArray<FString> Lines;
+	TArray<FName> Targets;
+
+	Lines.Reserve(Correctives.Num());
+
+	for (const TSharedPtr<FJsonValue>& Value : Correctives) {
+		const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
+		if (!Entry.IsValid()) continue;
+
+		FString Target, Expression;
+
+		if (!Entry->TryGetStringField(TEXT("name"), Target) || Target.IsEmpty()) continue;
+		if (!Entry->TryGetStringField(TEXT("expression"), Expression) || Expression.IsEmpty()) continue;
+
+		Target = Target.Replace(TEXT("."), TEXT("_"));
+
+		Lines.Add(FString::Printf(TEXT("%s = %s"), *Target, *Expression));
+		Targets.Add(FName(*Target));
+	}
+
+	if (Lines.Num() == 0) return nullptr;
+
+	UPackage* Package = CreatePackage(*(Folder / Name));
+	if (Package == nullptr) return nullptr;
+
+	Package->FullyLoad();
+
+	UCurveExpressionsDataAsset* Asset = NewObject<UCurveExpressionsDataAsset>(Package, FName(*Name), RF_Public | RF_Standalone);
+
+	Asset->Expressions.AssignmentExpressions = FString::Join(Lines, TEXT("\n"));
+
+	/* Compiling is private and hangs off the property changing, so it is told which one did */
+	if (FProperty* Property = FCurveExpressionList::StaticStruct()->FindPropertyByName(
+		GET_MEMBER_NAME_CHECKED(FCurveExpressionList, AssignmentExpressions))) {
+		FPropertyChangedEvent PropertyChangedEvent(Property);
+
+		Asset->PostEditChangeProperty(PropertyChangedEvent);
+	}
+
+	/* Compiling keeps only what parsed, and a corrective nothing drives is a pose that never fires */
+	TArray<FString> Rejected;
+
+	if (const TSharedPtr<const FExpressionData> Data = Asset->GetCompiledExpressionData()) {
+		for (const FName& Target : Targets) {
+			if (!Data->ExpressionMap.Contains(Target)) Rejected.Add(Target.ToString());
+		}
+	}
+
+	if (Rejected.Num() > 0) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			FString::Printf(TEXT("%d of %d corrective curves were turned down"), Rejected.Num(), Targets.Num()),
+			FString::Printf(TEXT("The engine's expression parser would not take them, so those correctives never fire and the face falls back to what the controls do on their own: %s"), *FString::Join(Rejected, TEXT(", ")))
+		);
+	}
+
+	HandleAssetCreation(Asset, Package);
+
+	if (GetSettings()->AssetSettings.SaveAssets) {
+		SavePackage(Package);
+	}
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" wrote %d corrective curve(s) into \"%s\""), *GetAssetName(), Lines.Num() - Rejected.Num(), *Name);
+
+	return Asset;
+#else
+	FImportIssues::Report(
+		EImportIssue::MissingClass,
+		TEXT("CurveExpression is not in this engine"),
+		TEXT("The correctives are baked as poses but nothing here can write the curves that drive them, so the face holds to what its controls do on their own.")
+	);
+
+	return nullptr;
+#endif
+}
+
 UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* SkeletalMesh, const FString& FetchPath) {
 	USkeleton* Skeleton = SkeletalMesh != nullptr ? PoseMeshSkeleton(SkeletalMesh) : nullptr;
 	if (Skeleton == nullptr) return nullptr;
@@ -107,19 +195,16 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	/* Backporting names an older head's curves and says what each is made of, which the Cloud
 	 * resolves against this rig: several controls at once is where the correctives fire, so those
 	 * poses have to be evaluated there rather than added up from single control ones here. */
-	const FRDnaBackportSettings& Backport = GetSettings()->AssetSettings.DNA.Backport;
+	const FRDnaSettings& DnaSettings = GetSettings()->AssetSettings.DNA;
+	const FRDnaBackportSettings& Backport = DnaSettings.Backport;
 
+	const bool bExact = DnaSettings.ExactPoses;
+
+	/* Exact wants the mapping too. With one it bakes the older head's curves and everything it
+	 * takes to answer them exactly; without one it bakes the rig's own controls the same way. */
 	const FString Mapping = Backport.BackportPoses ? Backport.CurveMapping : FString();
 
-	FString Strengths;
-
-	if (!Mapping.IsEmpty() && Backport.AdjustPoseStrengths) {
-		for (const TPair<FString, float>& Strength : Backport.PoseStrengths) {
-			Strengths += FString::Printf(TEXT("%s%s:%g"), Strengths.IsEmpty() ? TEXT("") : TEXT(","), *Strength.Key, Strength.Value);
-		}
-	}
-
-	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, Mapping, Strengths);
+	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, Mapping, bExact);
 
 	if (!Response.IsValid()) {
 		FImportIssues::Report(
@@ -400,6 +485,16 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	if (GetSettings()->AssetSettings.SaveAssets) {
 		SavePackage(SequencePackage);
 		SavePackage(PosePackage);
+	}
+
+	/* The poses the rig needs beyond the ones an animation drives are only poses until something
+	 * works them out */
+	{
+		const TArray<TSharedPtr<FJsonValue>>* Drivers = nullptr;
+
+		if (Response->TryGetArrayField(TEXT("drivers"), Drivers) && Drivers->Num() > 0) {
+			WriteDnaCorrectiveCurves(*Drivers, Folder, GetAssetName() + TEXT("_DNA_Drivers"));
+		}
 	}
 
 	UE_LOG(LogReflection, Display,

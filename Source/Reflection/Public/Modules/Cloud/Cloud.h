@@ -108,7 +108,7 @@ public:
 		 * Naming a curve mapping asks for an older head's poses instead, each driving a handful of
 		 * this rig's controls at once. Those are evaluated rather than added up from single control
 		 * poses, so the mapping goes with the request rather than being resolved here. */
-		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString(), const FString& Strengths = FString());
+		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString(), bool bExact = false);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
