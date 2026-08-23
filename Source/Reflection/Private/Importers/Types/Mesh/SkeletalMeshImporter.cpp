@@ -27,6 +27,45 @@
 #include "Engine/SkinnedAssetCommon.h"
 #endif
 
+/* 4.25 put the mesh's reference skeleton, its materials and its imported data behind accessors.
+ * Before that they are members, and the imported data belongs to the LOD model rather than to the
+ * mesh, so the same questions are asked of a different object. */
+namespace {
+#if UE4_25_BELOW
+	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->RefSkeleton; }
+	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->RefSkeleton = Value; }
+	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->Materials = Value; }
+
+	FSkeletalMeshLODModel* MeshLodModel(const USkeletalMesh* Mesh, const int32 Lod) {
+		FSkeletalMeshModel* Model = Mesh->GetImportedModel();
+
+		return Model != nullptr && Model->LODModels.IsValidIndex(Lod) ? &Model->LODModels[Lod] : nullptr;
+	}
+
+	bool IsMeshLodImportedDataEmpty(const USkeletalMesh* Mesh, const int32 Lod) {
+		const FSkeletalMeshLODModel* LodModel = MeshLodModel(Mesh, Lod);
+
+		return LodModel == nullptr || LodModel->RawSkeletalMeshBulkData.IsEmpty();
+	}
+
+	void LoadMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& Out) {
+		if (FSkeletalMeshLODModel* LodModel = MeshLodModel(Mesh, Lod)) LodModel->RawSkeletalMeshBulkData.LoadRawMesh(Out);
+	}
+
+	void SaveMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& In) {
+		if (FSkeletalMeshLODModel* LodModel = MeshLodModel(Mesh, Lod)) LodModel->RawSkeletalMeshBulkData.SaveRawMesh(In);
+	}
+#else
+	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->GetRefSkeleton(); }
+	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->SetRefSkeleton(Value); }
+	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
+
+	bool IsMeshLodImportedDataEmpty(const USkeletalMesh* Mesh, const int32 Lod) { return Mesh->IsLODImportedDataEmpty(Lod); }
+	void LoadMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& Out) { Mesh->LoadLODImportedData(Lod, Out); }
+	void SaveMeshLodImportedData(USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& In) { Mesh->SaveLODImportedData(Lod, In); }
+#endif
+}
+
 UObject* ISkeletalMeshImporter::CreateAsset(UObject* CreatedAsset) {
 	/* Reflecting the same mesh twice lands on the package the first import wrote, and making an
 	 * object over one already sitting there destroys the one already sitting there: the name is
@@ -62,7 +101,7 @@ void ISkeletalMeshImporter::Abandon(USkeletalMesh* SkeletalMesh) {
 	if (SkeletalMesh == nullptr) return;
 
 	/* Nothing to pose */
-	SkeletalMesh->SetRefSkeleton(FReferenceSkeleton());
+	SetMeshRefSkeleton(SkeletalMesh, FReferenceSkeleton());
 	SkeletalMesh->CalculateInvRefMatrices();
 
 	/* Nothing to draw: the renderer is only asked to update a LOD the mesh says it has */
@@ -83,7 +122,7 @@ void ISkeletalMeshImporter::Abandon(USkeletalMesh* SkeletalMesh) {
 }
 
 USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh) const {
-	if (SkeletalMesh == nullptr || SkeletalMesh->GetRefSkeleton().GetNum() == 0) return nullptr;
+	if (SkeletalMesh == nullptr || MeshRefSkeleton(SkeletalMesh).GetNum() == 0) return nullptr;
 
 	const FString SkeletonName = GetAssetName() + TEXT("_Skeleton");
 	const FString Folder = FPackageName::GetLongPackagePath(GetPackage()->GetName());
@@ -107,7 +146,7 @@ USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalM
 		SavePackage(SkeletonPackage);
 	}
 
-	UE_LOG(LogReflection, Display, TEXT("\"%s\" named no skeleton, so \"%s\" was made from its %d bone(s)"), *GetAssetName(), *SkeletonName, SkeletalMesh->GetRefSkeleton().GetNum());
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" named no skeleton, so \"%s\" was made from its %d bone(s)"), *GetAssetName(), *SkeletonName, MeshRefSkeleton(SkeletalMesh).GetNum());
 
 	return Skeleton;
 }
@@ -154,7 +193,7 @@ void ISkeletalMeshImporter::BuildMaterialSlots(USkeletalMesh* SkeletalMesh, cons
 		Material.ImportedMaterialSlotName = Material.MaterialSlotName;
 	}
 
-	SkeletalMesh->SetMaterials(Materials);
+	SetMeshMaterials(SkeletalMesh, Materials);
 }
 
 int32 ISkeletalMeshImporter::BuildMorphTargets(USkeletalMesh* SkeletalMesh, const TSharedPtr<FJsonObject>& Payload) {
@@ -177,11 +216,11 @@ int32 ISkeletalMeshImporter::BuildMorphTargets(USkeletalMesh* SkeletalMesh, cons
 #if UE5_4_BEYOND
 		if (!SkeletalMesh->HasMeshDescription(LodIndex)) continue;
 #else
-		if (SkeletalMesh->IsLODImportedDataEmpty(LodIndex)) continue;
+		if (IsMeshLodImportedDataEmpty(SkeletalMesh, LodIndex)) continue;
 #endif
 
 		FSkeletalMeshImportData ImportData;
-		SkeletalMesh->LoadLODImportedData(LodIndex, ImportData);
+		LoadMeshLodImportedData(SkeletalMesh, LodIndex, ImportData);
 
 		if (ImportData.Points.Num() == 0) continue;
 
@@ -243,7 +282,7 @@ int32 ISkeletalMeshImporter::BuildMorphTargets(USkeletalMesh* SkeletalMesh, cons
 			}
 		}
 
-		SkeletalMesh->SaveLODImportedData(LodIndex, ImportData);
+		SaveMeshLodImportedData(SkeletalMesh, LodIndex, ImportData);
 	}
 
 	return Written.Num();
@@ -308,7 +347,7 @@ bool ISkeletalMeshImporter::ApplyCookedBindPose(USkeletalMesh* SkeletalMesh, USk
 
 	if (BindPose.GetNum() == 0) return false;
 
-	SkeletalMesh->SetRefSkeleton(BindPose);
+	SetMeshRefSkeleton(SkeletalMesh, BindPose);
 
 	UE_LOG(LogReflection, Display, TEXT("\"%s\" bound at its own pose, %d bone(s)"), *GetAssetName(), BindPose.GetNum());
 

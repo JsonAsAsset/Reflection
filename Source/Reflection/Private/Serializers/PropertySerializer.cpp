@@ -9,6 +9,14 @@
 
 /* Struct Serializers */
 #include "Distributions.h"
+
+#if ENGINE_UE4
+#include "MaterialExpressionIO.h"
+#endif
+
+/* Reached through for its outputs, which a forward declaration cannot answer for */
+#include "Materials/MaterialExpression.h"
+
 #include "MovieSceneSection.h"
 #include "Engine/FontFace.h"
 #include "Importers/Types/Cascade/ParticleSystemDecooking.h"

@@ -120,7 +120,7 @@ bool ISoundWaveImporter::Import() {
 	/* The package the factory made is the one holding the asset, so that is the one that gets
 	 * synced to the Content Browser and saved */
 	CreateAsset(SoundWave);
-	SetPackage(SoundWave->GetPackage());
+	SetPackage(SoundWave->GetOutermost());
 
 	return OnAssetCreation(SoundWave);
 }

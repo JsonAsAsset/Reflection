@@ -292,7 +292,7 @@ TMap<FName, FTransform> IPoseAssetImporter::GetSourceMeshBindPose() {
 
 	for (const TCHAR* Suffix : { TEXT("_Facial_Poses_PoseAsset"), TEXT("_PoseAsset") }) {
 		if (MeshPath.EndsWith(Suffix)) {
-			MeshPath.LeftChopInline(FCString::Strlen(Suffix));
+			MeshPath = MeshPath.LeftChop(FCString::Strlen(Suffix));
 
 			break;
 		}
