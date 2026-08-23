@@ -8,7 +8,7 @@
  *
  * The export and the pixels come from the same endpoint: the export as json, the pixels as
  * whatever encoding the class needs, picked by FTextureTypes. FTextureCreator turns the pair
- * into an asset, this just does the fetching and the packaging around it. */
+ * into an asset, this just does the fetching and the surrounding packaging. */
 struct REFLECTION_API FTextureImport {
 	/* Fetches an export and its pixels from Cloud, then builds the asset */
 	static bool FromCloud(const FString& Path, const FString& FetchPath, UTexture*& OutTexture);

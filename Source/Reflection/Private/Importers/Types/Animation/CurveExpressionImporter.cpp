@@ -49,7 +49,7 @@ bool ICurveExpressionImporter::Import() {
 			Asset->PostEditChangeProperty(PropertyChangedEvent);
 		}
 
-		/* Compiling keeps only what parsed, so anything missing afterwards was turned down. The
+		/* Compiling keeps only what parsed, so anything missing afterward was turned down. The
 		 * plugin's parser reads a bracket after a curve name as a call to a function by that name,
 		 * so an expression like "a - (b - c)" is one of the ways a line does not survive. */
 		TArray<FName> Rejected;

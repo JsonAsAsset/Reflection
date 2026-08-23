@@ -174,12 +174,10 @@ inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, c
 
 	UObject* BindingObject = BindingProperty->GetObjectPropertyValue_InContainer(Node);
 
-	/*
-	 * A node built straight from NewObject never ran PostPlacedNewNode, which is where the editor
+	/* A node built straight from NewObject never ran PostPlacedNewNode, which is where the editor
 	 * hands it one of these. UAnimGraphNode_Base::EnsureBindingsArePresent does the job but is
 	 * protected, so the same thing happens here: the blueprint's binding class if it names one,
-	 * the engine's own otherwise.
-	 */
+	 * the engine's own otherwise. */
 	if (!BindingObject) {
 		UClass* BindingClass = nullptr;
 

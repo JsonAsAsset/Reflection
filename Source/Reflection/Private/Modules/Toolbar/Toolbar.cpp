@@ -2,7 +2,6 @@
 
 #include "Modules/Toolbar/Toolbar.h"
 
-#include "Reflection.h"
 #include "Engine/Compatibility.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/Process.h"
@@ -27,6 +26,7 @@
 #include "Modules/Toolbar/Dropdowns/ParentDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
+#include "Settings/Static.h"
 #include "Utilities/Dialog.h"
 #include "Widgets/Layout/SBox.h"
 

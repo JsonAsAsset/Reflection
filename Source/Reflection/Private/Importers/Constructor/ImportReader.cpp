@@ -23,6 +23,9 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 		FText::FromString(FPaths::GetCleanFilename(File))
 	));
 
+	/* One import, however many references it reaches through */
+	const FAssetUtilities::FRunScope RunScope;
+
 	FUObjectExportContainer* Container = new FUObjectExportContainer(Exports);
 
 	const bool IsBlueprint = Container->FindByType(FString("BlueprintGeneratedClass"))->IsJsonValid();

@@ -2,6 +2,8 @@
 
 #pragma once
 
+/* Like most things, all of a sudden, what seemed impossible, is now possible. Yeah, give me the best philosopher award. */
+
 #include "CoreMinimal.h"
 
 #include "Distributions/DistributionFloat.h"
@@ -19,8 +21,6 @@
 
 #include "Distributions/DistributionVectorUniform.h"
 #include "Distributions/DistributionVectorUniformCurve.h"
-
-/* Like most things, all of a sudden, what seemed impossible, is now possible. Yeah, give me the best philosopher award. */
 
 struct FRawDistributionMemberAccessor : FRawDistribution {
 	FDistributionLookupTable GetLookupTable() {
@@ -58,12 +58,10 @@ struct FDistributionDecookContext {
 	}
 };
 
-/*
- * Checks if a lookup table is from a uniform distribution.
+/* Checks if a lookup table is from a uniform distribution.
  * 
  * Side effect: One value uniforms are treated as constants.
- * (no difference in outcome) Reference: UDistributionFloatUniformCurve::GetOperation
- */
+ * (no difference in outcome) Reference: UDistributionFloatUniformCurve::GetOperation */
 inline bool IsUniformTable(const FDistributionLookupTable& Table) {
 	return Table.Op == RDO_Random || Table.Op == RDO_Extreme;
 }

@@ -27,8 +27,7 @@ using FReflectionHttpResponse = TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>;
  * Reflection resolves asset references while it deserializes properties, recursively, so those
  * requests have no continuation to hand a callback to and have to be waited on. A scope keeps
  * the editor painting and gives the user a way out for as long as that lasts; a wait outside a
- * scope still works, it just looks like a hung editor.
- */
+ * scope still works, it just looks like a hung editor. */
 class REFLECTION_API FBlockingRequestScope {
 public:
 	explicit FBlockingRequestScope(const FText& Description);

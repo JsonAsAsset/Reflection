@@ -4,8 +4,7 @@
 
 #include "CoreMinimal.h"
 
-/*
- * Runs a top-level import across frames instead of in one call.
+/* Runs a top-level import across frames instead of in one call.
  *
  * The editor's frame is the game thread, so an import that holds the game thread for thirty
  * seconds is thirty seconds of frozen editor. This walks the same per-export path
@@ -21,8 +20,7 @@
  *
  * One job runs at a time. Files handed over while a job is going are appended to it rather than
  * starting a second one, because two imports building assets in the same content at once is not
- * something the importers are written to survive.
- */
+ * something the importers are written to survive. */
 class REFLECTION_API FImportJob {
 public:
 	/* Queues Files, starting a job if none is running, and returns immediately. */

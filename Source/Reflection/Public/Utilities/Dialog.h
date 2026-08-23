@@ -47,12 +47,10 @@ inline auto SpawnYesNoPrompt = [](const FString& Title, const FString& Text, con
 	OnResponse(Response == EAppReturnType::Yes);
 };
 
-/*
- * Asks the user for some text, seeded with whatever is already in InOutText.
+/* Asks the user for some text, seeded with whatever is already in InOutText.
  *
  * Multi line, because everything that needs typed input here takes a list. Returns false when the
- * user cancels or leaves it empty, in which case InOutText is left alone.
- */
+ * user cancels or leaves it empty, in which case InOutText is left alone. */
 inline bool SpawnTextEntryPrompt(const FString& Title, const FString& Hint, FString& InOutText) {
 	bool Accepted = false;
 

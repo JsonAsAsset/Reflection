@@ -3,10 +3,9 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/Compatibility.h"
 #include "Dom/JsonObject.h"
 
-/*The texture classes Reflection can rebuild from a Cloud export, and how their pixels travel.
+/* The texture classes Reflection can rebuild from a Cloud export, and how their pixels travel.
  *
  * Cloud serves a texture one of two ways. An encoded image is the cheap path: it goes through
  * UTextureFactory, which handles mips and compression on its own. It is also eight bit and two

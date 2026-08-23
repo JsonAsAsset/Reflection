@@ -21,7 +21,7 @@ namespace AnimNodeLayout {
 	/* Gap between two nodes stacked in the same column */
 	constexpr float RowSpacing = 40.f;
 
-	/* Gap between whole trees - the anim graph proper, then one per cached pose */
+	/* Gap between whole trees the anim graph proper, then one per cached pose */
 	constexpr float TreeSpacing = 160.f;
 
 	/* Only reached when a node can't be measured, i.e. no Slate (commandlet, -nullrhi) */
@@ -30,8 +30,8 @@ namespace AnimNodeLayout {
 	constexpr float FallbackPinHeight = 26.f;
 }
 
-/** Anim nodes only get their real widget - SAnimationGraphNode, with the property binding rows and per-node
- * extras that make up a good part of their height - through a visual node factory that
+/** Anim nodes only get their real widget SAnimationGraphNode, with the property binding rows and per-node
+ * extras that make up a good part of their height through a visual node factory that
  * FAnimationBlueprintEditorModule::StartupModule registers. That module lives outside this one's dependencies
  * and isn't necessarily loaded during an import: without it FNodeFactory falls through to the generic
  * SGraphNodeK2Default, and every node measures smaller than it will actually draw. Worse, it would depend on
@@ -49,8 +49,8 @@ inline void EnsureAnimGraphNodeFactoryRegistered() {
 struct FAnimNodeMetrics {
 	FVector2D Size = FVector2D::ZeroVector;
 
-	/* How far the node draws above its own top edge. A comment bubble - which is what the node ID comments
-	 * setting puts on every node - hangs off the top of the node and isn't part of its size, so a row spaced
+	/* How far the node draws above its own top edge. A comment bubble which is what the node ID comments
+	 * setting puts on every node hangs off the top of the node and isn't part of its size, so a row spaced
 	 * only by that size has the bubble sitting on top of whatever is above it. */
 	float TopOverhang = 0.f;
 
@@ -62,12 +62,12 @@ struct FAnimNodeMetrics {
  *
  * A wire doesn't attach to a node, it attaches to a pin: FConnectionDrawingPolicy draws from the vertical
  * middle of the source pin's geometry to the vertical middle of the target's. Pins sit below the title, so how
- * far down the node one starts depends on how tall that node's header drew - a Look At carrying a bone name
+ * far down the node one starts depends on how tall that node's header drew a Look At carrying a bone name
  * under its title pushes its pins further down than a Component To Local does. Lining nodes up by their centers,
  * or by their tops, therefore still leaves the wire sloping; only the pins themselves can be lined up.
  *
  * Slate hands out those positions through ArrangeChildren, which is pure layout and needs nothing but a
- * geometry to arrange into - no panel, no window. Arranging the node into its own desired size reproduces
+ * geometry to arrange into no panel, no window. Arranging the node into its own desired size reproduces
  * exactly what SGraphPanel would do with it, since the panel sizes a node to its desired size and places it at
  * NodePosX/NodePosY. */
 inline void MeasureAnimGraphPinCenters(const TSharedRef<SWidget>& Widget, const FGeometry& Geometry, const TMap<const SWidget*, UEdGraphPin*>& PinWidgets, TMap<const UEdGraphPin*, float>& OutPinCenterY) {
@@ -99,7 +99,7 @@ inline void MeasureAnimGraphPinCenters(const TSharedRef<SWidget>& Widget, const 
  * SGraphPanel::AddNode gets that size by building the widget and pre-passing it, and notes that this is safe
  * to do out of band because "graph widgets don't rely on any outer layout information for their metrics".
  * SNodePanel::GetBoundsForNode then reads GetDesiredSize() off the widget. That is exactly what happens here,
- * minus the panel - the widget is created, measured, and dropped, so no editor window has to be open. */
+ * minus the panel the widget is created, measured, and dropped, so no editor window has to be open. */
 inline FAnimNodeMetrics MeasureAnimGraphNode(UAnimGraphNode_Base* Node) {
 	FAnimNodeMetrics Metrics;
 	if (!Node) return Metrics;
@@ -108,7 +108,7 @@ inline FAnimNodeMetrics MeasureAnimGraphNode(UAnimGraphNode_Base* Node) {
 		EnsureAnimGraphNodeFactoryRegistered();
 
 		/* Node widgets are built through the factory rather than by hand so registered per-type factories still
-		 * apply - anim nodes come out as SAnimationGraphNode, with the property-binding widgets and dynamic pin
+		 * apply anim nodes come out as SAnimationGraphNode, with the property-binding widgets and dynamic pin
 		 * rows that make up most of a Constraint node's height. A freshly constructed widget already reports
 		 * bNeedsPrepass, so the prepass below really does measure rather than returning a cached zero. */
 		if (const TSharedPtr<SGraphNode> NodeWidget = FNodeFactory::CreateNodeWidget(Node)) {
@@ -121,7 +121,7 @@ inline FAnimNodeMetrics MeasureAnimGraphNode(UAnimGraphNode_Base* Node) {
 				const FGeometry NodeGeometry = FGeometry::MakeRoot(DesiredSize, FSlateLayoutTransform());
 
 				/* SNodePanel::SNode sizes itself to its center zone alone, then arranges the rest around it at
-				 * their own offsets - negative for anything meant to sit above the node. Reading those back is
+				 * their own offsets negative for anything meant to sit above the node. Reading those back is
 				 * what turns "a comment bubble is roughly this tall" into the height this node actually drew. */
 				FArrangedChildren Zones(EVisibility::All);
 				NodeWidget->ArrangeChildren(NodeGeometry, Zones);
@@ -185,12 +185,12 @@ struct FAnimGraphLayoutContext {
 	TArray<float> ColumnWidth;
 
 	/* Per column: the first Y that is still free, so two branches can't land on each other. Starts out
-	 * unbounded rather than at zero - a node taller than what feeds it has to reach above the top of the graph
+	 * unbounded rather than at zero a node taller than what feeds it has to reach above the top of the graph
 	 * to line its pins up, and clamping the first node in a column to zero is what flushes a row of nodes to a
 	 * shared top edge and bends every wire coming into the tall one. */
 	TArray<float> ColumnNextY;
 
-	/* Top edge of every node already placed. Doubles as the visited set - a node feeding two consumers is
+	/* Top edge of every node already placed. Doubles as the visited set a node feeding two consumers is
 	 * positioned once and the second consumer just reads where it ended up. */
 	TMap<UAnimGraphNode_Base*, float> PlacedTop;
 
@@ -213,7 +213,7 @@ inline float GetAnimPinCenterY(const FAnimGraphLayoutContext& Context, UAnimGrap
 /** Claims one tree's worth of nodes and gives each a column: the longest path back from the root.
  *
  * Longest rather than shortest matters when a node feeds two consumers that are themselves different distances
- * from the output - taking the longest keeps it left of both, so a wire never has to run backwards. */
+ * from the output taking the longest keeps it left of both, so a wire never has to run backwards. */
 inline void CollectAnimNodeTree(UAnimGraphNode_Base* Node, const int32 Depth, FAnimGraphLayoutContext& Context, TSet<UAnimGraphNode_Base*>& Claimed, TArray<UAnimGraphNode_Base*>& OutTree, TSet<UAnimGraphNode_Base*>& Stack) {
 	if (const int32* Existing = Context.Depths.Find(Node)) {
 		if (*Existing >= Depth) return;
@@ -249,8 +249,7 @@ inline void CollectAnimNodeTree(UAnimGraphNode_Base* Node, const int32 Depth, FA
  * column. On its own that shove only moves the one node: the branch behind it stays where the alignment put
  * it, so the wire into it bends and the run of nodes leading up to it reads as floating above the rest of its
  * row. Taking the branch along keeps every wire in it exactly as straight as it was laid out and moves the
- * whole thing into the space the shove was aiming for.
- */
+ * whole thing into the space the shove was aiming for. */
 inline void ShiftAnimNodeSubtree(UAnimGraphNode_Base* Node, const float Delta, FAnimGraphLayoutContext& Context, TSet<UAnimGraphNode_Base*>& Shifted) {
 	if (Shifted.Contains(Node)) return;
 
@@ -428,7 +427,7 @@ inline void LayoutAnimGraphTree(UAnimGraphNode_Base* Root, FAnimGraphLayoutConte
 	}
 
 	/* Columns are measured per tree. Shared across trees, a node would end up right-aligned against whatever
-	 * the widest node at that depth happened to be somewhere else entirely - and since it keeps its own width,
+	 * the widest node at that depth happened to be somewhere else entirely and since it keeps its own width,
 	 * the gap in front of it grows by the difference. That is what makes an otherwise uniform run of Modify
 	 * Bone nodes read as unevenly spaced. */
 	Context.ColumnWidth.SetNumZeroed(MaxDepth + 1);
@@ -512,7 +511,7 @@ inline void AutoLayoutAnimGraphNodes(const TArray<FUObjectExport*>& NodeExports)
 		}
 
 		/* Nothing consumes this node, so it anchors a tree of its own. That's the output pose, plus one per
-		 * cached pose - a Save Cached Pose is reached by name from Use Cached Pose, never by a wire. */
+		 * cached pose a Save Cached Pose is reached by name from Use Cached Pose, never by a wire. */
 		if (!bHasOutputs) {
 			Roots.Add(Node);
 		}
@@ -532,7 +531,7 @@ inline void AutoLayoutAnimGraphNodes(const TArray<FUObjectExport*>& NodeExports)
 		LayoutAnimGraphTree(Root, Context, Claimed, TreeTop);
 	}
 
-	/* Anything unreachable from a root - an island left by a broken link - still needs a home */
+	/* Anything unreachable from a root an island left by a broken link still needs a home */
 	for (UAnimGraphNode_Base* Node : Nodes) {
 		if (!Claimed.Contains(Node)) {
 			LayoutAnimGraphTree(Node, Context, Claimed, TreeTop);

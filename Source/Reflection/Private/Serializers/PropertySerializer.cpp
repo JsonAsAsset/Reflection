@@ -178,8 +178,8 @@ void UPropertySerializer::RemapConvertOutput(const UStruct* Struct, void* Struct
 	 * material's own inputs through FColorMaterialInput and friends, and which of those are
 	 * separate reflected structs (and whether they share a reflected base) changes by version.
 	 * Everything that carries a connection has both of these. */
-	FObjectProperty* ExpressionProperty = FindFProperty<FObjectProperty>(Struct, TEXT("Expression"));
-	FIntProperty* OutputIndexProperty = FindFProperty<FIntProperty>(Struct, TEXT("OutputIndex"));
+	const FObjectProperty* ExpressionProperty = FindFProperty<FObjectProperty>(Struct, TEXT("Expression"));
+	const FIntProperty* OutputIndexProperty = FindFProperty<FIntProperty>(Struct, TEXT("OutputIndex"));
 
 	if (ExpressionProperty == nullptr || OutputIndexProperty == nullptr) {
 		return;

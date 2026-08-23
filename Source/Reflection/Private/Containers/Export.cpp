@@ -2,7 +2,6 @@
 
 #include "Containers/Export.h"
 #include "Engine/EngineUtilities.h"
-#include "Settings/ReflectionSettings.h"
 #include "Settings/Runtime.h"
 #include "Importers/Types/Blueprint/BlueprintUtilities.h"
 

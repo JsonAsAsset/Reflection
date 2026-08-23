@@ -25,7 +25,7 @@ private:
 	 * Loading an animation sweeps every blend space already in memory and revalidates the ones
 	 * holding a sample of it, this one included. That sweep lands in the middle of the sample array
 	 * being built, where the sample being written is still empty, and the engine both complains
-	 * about the empty sample and is free to drop it as a duplicate of another empty one -- out from
+	 * about the empty sample and is free to drop it as a duplicate of another empty one out from
 	 * under the pointer the array is being written through. Loading them all first leaves nothing
 	 * for a sample to trigger. */
 	void PreloadSampleAnimations();

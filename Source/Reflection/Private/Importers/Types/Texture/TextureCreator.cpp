@@ -444,11 +444,9 @@ int32 FTextureCreator::GetReportedSliceCount(const TSharedPtr<FJsonObject>& Expo
 }
 
 bool FTextureCreator::BuildSourceFromRawMip(UTexture* Texture, const TArray<uint8>& Data, const FTextureCookedLayout& Cooked) const {
-	/*
-	 * Cloud sends the first mip that still has its bulk data, which isn't always the top one:
+	/* Cloud sends the first mip that still has its bulk data, which isn't always the top one:
 	 * higher mips can live in a pak that isn't mounted. The payload size says which mip actually
-	 * came through, so walk the chain until it fits rather than decoding at the wrong size.
-	 */
+	 * came through, so walk the chain until it fits rather than decoding at the wrong size. */
 	FTextureCookedLayout Mip = Cooked;
 
 	/* The size has to land exactly. Settling for "big enough" would happily decode the wrong mip

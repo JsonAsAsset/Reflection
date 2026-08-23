@@ -2,10 +2,8 @@
 
 #pragma once
 
-/*
- * This file is used to allow the same code used on UE5 to be used on UE4,
- * it contains structures and classes to replicate missing classes/structs.
-*/
+/* This file is used to allow the same code used on UE5 to be used on UE4,
+ * it contains structures and classes to replicate missing classes/structs. */
 
 /* Every macro below reads ENGINE_MAJOR_VERSION and friends. Nothing here guarantees they are
  * already in scope, so pull in the header that defines them rather than relying on whichever
@@ -21,15 +19,13 @@
 #include "Engine/TextureCube.h"
 #include "Engine/VolumeTexture.h"
 
-/*
- * Which way the reflect button goes in.
+/* Which way the reflect button goes in.
  *
  * On, it asks for asset paths and Cloud fetches the exports behind them. Off, it opens a file
  * dialog and imports the json picked off disk.
  *
  * Only the way in changes. Cloud is compiled in either way, its tools and menu entries work the
- * same, and references still resolve through it while it is running.
- */
+ * same, and references still resolve through it while it is running. */
 #ifndef REFLECTION_CLOUD_SERVER
 #define REFLECTION_CLOUD_SERVER 1
 #endif
@@ -185,12 +181,10 @@
 #include "Engine/Texture2DArray.h"
 #endif
 
-/*
- * Properties were UObjects until 4.25 moved them onto FField, renaming UProperty to FProperty
+/* Properties were UObjects until 4.25 moved them onto FField, renaming UProperty to FProperty
  * and the whole U*Property family with it. Reflection is written against the 4.25+ spelling,
  * so on 4.24 and below the old types are aliased back into it instead of every call site
- * carrying a branch. UProperty is a UField, so Cast/FindField stand in for the FField helpers.
- */
+ * carrying a branch. UProperty is a UField, so Cast/FindField stand in for the FField helpers. */
 #if UE4_24_BELOW
 #include "UObject/UnrealType.h"
 #include "UObject/EnumProperty.h"
@@ -263,11 +257,9 @@ FORCEINLINE T* FindFProperty(const UStruct* Owner, const FName FieldName) {
 }
 #endif
 
-/*
- * TSharedPtr only learned to compare against nullptr later on. Reflection leans on that spelling
+/* TSharedPtr only learned to compare against nullptr later on. Reflection leans on that spelling
  * in a lot of validity checks, so the operators are supplied here rather than rewritten into
- * IsValid() at every call site.
- */
+ * IsValid() at every call site. */
 #if UE4_22_BELOW
 #include "Templates/SharedPointer.h"
 
@@ -292,11 +284,9 @@ FORCEINLINE bool operator!=(TYPE_OF_NULLPTR, const TSharedPtr<ObjectType, Mode>&
 }
 #endif
 
-/*
- * FName and FGuid only grew constructors taking an FString later on. Reflection turns strings out
+/* FName and FGuid only grew constructors taking an FString later on. Reflection turns strings out
  * of JSON into both of these all over the place, so the version split lives here once rather than
- * at every call site.
- */
+ * at every call site. */
 #include "Misc/Guid.h"
 #include "UObject/NameTypes.h"
 
@@ -337,10 +327,8 @@ inline void LeftInline(FString& String, const int32 Count) {
 #endif
 }
 
-/*
- * NewObject only started taking a const UClass* later on, and the class Reflection has in hand is
- * almost always const. Returns whatever the current engine's overload wants.
- */
+/* NewObject only started taking a const UClass* later on, and the class Reflection has in hand is
+ * almost always const. Returns whatever the current engine's overload wants. */
 #if UE4_24_BELOW
 inline UClass* ToNewObjectClass(const UClass* Class) {
 	return const_cast<UClass*>(Class);
@@ -489,10 +477,8 @@ bool IsObjectPtrValid(TObjectPtr<T> ObjectPtr) {
 #endif
 }
 
-/*
- * NamePrivate is FField's own member from 4.25 on. Before that a property was still a UObject and
- * the member belongs to UObjectBase, which keeps it private.
- */
+/* NamePrivate is FField's own member from 4.25 on. Before that a property was still a UObject and
+ * the member belongs to UObjectBase, which keeps it private. */
 inline FName GetPropertyName(const FProperty* Property) {
 #if UE4_24_BELOW
 	return Property->GetFName();

@@ -5,6 +5,7 @@
 #include "Reflection.h"
 #include "Modules/UI/StyleModule.h"
 #include "Engine/EngineUtilities.h"
+#include "Settings/Static.h"
 #include "Utilities/Process.h"
 
 void IDonateDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {

@@ -526,7 +526,7 @@ static void ComparePoseAssetToRig(USkeletalMesh* Mesh, const FString& PoseAssetP
  *
  * The rest pose says nothing: negating the neutral makes it match by construction. What the curves
  * drive are the deltas, and a delta with a sign wrong still moves the right bones by the right
- * amount, in the wrong direction. Nothing is assumed about which bone a control owns -- the bones
+ * amount, in the wrong direction. Nothing is assumed about which bone a control owns, the bones
  * that moved most are simply reported, with the direction they went. */
 static void ReportControlDirections(USkeletalMesh* Mesh, UAnimBlueprint* AnimBlueprint, UAnimGraphNode_SequencePlayer* Player) {
 #if REFLECTION_RIG_LOGIC
@@ -574,8 +574,8 @@ static void ReportControlDirections(USkeletalMesh* Mesh, UAnimBlueprint* AnimBlu
 			continue;
 		}
 
-		/* Evaluated twice, with the control off and on. Everything static -- the pose the player
-		 * hands over for bones it has no track for, the bind pose, the body -- is in both, so the
+		/* Evaluated twice, with the control off and on. Everything static, the pose the player
+		 * hands over for bones it has no track for, the bind pose, the body is in both, so the
 		 * difference between them is the control and nothing else. */
 		TArray<FTransform> Sampled[2];
 

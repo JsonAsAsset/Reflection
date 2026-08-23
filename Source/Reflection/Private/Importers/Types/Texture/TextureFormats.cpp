@@ -144,10 +144,8 @@ void FTextureFormats::Decode(const uint8* Data, uint8* OutData, const int32 Size
 		}
 		break;
 
-		/*
-		 * FloatRGBA: 16F
-		 * G16: Gray/Grey like G8
-		*/
+		/* FloatRGBA: 16F
+		 * G16: Gray/Grey like G8 */
 		case PF_B8G8R8A8:
 		case PF_FloatRGBA:
 		case PF_G16: {

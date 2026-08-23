@@ -55,9 +55,7 @@ public:
 public:
     void Save() const;
 
-    /*
-     * Handle edit changes, and add it to the content browser
-     */
+    /* Handle edit changes, and add it to the content browser */
     bool OnAssetCreation(UObject* Asset) const;
     
     /* ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ Object Serializer and Property Serializer ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
@@ -86,6 +84,17 @@ TObjectPtr<T> IImporter::DownloadWrapper(TObjectPtr<T> InObject, FString Type, c
 
             FString NewPath = Path;
             FRRedirects::Reverse(NewPath);
+
+            /* Asked for a second time by the same import, and already here: a material naming one
+             * texture in two slots is the usual way that happens. Only when it is already here,
+             * since a reference that resolved to nothing still has to be fetched. */
+            const FString Reflected = Type + TEXT("'") + NewPath + TEXT(".") + Name + TEXT("'");
+
+            if (InObject != nullptr && FAssetUtilities::ReflectedThisRun.Contains(Reflected)) {
+                return InObject;
+            }
+
+            FAssetUtilities::ReflectedThisRun.Add(Reflected);
             
             /* Try importing the asset, saying only the success out loud */
             if (FAssetUtilities::ConstructAsset(FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), FSoftObjectPath(Type + "'" + NewPath + "." + Name + "'").ToString(), Type, InObject, DownloadStatus) && DownloadStatus) {

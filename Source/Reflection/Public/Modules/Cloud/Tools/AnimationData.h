@@ -144,13 +144,11 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 
 			FRichCurveKey RichKey = ObjectToRichCurveKey(Key);
 
-			/*
-			 * Unreal Engine 5 and Unreal Engine 4
+			/* Unreal Engine 5 and Unreal Engine 4
 			 * have different ways of adding curves
 			 *
 			 * Unreal Engine 4: Simply adding curves to RawCurveData
-			 * Unreal Engine 5: Using a AnimDataController to handle adding curves
-			*/
+			 * Unreal Engine 5: Using a AnimDataController to handle adding curves */
 #if UE5_2_BEYOND
 			Controller.SetCurveKey(CurveId, RichKey);
 #endif

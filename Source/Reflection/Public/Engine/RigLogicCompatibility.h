@@ -48,8 +48,8 @@ inline TArrayView<const float> GetDnaJointOutputs(const FRigInstance& Instance) 
  * Older engines have no such wrapper: the DNA goes in as it is and the node does the axes on the
  * way out, so there the plain reader is already the right one.
  *
- * The wrapper only has to survive the construction -- RigLogic copies everything it needs out of
- * the reader there and never looks at it again -- so it is safe to let it go at the return. */
+ * The wrapper only has to survive the construction RigLogic copies everything it needs out of
+ * the reader there and never looks at it again so it is safe to let it go at the return. */
 inline FRigLogic MakeDnaRigLogic(const TSharedPtr<IDNAReader>& Behavior) {
 #if REFLECTION_RIG_LOGIC_UE_SPACE_READER
 	RigLogicDNAReader InUeSpace{Behavior->Unwrap()};

@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Dom/JsonObject.h"
-#include "UObject/Object.h"
 #include "Engine/Compatibility.h"
 
 struct REFLECTION_API FUObjectJsonValueExport {

@@ -2,8 +2,7 @@
  * Function originally created by C0bra5.
  *
  * Fork can be seen here:
- * https://github.com/C0bra5/Reflection
- */
+ * https://github.com/C0bra5/Reflection */
 
 #pragma once
 

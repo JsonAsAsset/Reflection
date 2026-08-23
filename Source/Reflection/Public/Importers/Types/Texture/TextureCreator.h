@@ -3,7 +3,6 @@
 #pragma once
 
 #include "Importers/Types/Texture/TextureFormats.h"
-#include "Importers/Types/Texture/TextureTypes.h"
 #include "Serializers/PropertySerializer.h"
 #include "Engine/Texture2D.h"
 #include "Dom/JsonObject.h"

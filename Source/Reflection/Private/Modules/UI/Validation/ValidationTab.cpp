@@ -83,7 +83,7 @@ TSharedRef<SDockTab> FValidationTab::Spawn(const FSpawnTabArgs& Args) {
 	ActivePanel = Panel;
 
 	return SNew(SDockTab)
-		.TabRole(ETabRole::NomadTab)
+		.TabRole(NomadTab)
 		[
 			Panel
 		];

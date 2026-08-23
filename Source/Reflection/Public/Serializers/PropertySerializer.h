@@ -64,14 +64,12 @@ public:
 inline bool PassthroughPropertyHandler(FProperty* Property, const FString& PropertyName, void* PropertyValue, const TSharedPtr<FJsonObject>& Properties, UPropertySerializer* PropertySerializer) {
 	/* Handles static arrays in the format of: PropertyName[Index] */
 	if (Property->ArrayDim != 1) {
-		/*
-		 * Sized to the property and never grown past it. A static array lives inside the object
+		/* Sized to the property and never grown past it. A static array lives inside the object
 		 * rather than in an allocation of its own, so element ArrayDim would be written over
 		 * whatever follows the object in memory. The index comes out of json this engine did not
 		 * write: a newer one can declare the array longer than it is here, and the prefix match
 		 * below answers to a longer property's key besides, so an index this array has no room for
-		 * is something to expect rather than something to trust.
-		 */
+		 * is something to expect rather than something to trust. */
 		TArray<TSharedPtr<FJsonValue>> ArrayElements;
 		ArrayElements.SetNum(Property->ArrayDim);
 

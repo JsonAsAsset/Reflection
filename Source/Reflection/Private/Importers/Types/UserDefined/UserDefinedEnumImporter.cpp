@@ -22,10 +22,8 @@ bool IUserDefinedEnumImporter::Import() {
 	if (GetAssetData()->HasField(TEXT("CppForm"))) {
 		const FString CppForm_String = GetAssetData()->GetStringField(TEXT("CppForm"));
 
-		/*
-		 * Selector based on text
-		 * Seems like we can't use the normal EnumAsString because of some access error
-		 */
+		/* Selector based on text
+		 * Seems like we can't use the normal EnumAsString because of some access error */
 		CppForm = CppForm_String == "Regular" ? UEnum::ECppForm::Regular : CppForm_String == "Namespaced" ? UEnum::ECppForm::Namespaced : UEnum::ECppForm::EnumClass;
 	}
 

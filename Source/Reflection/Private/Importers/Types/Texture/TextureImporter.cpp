@@ -35,10 +35,8 @@ bool ITextureImporter<AssetType>::Import() {
 	return true;
 }
 
-/*
- * The pixels come from the export endpoint too, with the content type of the request picking the
- * encoding: an image the texture factory can take, or the raw bytes of the first mip.
- */
+/* The pixels come from the export endpoint too, with the content type of the request picking the
+ * encoding: an image the texture factory can take, or the raw bytes of the first mip. */
 static bool DownloadPixels(const FString& FetchPath, const FString& Type, const TSharedPtr<FJsonObject>& Export, TArray<uint8>& OutData) {
 	const bool UseRawMipData = FTextureTypes::RequiresRawMipData(Type, FTextureTypes::IsVectorDisplacementMap(Export));
 

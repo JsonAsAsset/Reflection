@@ -2,8 +2,6 @@
 
 #pragma once
 
-#include "UObject/Object.h"
-
 /** Handles struct serialization */
 class REFLECTION_API FStructSerializer {
 public:

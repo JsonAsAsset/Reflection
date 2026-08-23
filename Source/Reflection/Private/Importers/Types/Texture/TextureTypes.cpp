@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Texture/TextureTypes.h"
+#include "Engine/Compatibility.h"
 
 const TArray<FString>& FTextureTypes::All() {
 	static const TArray<FString> Types = {

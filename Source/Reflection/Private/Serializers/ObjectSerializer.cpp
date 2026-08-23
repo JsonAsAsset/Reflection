@@ -363,8 +363,7 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 	 * done completely without any manual work. (using the de-serializers)
 	 * 
 	 * However I don't think it's possible to do so. as I haven't seen any native
-	 * property that can do this using the data provided in UEParse.
-	 */
+	 * property that can do this using the data provided in UEParse. */
 	if (Properties->HasField(TEXT("LODData")) && Cast<UStaticMeshComponent>(Object)) {
 		UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(Object);
 		if (!StaticMeshComponent) return;

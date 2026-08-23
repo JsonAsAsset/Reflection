@@ -7,16 +7,14 @@
 #include "Settings/ReflectionSettings.h"
 #include "Modules/Cloud/Remote.h"
 
-/*
- * Talks to the local Cloud instance.
+/* Talks to the Cloud instance.
  *
  * Everything here is asynchronous unless its name says Blocking. The blocking calls exist for
  * one reason: the serializer discovers asset references while it is deserializing properties and
  * has no continuation to hand a callback to, so it has to wait. They park the game thread, and
  * are only safe inside an FBlockingRequestScope, which keeps the editor drawn while they do.
  *
- * Anything driven by a button, a menu entry or a panel takes a callback instead.
- */
+ * Anything driven by a button, a menu entry or a panel takes a callback instead. */
 class REFLECTION_API Cloud {
 public:
 	static inline FString URL = TEXT("http://localhost:1500");

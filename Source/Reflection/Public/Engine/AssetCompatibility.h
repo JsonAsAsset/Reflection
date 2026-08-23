@@ -2,10 +2,8 @@
 
 #pragma once
 
-/*
- * Version shims that need real asset types in scope, which is why they are not in
- * Compatibility.h: that one is included almost everywhere and is kept cheap.
- */
+/* Version shims that need real asset types in scope, which is why they are not in
+ * Compatibility.h: that one is included almost everywhere and is kept cheap. */
 
 #include "Engine/Compatibility.h"
 

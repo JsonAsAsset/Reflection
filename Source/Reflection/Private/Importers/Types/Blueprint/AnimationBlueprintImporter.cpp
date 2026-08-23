@@ -450,11 +450,11 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 		 *
 		 * UE4 named node properties after the node's guid ("AnimGraphNode_ApplyAdditive_10AB22C6...") so it
 		 * parses straight back out. UE5 numbers them instead ("AnimGraphNode_ModifyBone_3"), so the parse fails
-		 * for every node - and FGuid() is all zeroes, not a fresh guid, so they would all end up sharing one.
+		 * for every node and FGuid() is all zeroes, not a fresh guid, so they would all end up sharing one.
 		 * FAnimBlueprintCompilerContext does NodeGuidToIndexMap.Add(Node->NodeGuid, Index) per node, and TMap::Add
 		 * overwrites on a duplicate key, so a whole graph of zeroes collapses to a single entry pointing at
-		 * whichever node compiled last. Everything that resolves a node through that map afterwards - state
-		 * machines, asset players, blend space graphs - then reads the wrong index. */
+		 * whichever node compiled last. Everything that resolves a node through that map afterward state
+		 * machines, asset players, blend space graphs then reads the wrong index. */
 		FGuid NodeGuid; {
 			FGuid::Parse(NodeStringGUID, NodeGuid);
 

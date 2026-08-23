@@ -17,10 +17,11 @@
 #endif
 #include "Engine/Log.h"
 #include "Framework/Application/SlateApplication.h"
+
+#if UE4_25_BELOW
 #include "Framework/Docking/TabManager.h"
 
-/*
- * Whether the editor has a Content Browser open to jump to.
+/* Whether the editor has a Content Browser open to jump to.
  *
  * Asked only on the versions that need it. When SyncBrowserToAssets finds no browser it summons
  * one, and up to 4.25 that lands in FTabManager::InvokeTab, which uses whatever InvokeTab_Internal
@@ -29,9 +30,7 @@
  * reach the engine's summon path, so the jump is given up instead of taking the editor with it.
  *
  * FContentBrowserSingleton registers its browsers as the nomad tabs ContentBrowserTab1 through
- * MAX_CONTENT_BROWSERS, which is 4 on every version this branch covers.
- */
-#if UE4_25_BELOW
+ * MAX_CONTENT_BROWSERS, which is 4 on every version this branch covers. */
 inline bool HasLiveContentBrowser() {
 	for (int32 BrowserIndex = 1; BrowserIndex <= 4; ++BrowserIndex) {
 		const FTabId TabId = FTabId(*FString::Printf(TEXT("ContentBrowserTab%d"), BrowserIndex));
@@ -76,7 +75,7 @@ inline void BrowseToAsset(UObject* Asset) {
 	/* Locked browsers included, which is what the engine's own import does at the end of
 	 * UAssetToolsImpl::ImportAssetsInternal. Left out, a locked Content Browser means
 	 * FindContentBrowserToSync hands back nothing and the jump is dropped without a word. */
-	ContentBrowserModule.Get().SyncBrowserToAssets(Assets, /*bAllowLockedBrowsers=*/true);
+	ContentBrowserModule.Get().SyncBrowserToAssets(Assets, /*bAllowLockedBrowsers=*/ true);
 }
 
 /* Get the asset currently selected in the Content Browser. */
@@ -129,8 +128,7 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 	return CastedAsset;
 }
 
-/* Package path of the folder selected in the Content Browser, empty when nothing is selected.
- * Ex: "/Game/Characters/Items" */
+/* Package path of the folder selected in the Content Browser, empty when nothing is selected. */
 inline FString GetSelectedContentBrowserFolder() {
 	const FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 

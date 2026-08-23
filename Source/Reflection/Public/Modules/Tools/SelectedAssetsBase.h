@@ -19,8 +19,7 @@
  * and can only have one run in flight; the registry keeps a single instance of each tool.
  *
  * A tool is added to the Cloud dropdown by REGISTER_TOOL below its declaration, and describes
- * itself there through GetDisplayName, GetTooltip and GetIcon.
- */
+ * itself there through GetDisplayName, GetTooltip and GetIcon. */
 class REFLECTION_API TSelectedAssetsBase : public TToolBase {
 public:
 	/* Starts a run over the current selection. Does nothing if a run is already going. */
