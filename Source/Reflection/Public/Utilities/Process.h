@@ -2,9 +2,16 @@
 
 #pragma once
 
+#include "HAL/PlatformProcess.h"
+
+/* TlHelp32 brings the platform's own types in, which the engine keeps behind its own names. Taken
+ * in raw it collides with whatever includes WindowsPlatformProcess.h afterwards, and which file
+ * that is depends on how the unity blob was put together. */
 #ifndef __linux__
 #include "Windows/WindowsHWrapper.h"
-#include "TlHelp32.h"
+#include "Windows/AllowWindowsPlatformTypes.h"
+#include <TlHelp32.h>
+#include "Windows/HideWindowsPlatformTypes.h"
 #endif
 
 inline void CloseApplicationByProcessName(const FString& ProcessName) {

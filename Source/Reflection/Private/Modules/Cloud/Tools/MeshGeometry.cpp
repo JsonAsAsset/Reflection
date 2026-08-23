@@ -5,7 +5,6 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 
-#if UE4_27_AND_UE5
 #include "GPUSkinPublicDefs.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Rendering/SkeletalMeshModel.h"
@@ -18,10 +17,30 @@
 #endif
 #include "SkeletalMeshTypes.h"
 
+/* Before 4.27 the LOD model is built here rather than by the mesh */
+#if !UE4_27_AND_UE5
+#include "MeshUtilities.h"
 #endif
 
+/* 4.25 put the reference skeleton and the colour flag behind accessors */
+namespace {
+#if UE4_25_BELOW
+	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->RefSkeleton; }
+	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->bHasVertexColors = Value; }
+	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->Materials; }
+#else
+	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->GetRefSkeleton(); }
+	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->SetHasVertexColors(Value); }
+	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->GetMaterials(); }
+#endif
+
+	/* UE5 named the axis constants. The same vectors are spelled out here so both engines read the
+	 * same way at the point they are used. */
+	static const FVector3f GMeshUpAxis = FVector3f(0.0f, 0.0f, 1.0f);
+	static const FVector3f GMeshForwardAxis = FVector3f(1.0f, 0.0f, 0.0f);
+}
+
 int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TSharedPtr<FJsonObject>& Response) {
-#if UE4_27_AND_UE5
 	if (SkeletalMesh == nullptr || !Response.IsValid()) return 0;
 
 	FSkeletalMeshModel* ImportedModel = SkeletalMesh->GetImportedModel();
@@ -30,7 +49,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 	const TArray<TSharedPtr<FJsonValue>>* Lods;
 	if (!Response->TryGetArrayField(TEXT("lods"), Lods)) return 0;
 
-	const FReferenceSkeleton& RefSkeleton = SkeletalMesh->GetRefSkeleton();
+	const FReferenceSkeleton& RefSkeleton = MeshRefSkeleton(SkeletalMesh);
 
 	int32 RebuiltLods = 0;
 
@@ -184,7 +203,7 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			SkeletalMeshImportData::FMaterial& Material = ImportData.Materials.AddDefaulted_GetRef();
 
 			const int32 MaterialIndex = SectionJson.IsValid() ? SectionJson->GetIntegerField(TEXT("MaterialIndex")) : 0;
-			const TArray<FSkeletalMaterial>& Slots = SkeletalMesh->GetMaterials();
+			const TArray<FSkeletalMaterial>& Slots = MeshMaterials(SkeletalMesh);
 
 			Material.MaterialImportName = Slots.IsValidIndex(MaterialIndex)
 				? Slots[MaterialIndex].MaterialSlotName.ToString()
@@ -236,8 +255,8 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 
 					Face.WedgeIndex[Corner] = ImportData.Wedges.Num() - 1;
 
-					Face.TangentZ[Corner] = VertexNormals.IsValidIndex(Vertex) ? VertexNormals[Vertex] : FVector3f::ZAxisVector;
-					Face.TangentX[Corner] = VertexTangents.IsValidIndex(Vertex) ? VertexTangents[Vertex] : FVector3f::XAxisVector;
+					Face.TangentZ[Corner] = VertexNormals.IsValidIndex(Vertex) ? VertexNormals[Vertex] : GMeshUpAxis;
+					Face.TangentX[Corner] = VertexTangents.IsValidIndex(Vertex) ? VertexTangents[Vertex] : GMeshForwardAxis;
 					/* The game's own binormal, not one worked back out of the other two: the cross
 					 * product is always right handed, and a UV shell mirrored against its
 					 * neighbour is lit by the sign that says it isn't. */
@@ -287,6 +306,40 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		}
 
 
+#if !UE4_27_AND_UE5
+		/* Before 4.27 nothing builds a LOD out of the mesh's imported data, so the model is built
+		 * here the way an importer of that era does it: the same points, wedges, faces and
+		 * influences, handed straight to the mesh builder. The imported data is kept alongside so
+		 * anything that later asks the LOD what it was made from still has an answer. */
+		ImportedModel->LODModels[LodIndex].RawSkeletalMeshBulkData.SaveRawMesh(ImportData);
+
+		TArray<FVector> LodPoints;
+		TArray<SkeletalMeshImportData::FMeshWedge> LodWedges;
+		TArray<SkeletalMeshImportData::FMeshFace> LodFaces;
+		TArray<SkeletalMeshImportData::FVertInfluence> LodInfluences;
+		TArray<int32> LodPointToRawMap;
+
+		ImportData.CopyLODImportData(LodPoints, LodWedges, LodFaces, LodInfluences, LodPointToRawMap);
+
+		IMeshUtilities& MeshUtilities = FModuleManager::Get().LoadModuleChecked<IMeshUtilities>("MeshUtilities");
+
+		IMeshUtilities::MeshBuildOptions BuildOptions;
+
+		/* The normals, tangents and triangles are the game's own, the same reasoning as the build
+		 * settings the newer path writes */
+		BuildOptions.bComputeNormals = false;
+		BuildOptions.bComputeTangents = false;
+		BuildOptions.bRemoveDegenerateTriangles = false;
+
+		if (!MeshUtilities.BuildSkeletalMesh(ImportedModel->LODModels[LodIndex], RefSkeleton, LodInfluences, LodWedges, LodFaces, LodPoints, LodPointToRawMap, BuildOptions)) {
+			continue;
+		}
+
+		/* The builder leaves this to whoever called it, and the render data is sized from it. At
+		 * zero the vertex buffer holds no texture coordinates, and the shader that goes looking for
+		 * them is handed a stream that isn't there. */
+		ImportedModel->LODModels[LodIndex].NumTexCoords = FMath::Max(1, NumTexCoords);
+#else
 		SkeletalMesh->SaveLODImportedData(LodIndex, ImportData);
 
 		/* What says the imported data is new enough for the builder to read.
@@ -320,8 +373,10 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 			LodInfo->BuildSettings.bRemoveDegenerates = false;
 		}
 
+#endif
+
 		if (ImportData.bHasVertexColors) {
-			SkeletalMesh->SetHasVertexColors(true);
+			SetMeshHasVertexColors(SkeletalMesh, true);
 		}
 
 		RebuiltLods++;
@@ -342,13 +397,9 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 	}
 
 	return RebuiltLods;
-#else
-	return 0;
-#endif
 }
 
 void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>>& Exports) {
-#if UE4_27_AND_UE5
 	USkeletalMesh* SkeletalMesh = Cast<USkeletalMesh>(Object);
 	if (SkeletalMesh == nullptr) return;
 
@@ -368,5 +419,4 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 		false,
 		310.0f
 	);
-#endif
 }

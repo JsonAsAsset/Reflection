@@ -45,8 +45,8 @@ public:
 		{ "C_glabella_down_pose", 0.7 },
 		{ "C_glabella_up_pose", 0.5 },
 		
-		{ "L_blink_pose", 0.7 },
-		{ "R_blink_pose", 0.7 },
+		{ "L_blink_pose", 0.815 },
+		{ "R_blink_pose", 0.815 },
 		
 		{ "L_wide_pose", 0.7 },
         { "R_wide_pose", 0.7 },

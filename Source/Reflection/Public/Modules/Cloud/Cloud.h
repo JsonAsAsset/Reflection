@@ -59,6 +59,7 @@ public:
 	static inline FString DnaURL = TEXT("/api/export/dna");
 	static inline FString ReferenceSkeletonURL = TEXT("/api/export/refskeleton");
 	static inline FString ExpressionsURL = TEXT("/api/export/expressions");
+	static inline FString DnaPosesURL = TEXT("/api/export/dnaposes");
 
 	class REFLECTION_API Export {
 	public:
@@ -100,6 +101,14 @@ public:
 		/* The arithmetic a curve expression asset drives its curves with, which cooking leaves
 		 * only as compiled instructions */
 		static TSharedPtr<FJsonObject> GetCurveExpressionsBlocking(const FString& Path);
+
+		/* What each of a head's controls does to its joints, worked out by the Cloud rather than by
+		 * RigLogic. The one way to a MetaHuman face on an engine that has no RigLogic at all.
+		 *
+		 * Naming a curve mapping asks for an older head's poses instead, each driving a handful of
+		 * this rig's controls at once. Those are evaluated rather than added up from single control
+		 * poses, so the mapping goes with the request rather than being resolved here. */
+		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString(), const FString& Strengths = FString());
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

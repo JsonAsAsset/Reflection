@@ -10,6 +10,7 @@
 #include "Animation/PoseAsset.h"
 #endif
 
+#include "Animation/PoseAsset.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 
@@ -35,6 +36,9 @@ namespace {
 	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->RefSkeleton; }
 	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->RefSkeleton = Value; }
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->Materials = Value; }
+	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->Skeleton = Value; }
+	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->MinLod = Value; }
+	const TArray<UMorphTarget*>& MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->MorphTargets; }
 
 	FSkeletalMeshLODModel* MeshLodModel(const USkeletalMesh* Mesh, const int32 Lod) {
 		FSkeletalMeshModel* Model = Mesh->GetImportedModel();
@@ -59,6 +63,9 @@ namespace {
 	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->GetRefSkeleton(); }
 	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->SetRefSkeleton(Value); }
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
+	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->SetSkeleton(Value); }
+	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->SetMinLod(Value); }
+	const TArray<TObjectPtr<UMorphTarget>>& MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->GetMorphTargets(); }
 
 	bool IsMeshLodImportedDataEmpty(const USkeletalMesh* Mesh, const int32 Lod) { return Mesh->IsLODImportedDataEmpty(Lod); }
 	void LoadMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& Out) { Mesh->LoadLODImportedData(Lod, Out); }
@@ -355,7 +362,6 @@ bool ISkeletalMeshImporter::ApplyCookedBindPose(USkeletalMesh* SkeletalMesh, USk
 }
 
 bool ISkeletalMeshImporter::Import() {
-#if UE4_27_AND_UE5
 	/* The skeleton the mesh names, if it names one. Plenty of cooked meshes do not: the bones they
 	 * are skinned to are written into the mesh itself, and the reference to a skeleton asset is
 	 * something only the editor kept. One is made further down for those, out of the mesh's own
@@ -396,7 +402,7 @@ bool ISkeletalMeshImporter::Import() {
 	if (SkeletalMesh == nullptr) return false;
 
 	if (Skeleton != nullptr) {
-		SkeletalMesh->SetSkeleton(Skeleton);
+		SetMeshSkeleton(SkeletalMesh, Skeleton);
 	}
 
 	/* The mesh's own bind pose if the Cloud can serve it, and the skeleton's only as a fallback:
@@ -416,7 +422,7 @@ bool ISkeletalMeshImporter::Import() {
 			return false;
 		}
 
-		SkeletalMesh->SetRefSkeleton(Skeleton->GetReferenceSkeleton());
+		SetMeshRefSkeleton(SkeletalMesh, Skeleton->GetReferenceSkeleton());
 	}
 
 	/* Named no skeleton and now holding the bones it was cooked with: the asset the editor would
@@ -436,7 +442,7 @@ bool ISkeletalMeshImporter::Import() {
 			return false;
 		}
 
-		SkeletalMesh->SetSkeleton(Skeleton);
+		SetMeshSkeleton(SkeletalMesh, Skeleton);
 	}
 
 	SkeletalMesh->CalculateInvRefMatrices();
@@ -534,30 +540,63 @@ bool ISkeletalMeshImporter::Import() {
 	/* A MetaHuman head keeps its face rig as a DNA hung off the mesh, and none of it is in the
 	 * properties: the stream sits after them in the package the same way the geometry does. */
 	if (ExportNamesDna()) {
-		if (ApplyDna(SkeletalMesh, FetchPath)) {
+		const bool bAppliedDna = ApplyDna(SkeletalMesh, FetchPath);
+
+		if (bAppliedDna) {
 			/* Only when the mesh's own bind pose could not be had: reconstructing it from the
 			 * DNA is a guess at what the package already states outright */
 			if (!bCookedBindPose) {
 				AlignBindPoseToDna(SkeletalMesh);
 			}
+		}
 
-			/* Flattening the rig into poses is the setting's job */
-			if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
-				if (const UPoseAsset* PoseAsset = BakeDnaPoseAsset(SkeletalMesh)) {
-					UE_LOG(LogReflection, Display, TEXT("\"%s\" baked %d pose(s) out of its DNA into \"%s\""),
-						*GetAssetName(), PoseAsset->GetNumPoses(), *PoseAsset->GetName());
-				}
+		/* Flattening the rig into poses is the setting's job. Where the DNA never attached there
+		 * is no rig here to flatten, and the poses are asked of the Cloud instead: that is the
+		 * whole of the face on an engine that cannot read a DNA at all. */
+		bool bBakedPoses = false;
+
+		if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
+			const UPoseAsset* PoseAsset = bAppliedDna
+				? BakeDnaPoseAsset(SkeletalMesh)
+				: BakeDnaPoseAssetFromCloud(SkeletalMesh, FetchPath);
+
+			bBakedPoses = PoseAsset != nullptr;
+
+			if (bBakedPoses) {
+				UE_LOG(LogReflection, Display, TEXT("\"%s\" baked %d pose(s) out of its DNA into \"%s\""),
+					*GetAssetName(), PoseAsset->GetNumPoses(), *PoseAsset->GetName());
 			}
-		} else {
+		}
+
+		/* Nothing to say where the poses stood in for the rig: the face is there either way, and
+		 * only the thing that drives it differs */
+		if (!bAppliedDna && !bBakedPoses) {
+#if REFLECTION_RIG_LOGIC
 			FImportIssues::Report(
 				EImportIssue::Data,
 				TEXT("The mesh's DNA didn't come back"),
 				TEXT("The export hangs a DNA off this mesh, so it is a rigged head. Without the stream the mesh imports, but nothing drives its face.")
 			);
+#else
+			/* Nothing was asked for: without RigLogic there is nothing here that reads a DNA, so
+			 * saying the stream did not come back would be blaming the Cloud for the engine. */
+			FImportIssues::Report(
+				EImportIssue::MissingClass,
+				TEXT("This engine has no RigLogic"),
+				TEXT("The export hangs a DNA off this mesh, so it is a rigged head. RigLogic is what reads one and it ships with Unreal Engine 5, so the face has to arrive already worked out. Baking it to a pose asset is what does that, and it is off or did not run.")
+			);
+#endif
 		}
 	}
 
+	/* Before 4.27 the LOD models were built as the geometry was read, so there is nothing left for
+	 * the mesh to build out of imported data it doesn't keep. What turns those models into render
+	 * data is the PostEditChange at the end of this function, and nothing may touch the mesh's
+	 * resources before it: resources brought up against render data that has not been rebuilt yet
+	 * describe a mesh that no longer exists, which the first draw finds out about. */
+#if UE4_27_AND_UE5
 	SkeletalMesh->Build();
+#endif
 
 	/* What the build made of it, which is not the same question as whether there was anything to
 	 * build. A LOD whose influences all named bones the mesh hasn't got, or whose triangles the
@@ -612,7 +651,7 @@ bool ISkeletalMeshImporter::Import() {
 	/* Dropped to the best LOD the mesh has, rather than wherever the game's quality settings
 	 * started it drawing */
 	if (GetSettings()->AssetSettings.SkeletalMesh.IgnoreMinQualityLevelLODDefault) {
-		SkeletalMesh->SetMinLod(FPerPlatformInt(0));
+		SetMeshMinLod(SkeletalMesh, FPerPlatformInt(0));
 
 #if ENGINE_UE5
 		FPerQualityLevelInt MinQualityLevelLod = SkeletalMesh->GetQualityLevelMinLod();
@@ -626,16 +665,7 @@ bool ISkeletalMeshImporter::Import() {
 	SkeletalMesh->CalculateInvRefMatrices();
 	SkeletalMesh->PostEditChange();
 
-	UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d LOD(s) and %d morph target(s) against skeleton \"%s\""), *GetAssetName(), BuiltLods, SkeletalMesh->GetMorphTargets().Num(), *Skeleton->GetName());
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d LOD(s) and %d morph target(s) against skeleton \"%s\""), *GetAssetName(), BuiltLods, MeshMorphTargets(SkeletalMesh).Num(), *Skeleton->GetName());
 
 	return OnAssetCreation(SkeletalMesh);
-#else
-	FImportIssues::Report(
-		EImportIssue::Failed,
-		TEXT("Skeletal meshes need 4.27 or newer"),
-		TEXT("The imported model this builds into is not what earlier engines keep their geometry in.")
-	);
-
-	return false;
-#endif
 }

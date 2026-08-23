@@ -186,6 +186,26 @@ TSharedPtr<FJsonObject> Cloud::Export::GetCurveExpressionsBlocking(const FString
 	return Response;
 }
 
+TSharedPtr<FJsonObject> Cloud::Export::GetDnaPosesBlocking(const FString& Path, const FString& Mapping, const FString& Strengths) {
+	TMap<FString, FString> Parameters = { { TEXT("path"), Path } };
+
+	if (!Mapping.IsEmpty()) {
+		Parameters.Add(TEXT("mapping"), Mapping);
+	}
+
+	if (!Strengths.IsEmpty()) {
+		Parameters.Add(TEXT("strengths"), Strengths);
+	}
+
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(DnaPosesURL, Parameters, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("poses"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
 TSharedPtr<FJsonObject> Cloud::Export::GetReferenceSkeletonBlocking(const FString& Path) {
 	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(ReferenceSkeletonURL, { { TEXT("path"), Path } }, {});
 

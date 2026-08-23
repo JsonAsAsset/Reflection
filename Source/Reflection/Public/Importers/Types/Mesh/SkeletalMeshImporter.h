@@ -74,6 +74,9 @@ private:
 	 * what RigLogic hands back in the first place. Null when the DNA has nothing to pose with. */
 	bool BuildBackportedPosePlan(const TSharedPtr<class IDNAReader>& Behavior, TArray<struct FDnaPosePlan>& OutPlan);
 	UPoseAsset* BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh);
+
+	/* The same poses for an engine with no RigLogic, worked out by the Cloud instead of here */
+	UPoseAsset* BakeDnaPoseAssetFromCloud(USkeletalMesh* SkeletalMesh, const FString& FetchPath);
 };
 
 REGISTER_IMPORTER(ISkeletalMeshImporter, {
