@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DeveloperSettings.h"
 #include "TextureSettings.generated.h"
 
 /* Settings for textures */

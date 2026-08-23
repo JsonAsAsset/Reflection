@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DeveloperSettings.h"
 #include "Redirector.generated.h"
 
 /* A point in a redirector */

@@ -7,6 +7,7 @@
 
 /* Settings Substructures */
 #include "Types/AnimationBlueprintSettings.h"
+#include "Types/DNASettings.h"
 #include "Types/MaterialSettings.h"
 #include "Types/SkeletalMeshSettings.h"
 #include "Types/StaticMeshSettings.h"
@@ -44,6 +45,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRSkeletalMeshSettings SkeletalMesh;
+
+	UPROPERTY(EditAnywhere, Config, Category = Settings)
+	FRDnaSettings DNA;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;

@@ -1301,7 +1301,7 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 	/* Test only: the setting lives in the editor's per project config, which a commandlet run has
 	 * no way to be pointed at */
 	if (FParse::Param(*Params, TEXT("bakedna"))) {
-		GetSettings()->AssetSettings.SkeletalMesh.BakeDnaToPoseAsset = true;
+		GetSettings()->AssetSettings.DNA.BakeToPoseAsset = true;
 
 		UE_LOG(LogRigImportTest, Display, TEXT("baking dna to a pose asset"));
 	}

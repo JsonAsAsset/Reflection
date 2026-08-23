@@ -35,7 +35,7 @@ private:
 	/* A skeleton made out of the mesh's own reference pose, saved beside it. For a mesh whose
 	 * export names no skeleton at all: there is nothing to go and fetch, and the bones the mesh
 	 * carries are the whole of what a skeleton for it would hold anyway. */
-	USkeleton* BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh);
+	USkeleton* BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh) const;
 
 	/* One slot per exported material, named before the geometry arrives: a wedge names the slot it
 	 * belongs to, so the names have to be there for the sections to land on the right material.
@@ -72,6 +72,7 @@ private:
 	/* Flattens the face rig into a pose asset beside the mesh, one pose per control the DNA names.
 	 * Each control is evaluated on its own and the joints it moves are kept as they are, which is
 	 * what RigLogic hands back in the first place. Null when the DNA has nothing to pose with. */
+	bool BuildBackportedPosePlan(const TSharedPtr<class IDNAReader>& Behavior, TArray<struct FDnaPosePlan>& OutPlan);
 	UPoseAsset* BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh);
 };
 

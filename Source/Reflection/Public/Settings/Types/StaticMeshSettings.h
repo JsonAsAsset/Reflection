@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DeveloperSettings.h"
 #include "StaticMeshSettings.generated.h"
 
 /* Settings for static meshes */

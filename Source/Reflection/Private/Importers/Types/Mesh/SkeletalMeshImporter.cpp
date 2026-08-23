@@ -7,10 +7,12 @@
 
 #if REFLECTION_RIG_LOGIC
 #include "DNAAsset.h"
+
 #if REFLECTION_DNA_USER_DATA
 #include "DNA.h"
 #include "DNAAssetUserData.h"
 #endif
+
 #include "DNAUtils.h"
 #include "Engine/RigLogicCompatibility.h"
 #include "SkelMeshDNAUtils.h"
@@ -19,10 +21,10 @@
 #include "dna/BinaryStreamReader.h"
 #include "dna/BinaryStreamWriter.h"
 #include "trio/streams/MemoryStream.h"
-#include "DNAToSkelMeshMap.h"
 #include "Animation/AnimSequence.h"
 #include "Animation/PoseAsset.h"
 #include "Animation/AnimData/IAnimationDataController.h"
+
 #endif
 
 #include "Engine/EngineUtilities.h"
@@ -34,7 +36,6 @@
 
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"
-#include "Animation/MorphTarget.h"
 #include "Rendering/SkeletalMeshModel.h"
 #include "Rendering/SkeletalMeshLODModel.h"
 
@@ -50,7 +51,7 @@ UObject* ISkeletalMeshImporter::CreateAsset(UObject* CreatedAsset) {
 	 * place. The Content Browser draws that mesh through a component whose mesh object holds its
 	 * render data by pointer, and nothing tells the pointer. The vertex factories that object made
 	 * are then released against freed memory, the release is skipped, and deleting the object
-	 * afterwards stops the editor on a render resource that was never released.
+	 * afterward stops the editor on a render resource that was never released.
 	 *
 	 * Moved aside rather than destroyed: whatever is still drawing the old mesh keeps a mesh that
 	 * is still there to draw, and it goes on its own once nothing is. */
@@ -90,7 +91,7 @@ void ISkeletalMeshImporter::Abandon(USkeletalMesh* SkeletalMesh) {
 	 * component that keeps a mesh object of its own, and that object holds the mesh's render data
 	 * by pointer. Marking the mesh clears the component's reference to it out from under that
 	 * pointer on the next collection, and the vertex factories the mesh object made are then
-	 * released against render data that is gone -- which the engine finds out about by deleting a
+	 * released against render data that is gone which the engine finds out about by deleting a
 	 * render resource that was never released, and stops the editor over. Emptied of everything
 	 * that can be drawn, it is collected on its own once the package below lets go of it. */
 
@@ -98,7 +99,7 @@ void ISkeletalMeshImporter::Abandon(USkeletalMesh* SkeletalMesh) {
 	SetAsset(nullptr);
 }
 
-USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh) {
+USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalMesh) const {
 	if (SkeletalMesh == nullptr || SkeletalMesh->GetRefSkeleton().GetNum() == 0) return nullptr;
 
 	const FString SkeletonName = GetAssetName() + TEXT("_Skeleton");
@@ -123,8 +124,7 @@ USkeleton* ISkeletalMeshImporter::BuildSkeletonFromMesh(USkeletalMesh* SkeletalM
 		SavePackage(SkeletonPackage);
 	}
 
-	UE_LOG(LogReflection, Display, TEXT("\"%s\" named no skeleton, so \"%s\" was made from its %d bone(s)"),
-		*GetAssetName(), *SkeletonName, SkeletalMesh->GetRefSkeleton().GetNum());
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" named no skeleton, so \"%s\" was made from its %d bone(s)"), *GetAssetName(), *SkeletonName, SkeletalMesh->GetRefSkeleton().GetNum());
 
 	return Skeleton;
 }
@@ -291,13 +291,13 @@ TArray<uint8> ISkeletalMeshImporter::RewriteDnaForAnimNode(USkeletalMesh* Skelet
 #if REFLECTION_RIG_LOGIC
 	/* A DNA asset is only ever read by the RigLogic anim node, and that node reads a joint's nine
 	 * numbers in MetaHuman's axes: translation as (x, -y, z), rotation as a rotator of
-	 * (-ry, -rz, rx). This data is not in those axes -- the pose the mesh is bound at is the same
-	 * numbers read as (x, y, z) and (-ry, rz, -rx) -- so the node rests somewhere the mesh was
+	 * (-ry, -rz, rx). This data is not in those axes the pose the mesh is bound at is the same
+	 * numbers read as (x, y, z) and (-ry, rz, -rx) so the node rests somewhere the mesh was
 	 * never skinned and deforms the face.
 	 *
 	 * The node can't be changed, so the DNA is. Negating the three attributes the two readings
 	 * disagree on cancels exactly: the node's own formula then lands on the pose the mesh is
-	 * bound at. Translation Y, rotation X and rotation Z, wherever they appear -- in the neutral
+	 * bound at. Translation Y, rotation X and rotation Z, wherever they appear in the neutral
 	 * the rig rests at, and in the deltas every control drives. */
 	static constexpr int32 AttributesPerJoint = 9;
 
@@ -325,7 +325,7 @@ TArray<uint8> ISkeletalMeshImporter::RewriteDnaForAnimNode(USkeletalMesh* Skelet
 
 	/* The pose the rig rests at. Not the DNA's own: the mesh's, taken from the package and written
 	 * back in the node's axes, so the rig rests exactly where the mesh is bound for every joint it
-	 * touches. The DNA and this skeleton disagree about the body -- arms, spine, neck -- and the
+	 * touches. The DNA and this skeleton disagree about the body arms, spine, neck and the
 	 * node writes those joints too, so leaving them as the DNA had them drags the whole head. */
 	const uint16 JointCount = Reader->getJointCount();
 
@@ -832,6 +832,149 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 #endif
 }
 
+/* One pose to bake, and what the rig has to be driven with to arrive at it.
+ *
+ * Named at file scope rather than tucked into an anonymous namespace: the header declares the
+ * function that fills these in, and a type with internal linkage cannot be the one it means. */
+struct FDnaPosePlan {
+	FName Name;
+	TArray<TPair<uint16, float>> Drive;
+};
+
+#if REFLECTION_RIG_LOGIC
+
+namespace {
+	/* The rig's controls by the name a curve mapping would call them. A DNA writes a control as
+	 * group and name with a dot between, and a mapping writes the same control with an underscore,
+	 * so they only meet once one is spelled the other's way. */
+	TMap<FString, uint16> MapControlsByName(const TSharedPtr<IDNAReader>& Behavior) {
+		const int32 ControlCount = Behavior->GetRawControlCount();
+
+		TMap<FString, uint16> ByName;
+		ByName.Reserve(ControlCount);
+
+		for (int32 Control = 0; Control < ControlCount; ++Control) {
+			ByName.Add(
+				Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_")),
+				static_cast<uint16>(Control));
+		}
+
+		return ByName;
+	}
+}
+
+/* The older head's poses, read out of the mapping that says what each of its curves is made of.
+ *
+ * The Cloud hands back a weight per control per curve, worked out by running the compiled
+ * expression rather than reading the text it was written as, so a curve driven by three controls
+ * in different amounts arrives as those three amounts. Driving the rig with exactly those is what
+ * makes the pose: the mapping's own statement of what that curve means, evaluated by the rig it
+ * was written against.
+ *
+ * Empty when the mapping cannot be had or none of its controls are ones this DNA has, which leaves
+ * the caller to bake the rig's own controls instead. */
+bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>& Behavior, TArray<FDnaPosePlan>& OutPlan) {
+	const FString MappingPath = GetSettings()->AssetSettings.DNA.CurveMapping;
+
+	if (MappingPath.IsEmpty()) return false;
+
+	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetCurveExpressionsBlocking(MappingPath);
+
+	const TArray<TSharedPtr<FJsonValue>>* Expressions = nullptr;
+
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("expressions"), Expressions)) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("The backport mapping didn't come back"),
+			FString::Printf(
+				TEXT("'%s' is what says how this rig's controls line up with the older head's curves. Without it the rig's own controls are baked instead."),
+				*MappingPath)
+		);
+
+		return false;
+	}
+
+	const TMap<FString, uint16> ByName = MapControlsByName(Behavior);
+
+	const FRDnaSettings& DnaSettings = GetSettings()->AssetSettings.DNA;
+	const bool bAdjust = DnaSettings.AdjustPoseStrengths;
+
+	int32 Unresolved = 0;
+	int32 Adjusted = 0;
+
+	for (const TSharedPtr<FJsonValue>& Value : *Expressions) {
+		const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
+		if (!Entry.IsValid()) continue;
+
+		FString Target;
+		if (!Entry->TryGetStringField(TEXT("target"), Target) || Target.IsEmpty()) continue;
+
+		const TSharedPtr<FJsonObject>* Weights = nullptr;
+		if (!Entry->TryGetObjectField(TEXT("weights"), Weights) || !Weights->IsValid()) continue;
+
+		FDnaPosePlan Pose;
+		Pose.Name = FName(*Target);
+
+		/* How hard to drive this one. A map keyed by FString matches however the name was typed,
+		 * so the strengths can be written in whatever case reads best. */
+		float Strength = 1.0f;
+
+		if (bAdjust) {
+			if (const float* Override = DnaSettings.PoseStrengths.Find(Target)) {
+				Strength = *Override;
+
+				Adjusted++;
+			}
+		}
+
+		for (const TPair<FString, TSharedPtr<FJsonValue>>& Weight : (*Weights)->Values) {
+			if (!Weight.Value.IsValid()) continue;
+
+			const uint16* Control = ByName.Find(Weight.Key);
+
+			/* A mapping covers a whole family of heads, so a curve naming a control this DNA has
+			 * not got is the mapping being broader than this face rather than a fault */
+			if (Control == nullptr) {
+				Unresolved++;
+
+				continue;
+			}
+
+			/* Scaling what the controls are driven with rather than the pose that comes out:
+			 * the rig is not linear in its controls, so asking it for a softer expression is not
+			 * the same as taking a full one and halving every bone it moved. */
+			const double Amount = Weight.Value->AsNumber() * Strength;
+			if (FMath::IsNearlyZero(Amount)) continue;
+
+			Pose.Drive.Add({ *Control, static_cast<float>(Amount) });
+		}
+
+		/* A curve none of whose controls this rig has is a pose that would come out as the neutral,
+		 * which is worse than not having it: it would overwrite whatever plays underneath */
+		if (Pose.Drive.Num() == 0) continue;
+
+		OutPlan.Add(MoveTemp(Pose));
+	}
+
+	if (OutPlan.Num() == 0) return false;
+
+	UE_LOG(LogReflection, Display,
+		TEXT("\"%s\" backporting %d pose(s) from \"%s\"%s%s"),
+		*GetAssetName(), OutPlan.Num(), *FPaths::GetBaseFilename(MappingPath),
+		Adjusted > 0 ? *FString::Printf(TEXT(", %d at an adjusted strength"), Adjusted) : TEXT(""),
+		Unresolved > 0 ? *FString::Printf(TEXT(", %d control reference(s) this DNA hasn't got"), Unresolved) : TEXT(""));
+
+	return true;
+}
+
+#else
+
+bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>&, TArray<FDnaPosePlan>&) {
+	return false;
+}
+
+#endif
+
 UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh) {
 #if REFLECTION_RIG_LOGIC
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(SkeletalMesh);
@@ -896,7 +1039,28 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 	/* One frame per control, and a first frame with the rig standing still for the rest of them to
 	 * be measured against */
-	const int32 FrameCount = ControlCount + 1;
+	/* What to bake: the older head's poses where the mapping could be had and that was asked for,
+	 * otherwise one pose per control the rig names */
+	TArray<FDnaPosePlan> Plan;
+
+	const bool bBackported =
+		GetSettings()->AssetSettings.DNA.BackportPoses &&
+		BuildBackportedPosePlan(Behavior, Plan);
+
+	if (!bBackported) {
+		Plan.Reserve(ControlCount);
+
+		for (int32 Control = 0; Control < ControlCount; ++Control) {
+			/* A control is named with a dot between its group and itself, which reads as a path
+			 * everywhere a curve name is typed */
+			Plan.Add({
+				FName(*Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_"))),
+				{ { static_cast<uint16>(Control), 1.0f } }
+			});
+		}
+	}
+
+	const int32 FrameCount = Plan.Num() + 1;
 
 	TArray<FName> PoseNames;
 	PoseNames.Reserve(FrameCount);
@@ -924,20 +1088,19 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	WriteFrame({});
 	PoseNames.Add(TEXT("base_pose"));
 
-	for (int32 Control = 0; Control < ControlCount; ++Control) {
+	for (const FDnaPosePlan& Pose : Plan) {
 		for (int32 Reset = 0; Reset < ControlCount; ++Reset) {
 			Instance.SetRawControl(static_cast<uint16>(Reset), 0.0f);
 		}
 
-		Instance.SetRawControl(static_cast<uint16>(Control), 1.0f);
+		for (const TPair<uint16, float>& Drive : Pose.Drive) {
+			Instance.SetRawControl(Drive.Key, Drive.Value);
+		}
 
 		RigLogic.Calculate(&Instance);
 
 		WriteFrame(GetDnaJointOutputs(Instance));
-
-		/* A control is named with a dot between its group and itself, which reads as a path
-		 * everywhere a curve name is typed */
-		PoseNames.Add(FName(*Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_"))));
+		PoseNames.Add(Pose.Name);
 	}
 
 	/* A pose asset is built out of an animation, one pose per frame, and keeps pointing at it: the
@@ -945,7 +1108,9 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	 * readable once the poses are additive. Both land beside the mesh. */
 	const FString Folder = FPackageName::GetLongPackagePath(GetPackage()->GetName());
 
-	const FString SequenceName = GetAssetName() + TEXT("_DNA_Facial_Pose_Export");
+	const FString SequenceName = GetAssetName() + (bBackported
+		? TEXT("_DNA_Facial_Pose_Backport")
+		: TEXT("_DNA_Facial_Pose_Export"));
 	const FString PoseAssetName = SequenceName + TEXT("_PoseAsset");
 
 	UPackage* SequencePackage = CreatePackage(*(Folder / SequenceName));
@@ -1174,7 +1339,7 @@ bool ISkeletalMeshImporter::Import() {
 		SkeletalMesh->SetImportedBounds(Bounds);
 	}
 
-	/* Morph deltas come down the way the geometry does -- a cook quantizes them into the render
+	/* Morph deltas come down the way the geometry does a cook quantizes them into the render
 	 * buffers rather than keeping them where an import would look. */
 	const TArray<TSharedPtr<FJsonValue>>* ExportedMorphTargets;
 
@@ -1196,7 +1361,7 @@ bool ISkeletalMeshImporter::Import() {
 			}
 
 			/* Flattening the rig into poses is the setting's job */
-			if (GetSettings()->AssetSettings.SkeletalMesh.BakeDnaToPoseAsset) {
+			if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
 				if (const UPoseAsset* PoseAsset = BakeDnaPoseAsset(SkeletalMesh)) {
 					UE_LOG(LogReflection, Display, TEXT("\"%s\" baked %d pose(s) out of its DNA into \"%s\""),
 						*GetAssetName(), PoseAsset->GetNumPoses(), *PoseAsset->GetName());
@@ -1287,8 +1452,7 @@ bool ISkeletalMeshImporter::Import() {
 	SkeletalMesh->CalculateInvRefMatrices();
 	SkeletalMesh->PostEditChange();
 
-	UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d LOD(s) and %d morph target(s) against skeleton \"%s\""),
-		*GetAssetName(), BuiltLods, SkeletalMesh->GetMorphTargets().Num(), *Skeleton->GetName());
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d LOD(s) and %d morph target(s) against skeleton \"%s\""), *GetAssetName(), BuiltLods, SkeletalMesh->GetMorphTargets().Num(), *Skeleton->GetName());
 
 	return OnAssetCreation(SkeletalMesh);
 #else

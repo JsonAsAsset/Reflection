@@ -3,7 +3,6 @@
 #pragma once
 
 #include "CoreMinimal.h"
-#include "Engine/DeveloperSettings.h"
 #include "AnimationBlueprintSettings.generated.h"
 
 /* Settings for animation blueprints */
