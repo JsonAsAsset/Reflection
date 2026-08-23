@@ -23,6 +23,19 @@
 #include "Animation/AnimData/IAnimationDataController.h"
 #endif
 
+/* 4.26 put the mesh's reference skeleton behind an accessor.
+ *
+ * Shared rather than written out wherever it is wanted: three files had their own copy of this in
+ * an anonymous namespace, which is fine until a unity build puts two of them in one translation
+ * unit and neither will compile. */
+inline const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) {
+#if UE4_25_BELOW
+	return Mesh->RefSkeleton;
+#else
+	return Mesh->GetRefSkeleton();
+#endif
+}
+
 inline UAssetImportData* GetAssetImportData(USkeletalMesh* InMesh) {
 #if UE4_27_AND_UE5
 	return InMesh->GetAssetImportData();

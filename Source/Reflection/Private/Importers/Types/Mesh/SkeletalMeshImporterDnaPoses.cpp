@@ -15,6 +15,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/PoseAsset.h"
 #include "Animation/Skeleton.h"
+#include "Engine/AssetCompatibility.h"
 #include "Engine/EngineUtilities.h"
 #include "Engine/SkeletalMesh.h"
 
@@ -33,17 +34,6 @@ namespace {
 		return Mesh->Skeleton;
 #else
 		return Mesh->GetSkeleton();
-#endif
-	}
-
-	/* The mesh's own bind pose, which is not the one its skeleton carries: a skeleton is shared
-	 * across a family of heads and rests where none of them quite does, and the difference is
-	 * centimetres. The mesh is what the face was skinned against. */
-	const FReferenceSkeleton& PoseMeshRefSkeleton(const USkeletalMesh* Mesh) {
-#if UE4_25_BELOW
-		return Mesh->RefSkeleton;
-#else
-		return Mesh->GetRefSkeleton();
 #endif
 	}
 
@@ -203,7 +193,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	 * spine sits over a metre from the DNA's. It never showed in the pose asset, because a bone
 	 * holding one value in every frame cancels the moment the poses are made additive, and it is
 	 * the animation underneath that ends up dragging the body around. */
-	const FReferenceSkeleton& RefSkeleton = PoseMeshRefSkeleton(SkeletalMesh);
+	const FReferenceSkeleton& RefSkeleton = MeshRefSkeleton(SkeletalMesh);
 	const FReferenceSkeleton& SkeletonBones = Skeleton->GetReferenceSkeleton();
 
 	TArray<FName> BoneNames;
@@ -254,7 +244,13 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	/* One frame a pose, and a first frame with nothing driven for the rest to be measured against */
 	const int32 FrameCount = PoseDeltas.Num() + 1;
 
+	/* 5.4 replaced the skeleton's smart names with plain ones kept as curve metadata */
+#if UE5_4_BEYOND
+	TArray<FName> PoseNames;
+#else
 	TArray<FSmartName> PoseNames;
+#endif
+
 	PoseNames.Reserve(FrameCount);
 
 	TArray<TArray<FVector>> PositionKeys;
@@ -267,10 +263,17 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 
 	/* A pose name has to be on the skeleton before a pose can be called it */
 	const auto NamePose = [Skeleton, &PoseNames](const FString& Name) {
+		const FName CurveName(*Name);
+
+#if UE5_4_BEYOND
+		Skeleton->AddCurveMetaData(CurveName);
+		PoseNames.Add(CurveName);
+#else
 		FSmartName Smart;
 
-		Skeleton->AddSmartNameAndModify(USkeleton::AnimCurveMappingName, FName(*Name), Smart);
+		Skeleton->AddSmartNameAndModify(USkeleton::AnimCurveMappingName, CurveName, Smart);
 		PoseNames.Add(Smart);
+#endif
 	};
 
 	const auto WriteFrame = [&](const TMap<int32, TArray<float>>& Deltas) {

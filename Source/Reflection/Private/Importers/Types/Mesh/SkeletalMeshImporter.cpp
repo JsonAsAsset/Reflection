@@ -3,6 +3,7 @@
 #include "Importers/Types/Mesh/SkeletalMeshImporter.h"
 #include "Rendering/SkeletalMeshLODImporterData.h"
 #include "Rendering/SkeletalMeshRenderData.h"
+#include "Engine/AssetCompatibility.h"
 #include "Engine/AssetUserData.h"
 
 /* Baking a DNA into poses is the DNA half's, but this is where the setting is acted on */
@@ -33,7 +34,6 @@
  * mesh, so the same questions are asked of a different object. */
 namespace {
 #if UE4_25_BELOW
-	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->RefSkeleton; }
 	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->RefSkeleton = Value; }
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->Materials = Value; }
 	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->Skeleton = Value; }
@@ -60,7 +60,6 @@ namespace {
 		if (FSkeletalMeshLODModel* LodModel = MeshLodModel(Mesh, Lod)) LodModel->RawSkeletalMeshBulkData.SaveRawMesh(In);
 	}
 #else
-	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->GetRefSkeleton(); }
 	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->SetRefSkeleton(Value); }
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
 	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->SetSkeleton(Value); }

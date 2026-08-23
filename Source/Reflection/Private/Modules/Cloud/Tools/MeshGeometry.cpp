@@ -2,6 +2,7 @@
 
 #include "Modules/Cloud/Tools/MeshGeometry.h"
 
+#include "Engine/AssetCompatibility.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 
@@ -25,11 +26,9 @@
 /* 4.25 put the reference skeleton and the colour flag behind accessors */
 namespace {
 #if UE4_25_BELOW
-	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->RefSkeleton; }
 	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->bHasVertexColors = Value; }
 	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->Materials; }
 #else
-	const FReferenceSkeleton& MeshRefSkeleton(const USkeletalMesh* Mesh) { return Mesh->GetRefSkeleton(); }
 	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->SetHasVertexColors(Value); }
 	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->GetMaterials(); }
 #endif
