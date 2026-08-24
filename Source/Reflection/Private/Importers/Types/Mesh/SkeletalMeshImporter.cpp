@@ -554,13 +554,20 @@ bool ISkeletalMeshImporter::Import() {
 		 * whole of the face on an engine that cannot read a DNA at all. */
 		bool bBakedPoses = false;
 
-		if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
-			/* Exact poses go through the Cloud whatever this engine has, because RigLogic will not
-			 * give a corrective's column: setting a raw control only ever recomputes the
-			 * correctives from it, so the one thing needed here is the one thing it cannot do. */
-			const bool bExact = GetSettings()->AssetSettings.DNA.ExactPoses;
+		/* The faces as morph targets, which is the one shape that stacks the way the rig does */
+		if (GetSettings()->AssetSettings.DNA.MorphTargets) {
+			const FRDnaBackportSettings& Backport = GetSettings()->AssetSettings.DNA.Backport;
 
-			const UPoseAsset* PoseAsset = bAppliedDna && !bExact
+			const int32 Built = BuildMorphTargets(SkeletalMesh,
+				Cloud::Export::GetDnaMorphsBlocking(FetchPath, Backport.BackportPoses ? Backport.CurveMapping : FString()));
+
+			bBakedPoses = Built > 0;
+
+			UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d morph target(s) out of its DNA"), *GetAssetName(), Built);
+		}
+
+		if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
+			const UPoseAsset* PoseAsset = bAppliedDna
 				? BakeDnaPoseAsset(SkeletalMesh)
 				: BakeDnaPoseAssetFromCloud(SkeletalMesh, FetchPath);
 

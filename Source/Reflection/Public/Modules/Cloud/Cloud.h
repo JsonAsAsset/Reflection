@@ -60,6 +60,7 @@ public:
 	static inline FString ReferenceSkeletonURL = TEXT("/api/export/refskeleton");
 	static inline FString ExpressionsURL = TEXT("/api/export/expressions");
 	static inline FString DnaPosesURL = TEXT("/api/export/dnaposes");
+	static inline FString DnaMorphsURL = TEXT("/api/export/dnamorphs");
 
 	class REFLECTION_API Export {
 	public:
@@ -108,7 +109,13 @@ public:
 		 * Naming a curve mapping asks for an older head's poses instead, each driving a handful of
 		 * this rig's controls at once. Those are evaluated rather than added up from single control
 		 * poses, so the mapping goes with the request rather than being resolved here. */
-		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString(), bool bExact = false);
+		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString());
+
+		/* The same faces as morph targets: where the vertices end up rather than what the joints did.
+		 * A pose asset multiplies rotations together where the rig adds the angles up, which stops
+		 * agreeing once a joint turns far, and this face turns lips and eyelids forty degrees. Vertex
+		 * offsets just add, so the arithmetic that was wrong stops being in the way. */
+		static TSharedPtr<FJsonObject> GetDnaMorphsBlocking(const FString& Path, const FString& Mapping = FString());
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

@@ -42,22 +42,21 @@ public:
 	UPROPERTY(EditAnywhere, DisplayName = "Bake to Pose Asset", Config, Category = DNASettings)
 	bool BakeToPoseAsset = false;
 
-	/* Bake a pose for every column of the rig's joint matrix rather than one per control.
+	/* Bake the faces as morph targets on the mesh rather than as poses of its joints.
 	 *
-	 * The joints are that matrix times the rig's whole input vector, controls and correctives
-	 * alike, so a pose per column driven by its own column's value reproduces RigLogic exactly.
-	 * A pose per control cannot: the correctives are products of controls, and products do not
-	 * survive being scaled and added the way a pose asset scales and adds. On a MetaHuman head
-	 * that is the difference between a face that is close and one that is right.
+	 * A pose asset stores a rotation a pose and multiplies them together as they stack, where the
+	 * rig adds the angles up and turns the total into one rotation. Those two agree while the angles
+	 * are small and part company as they grow, and this face turns lips, eyelids and tongue by forty
+	 * degrees on a single curve, so that is where it shows.
 	 *
-	 * The correctives have to be driven, so a curve expression asset is written beside the poses
-	 * that works each of them out from the controls. Feed that the rig's control curves and the
-	 * poses it drives come out as the rig would have posed them. */
-	UPROPERTY(EditAnywhere, DisplayName = "Exact Poses", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset", HideEditConditionToggle))
-	bool ExactPoses = false;
+	 * A morph target is an offset a vertex, and offsets add. The skinning is done once for each face
+	 * and only the difference is kept, which puts the whole thing back where the arithmetic is
+	 * linear. Costs a morph target a pose and the memory that goes with it. */
+	UPROPERTY(EditAnywhere, DisplayName = "Bake to Morph Targets", Config, Category = DNASettings)
+	bool MorphTargets = false;
 
 	/* Which poses to bake, when there is a mapping to bake them from. Ignored once the poses are
 	 * exact, since those are named by the rig's own controls and the mapping drives them instead. */
-	UPROPERTY(EditAnywhere, DisplayName = "Backport", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset && !ExactPoses", HideEditConditionToggle))
+	UPROPERTY(EditAnywhere, DisplayName = "Backport", Config, Category = DNASettings, meta = (EditCondition = "BakeToPoseAsset || MorphTargets", HideEditConditionToggle))
 	FRDnaBackportSettings Backport;
 };
