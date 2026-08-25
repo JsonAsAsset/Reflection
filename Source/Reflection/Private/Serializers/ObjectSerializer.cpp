@@ -17,6 +17,16 @@
 #include "Particles/ParticleLODLevel.h"
 #include "Particles/ParticleSystem.h"
 #include "Particles/TypeData/ParticleModuleTypeDataGpu.h"
+#include "Components/StaticMeshComponent.h"
+/* Spelled out on its own from UE5, and inside the component before that */
+#if __has_include("StaticMeshComponentLODInfo.h")
+#include "StaticMeshComponentLODInfo.h"
+#endif
+#include "Engine/StaticMesh.h"
+#include "MeshDescription.h"
+#include "StaticMeshAttributes.h"
+#include "StaticMeshResources.h"
+#include "Misc/Parse.h"
 #include "Settings/Runtime.h"
 
 /* ReSharper disable once CppDeclaratorNeverUsed */
@@ -289,6 +299,142 @@ void UObjectSerializer::DeserializeExport(FUObjectExport* Export, TMap<TSharedPt
 	Export->Object = NewUObject;
 }
 
+/* Painted vertices: the position and normal each colour was painted at.
+ *
+ * The colours the game cooked are indexed by the vertex order the game cooked, and the editor
+ * builds an order of its own out of the mesh description. Its build merges any two wedges sharing
+ * a position, a colour and a normal whose UVs sit within a thousandth of each other, so a mesh
+ * carrying a pair of those comes out a vertex short and every colour past the first merge lands on
+ * the wrong vertex. Most meshes have no such pair and survive; the ones that do come out scrambled.
+ *
+ * Painted vertices are how the engine repairs a mesh that was rebuilt under its colours: it matches
+ * each one onto the built mesh by position and normal rather than trusting the index. Read off the
+ * mesh description, whose vertices are still in the order the game cooked them.
+ *
+ * Handed back rather than written into the text ImportCustomProperties takes: that reads painted
+ * vertices of its own and then empties them again on its way to the colours, by way of
+ * RemoveInstanceVertexColorsFromLOD, so nothing spelled out there lives to be used. */
+static TArray<FPaintedVertex> BuildPaintedVertices(UStaticMesh* StaticMesh, const int32 LodIndex, const TArray<TSharedPtr<FJsonValue>>& Colors) {
+	TArray<FPaintedVertex> Painted;
+
+	if (StaticMesh == nullptr) return Painted;
+
+	FMeshDescription* MeshDescription = StaticMesh->IsMeshDescriptionValid(LodIndex) ? StaticMesh->GetMeshDescription(LodIndex) : nullptr;
+
+	if (MeshDescription == nullptr) {
+		UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d holds no mesh description, so there is nothing to say where its %d cooked colour(s) were painted"), *StaticMesh->GetName(), LodIndex, Colors.Num());
+
+		return Painted;
+	}
+
+	/* Only an index for index match says anything about where a colour was painted */
+	if (MeshDescription->Vertices().Num() != Colors.Num()) {
+		UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d describes %d vertices and the game cooked %d colour(s) for it, which are not the same mesh"), *StaticMesh->GetName(), LodIndex, MeshDescription->Vertices().Num(), Colors.Num());
+
+		return Painted;
+	}
+
+	FStaticMeshAttributes Attributes(*MeshDescription);
+
+	const TVertexAttributesRef<FVector3f> Positions = Attributes.GetVertexPositions();
+	const TVertexInstanceAttributesRef<FVector3f> Normals = Attributes.GetVertexInstanceNormals();
+
+	/* A normal lives on the instances rather than the vertex, and every instance the mesh importer
+	 * made carries the one normal the game gave that vertex, so any of them answers for all */
+	TArray<FVector3f> VertexNormals;
+	VertexNormals.SetNumZeroed(Colors.Num());
+
+	for (const FVertexInstanceID InstanceID : MeshDescription->VertexInstances().GetElementIDs()) {
+		const int32 Vertex = MeshDescription->GetVertexInstanceVertex(InstanceID).GetValue();
+
+		if (VertexNormals.IsValidIndex(Vertex)) {
+			VertexNormals[Vertex] = Normals[InstanceID];
+		}
+	}
+
+	Painted.Reserve(Colors.Num());
+
+	for (int32 Vertex = 0; Vertex < Colors.Num(); ++Vertex) {
+		const FString Color = Colors[Vertex]->AsString();
+
+		if (Color.Len() < 8) {
+			UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d spells a colour in %d character(s) where eight were expected, so its paint is left where the game indexed it"), *StaticMesh->GetName(), LodIndex, Color.Len());
+
+			return TArray<FPaintedVertex>();
+		}
+
+		/* ARGB, which is the order the colour buffer reads the same string in */
+		auto Channel = [&Color](const int32 Offset) {
+			return static_cast<uint8>(FParse::HexDigit(Color[Offset]) * 16 + FParse::HexDigit(Color[Offset + 1]));
+		};
+
+		const FVector3f Position = Positions[FVertexID(Vertex)];
+		const FVector3f Normal = VertexNormals[Vertex];
+
+		FPaintedVertex& Entry = Painted.AddDefaulted_GetRef();
+
+		Entry.Position = FVector(Position.X, Position.Y, Position.Z);
+		Entry.Normal = FVector4(Normal.X, Normal.Y, Normal.Z, 1.0f);
+		Entry.Color = FColor(Channel(2), Channel(4), Channel(6), Channel(0));
+	}
+
+	return Painted;
+}
+
+/* The cooked colours put back where they were painted, one for each vertex the editor built.
+ *
+ * Worked out before the component is handed anything. Replacing a colour buffer the component
+ * already holds frees one the render thread may be part way through uploading, and it answers that
+ * with a pure virtual call on the array it was reading.
+ *
+ * Empty when there is nothing to work from, which leaves the colours as the game indexed them. */
+static TArray<FColor> RepaintOverrideColors(UStaticMesh* StaticMesh, const int32 LodIndex, const TArray<FPaintedVertex>& Painted) {
+	TArray<FColor> Repainted;
+
+	if (StaticMesh == nullptr || Painted.Num() == 0) return Repainted;
+
+	FStaticMeshRenderData* RenderData = StaticMesh->GetRenderData();
+
+	if (RenderData == nullptr || !RenderData->LODResources.IsValidIndex(LodIndex)) return Repainted;
+
+	FStaticMeshLODResources& Resources = RenderData->LODResources[LodIndex];
+	FStaticMeshVertexBuffers& Buffers = Resources.VertexBuffers;
+
+	const int32 BuiltVertices = Resources.GetNumVertices();
+
+	/* A mesh still being built answers with nothing, and there is nothing to match onto */
+	if (BuiltVertices == 0) {
+		UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d has not been built yet, so its %d cooked colour(s) stay where the game indexed them"), *StaticMesh->GetName(), LodIndex, Painted.Num());
+
+		return Repainted;
+	}
+
+	/* The old buffers go unread when the painted vertices carry the colours themselves */
+	RemapPaintedVertexColors(
+		Painted,
+		nullptr,
+		Buffers.PositionVertexBuffer,
+		Buffers.StaticMeshVertexBuffer,
+		Buffers.PositionVertexBuffer,
+		&Buffers.StaticMeshVertexBuffer,
+		Repainted
+	);
+
+	if (Repainted.Num() != BuiltVertices) {
+		UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d found colours for %d of the %d vertices the editor built, so the ones the game cooked stay as they are"), *StaticMesh->GetName(), LodIndex, Repainted.Num(), BuiltVertices);
+
+		Repainted.Empty();
+
+		return Repainted;
+	}
+
+	if (BuiltVertices != Painted.Num()) {
+		UE_LOG(LogReflectionObjectSerializer, Display, TEXT("\"%s\" LOD%d was built with %d vertices where the game cooked %d, and its colours were placed by where they were painted"), *StaticMesh->GetName(), LodIndex, BuiltVertices, Painted.Num());
+	}
+
+	return Repainted;
+}
+
 void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject>& Properties, UObject* Object) const {
 	if (Object == nullptr) return;
 
@@ -370,6 +516,9 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 		
 		TArray<TSharedPtr<FJsonValue>> ObjectLODData = Properties->GetArrayField(TEXT("LODData"));
 		int CurrentLOD = -1;
+
+		int32 ColouredLods = 0;
+		bool bPaintedEveryLod = true;
 		
 		for (const auto& CurrentLODValue : ObjectLODData) {
 			CurrentLOD++;
@@ -386,24 +535,58 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 			const int32 NumVertices = OverrideVertexColorsObject->GetIntegerField(TEXT("NumVertices"));
 			const TArray<TSharedPtr<FJsonValue>> DataArray = OverrideVertexColorsObject->GetArrayField(TEXT("Data"));
 
-			/* Template of the target data */
-			FString Output = FString::Printf(TEXT("CustomLODData LOD=%d, ColorVertexData(%d)=("), CurrentLOD, NumVertices);
+			/* Where each colour was painted, which is the one thing that can place them again when the
+			 * editor builds the mesh differently from the way the game cooked it */
+			TArray<FPaintedVertex> Painted = BuildPaintedVertices(StaticMeshComponent->GetStaticMesh(), CurrentLOD, DataArray);
+
+			ColouredLods++;
+			bPaintedEveryLod &= Painted.Num() > 0;
+
+			const TArray<FColor> Repainted = RepaintOverrideColors(StaticMeshComponent->GetStaticMesh(), CurrentLOD, Painted);
+
+			/* Template of the target data, laid out the way the engine exports its own */
+			FString Output = FString::Printf(TEXT("CustomLODData LOD=%d ColorVertexData(%d)=("), CurrentLOD, Repainted.Num() > 0 ? Repainted.Num() : NumVertices);
 
 			/* Append the colors in the expected format */
-			for (int32 i = 0; i < DataArray.Num(); ++i) {
-				FString ColorValue = DataArray.operator[](i)->AsString();
-				Output.Append(ColorValue);
+			if (Repainted.Num() > 0) {
+				for (int32 i = 0; i < Repainted.Num(); ++i) {
+					const FColor& Color = Repainted[i];
 
-				/* Add a comma unless it's the last element */
-				if (i < DataArray.Num() - 1) {
-					Output.Append(TEXT(","));
+					/* ARGB, the order the buffer reads them back in */
+					Output.Append(FString::Printf(TEXT("%02X%02X%02X%02X"), Color.A, Color.R, Color.G, Color.B));
+
+					if (i < Repainted.Num() - 1) {
+						Output.Append(TEXT(","));
+					}
+				}
+			} else {
+				for (int32 i = 0; i < DataArray.Num(); ++i) {
+					FString ColorValue = DataArray.operator[](i)->AsString();
+					Output.Append(ColorValue);
+
+					/* Add a comma unless it's the last element */
+					if (i < DataArray.Num() - 1) {
+						Output.Append(TEXT(","));
+					}
 				}
 			}
 
 			Output.Append(TEXT(")"));
 		
 			StaticMeshComponent->ImportCustomProperties(*Output, GWarn);
+
+			/* Set after the import, which empties whatever it was holding on its way to the colours */
+			if (StaticMeshComponent->LODData.IsValidIndex(CurrentLOD)) {
+				StaticMeshComponent->LODData[CurrentLOD].PaintedVertices = MoveTemp(Painted);
+			}
 		}
+
+		/* The game painted every LOD on its own, and the engine only keeps a LOD's own colours when
+		 * it is told to. Left alone it derives the lower LODs from LOD0's paint instead. */
+		if (ColouredLods > 1 && bPaintedEveryLod) {
+			StaticMeshComponent->bCustomOverrideVertexColorPerLOD = true;
+		}
+
 	}
 }
 
