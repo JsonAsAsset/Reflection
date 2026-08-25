@@ -14,6 +14,8 @@
 
 <div align="left">
 
+Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
+
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
 [![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/master/LICENSE)
 
@@ -22,8 +24,6 @@
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
 
 </div>
-
-Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
 ### [Tutorial](https://www.youtube.com/watch?v=M28If8DOUXk)
 
