@@ -318,6 +318,32 @@ int32 IAnimSequenceImporter::BuildTracks(UAnimSequence* AnimSequence, USkeleton*
 			}
 		}
 
+		/* The three channels go in as one track, and the controller takes them only if all three
+		 * are the same length: a bone whose rotation was keyed and whose translation was left
+		 * constant arrives as sixty keys against one, and the track is refused whole. So a channel
+		 * shorter than the track it belongs to is held at its last value for the rest of it, which
+		 * is the pose it was in anyway. */
+		const int32 TrackKeys = FMath::Max3(TrackPositions.Num(), TrackRotations.Num(), TrackScales.Num());
+
+		/* The key held onto is copied out first. Growing the array it came from moves the array,
+		 * and the element would then be read back through a reference to the memory it has just
+		 * been freed from. */
+		auto HoldLastKey = [](auto& Keys, const int32 Count) {
+			if (Keys.Num() >= Count) return;
+
+			const auto Held = Keys.Last();
+
+			Keys.Reserve(Count);
+
+			while (Keys.Num() < Count) {
+				Keys.Add(Held);
+			}
+		};
+
+		HoldLastKey(TrackPositions, TrackKeys);
+		HoldLastKey(TrackRotations, TrackKeys);
+		HoldLastKey(TrackScales, TrackKeys);
+
 		BoneNames.Add(FName(*BoneName));
 		PositionKeys.Add(MoveTemp(TrackPositions));
 		RotationKeys.Add(MoveTemp(TrackRotations));
@@ -368,14 +394,31 @@ int32 IAnimSequenceImporter::BuildTracks(UAnimSequence* AnimSequence, USkeleton*
 	/* Compresses what was just written, which is what the sequence plays from */
 	AnimSequence->PostProcessSequence();
 #else
-	/* 5.0 and 5.1 have the data model but not the controller surface used above */
-	FImportIssues::Report(
-		EImportIssue::Failed,
-		TEXT("Animation sequences need 4.27, or 5.2 and newer"),
-		TEXT("The way keys are written into a sequence changed twice between those versions, and neither way is reachable here.")
-	);
+	/* 5.0 and 5.1 have the data model and the same controller in front of it, under the names it
+	 * was first written with: the model is emptied rather than initialized, a bone gets a track
+	 * rather than a curve, and the span is set as the seconds it plays for rather than the frames
+	 * it holds. Emptying it leaves 30fps over a minimum length behind, so the rate is set before
+	 * the length and the length worked back out of it: a length the rate divides exactly is what
+	 * lands the model on the frame count the branch above sets directly. */
+	const int32 KeyRate = FMath::Max(1, FMath::RoundToInt(FrameRate));
+	const int32 FrameSpan = FMath::Max(1, NumFrames - 1);
 
-	return 0;
+	IAnimationDataController& Controller = AnimSequence->GetController();
+
+	Controller.OpenBracket(NSLOCTEXT("Reflection", "BuildAnimationSequence", "Building animation sequence"), false);
+	Controller.ResetModel(false);
+
+	Controller.SetFrameRate(FFrameRate(KeyRate, 1), false);
+	Controller.SetPlayLength(static_cast<float>(FrameSpan) / static_cast<float>(KeyRate), false);
+
+	for (int32 Track = 0; Track < BoneNames.Num(); ++Track) {
+		Controller.AddBoneTrack(BoneNames[Track], false);
+		Controller.SetBoneTrackKeys(BoneNames[Track], PositionKeys[Track], RotationKeys[Track], ScaleKeys[Track], false);
+	}
+
+	Controller.NotifyPopulated();
+	Controller.CloseBracket(false);
+
 #endif
 
 	return BoneNames.Num();

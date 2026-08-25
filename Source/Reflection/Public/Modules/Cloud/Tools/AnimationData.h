@@ -50,6 +50,8 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 		FloatCurves = Container->GetAssetExport()->GetObjectField(TEXT("CompressedCurveData"))->GetArrayField(TEXT("FloatCurves"));
 	}
 
+	int32 UnnamedCurves = 0;
+
 	/* Import the curves */
 	for (const auto& FloatCurveObject : FloatCurves) {
 		/* Curve Display Name */
@@ -58,6 +60,20 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 			DisplayName = FloatCurveObject->AsObject()->GetObjectField(TEXT("Name"))->GetStringField(TEXT("DisplayName"));
 		} else {
 			DisplayName = FloatCurveObject->AsObject()->GetStringField(TEXT("CurveName"));
+		}
+
+		/* A curve the export names nowhere, which a cook leaves behind where it kept the curve's
+		 * UID and dropped the name it stood for. It does not arrive empty: a name is an FName, and
+		 * an FName holding nothing is written out as the word None, so the check is what the string
+		 * reads back as rather than whether there is one.
+		 *
+		 * Nothing can be added under it either way. The skeleton refuses a None and hands back the
+		 * name untouched, which leaves the identifier below on the 65535 an unset UID reads as, and
+		 * the curve goes onto the sequence as one the editor can neither show nor drive. */
+		if (FName(*DisplayName).IsNone()) {
+			++UnnamedCurves;
+
+			continue;
 		}
 
 		/* Used to define if a curve is a curve is metadata or not. */
@@ -168,11 +184,21 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 			}
 #endif
 #if UE5_1_BELOW
+			/* 5.0 and 5.1 reach the controller off the sequence rather than through the one held
+			 * above, which those versions are not given. Without this the curve is added and left
+			 * with no keys at all, so it shows on the sequence and drives nothing. */
+			AnimSequenceBase->GetController().SetCurveKey(
+				FAnimationCurveIdentifier(NewTrackName, ERawCurveTrackTypes::RCT_Float), RichKey, false);
 #endif
 		}
 #if UE5_2_BEYOND
 		Controller.CloseBracket();
 #endif
+	}
+
+	if (UnnamedCurves > 0) {
+		UE_LOG(LogReflection, Warning, TEXT("\"%s\" left %d curve(s) out, the export naming none of them"),
+			*AnimSequenceBase->GetName(), UnnamedCurves);
 	}
 
 	return true;
