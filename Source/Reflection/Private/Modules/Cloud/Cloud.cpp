@@ -239,6 +239,24 @@ TSharedPtr<FJsonObject> Cloud::Export::GetReferenceSkeletonBlocking(const FStrin
  *
  * A rig in a shape the Cloud does not recognise is refused rather than guessed at, so a failure
  * falls back to the packaged DNA: a head that holds still beats no head. */
+TArray<uint8> Cloud::Export::GetFontFaceBlocking(const FString& Path) {
+	const FReflectionHttpRequest Request = BuildRequest(FontFaceURL, { { TEXT("path"), Path } }, {});
+	Request->SetVerb(TEXT("GET"));
+
+	const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+
+	if (!Response.IsValid() || Response->GetResponseCode() != 200) {
+		return {};
+	}
+
+	/* Json means the Cloud answered about the asset rather than with a typeface */
+	if (Response->GetContentType().StartsWith(TEXT("application/json"))) {
+		return {};
+	}
+
+	return Response->GetContent();
+}
+
 TArray<uint8> Cloud::Export::GetDnaBlocking(const FString& Path) {
 	/* A lambda rather than a free function so it keeps this member's access to BuildRequest */
 	const auto Fetch = [&Path](const bool bRebuiltForThisEngine) -> TArray<uint8> {

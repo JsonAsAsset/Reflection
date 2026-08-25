@@ -59,6 +59,7 @@ public:
 	static inline FString DnaURL = TEXT("/api/export/dna");
 	static inline FString ReferenceSkeletonURL = TEXT("/api/export/refskeleton");
 	static inline FString ExpressionsURL = TEXT("/api/export/expressions");
+	static inline FString FontFaceURL = TEXT("/api/export/fontface");
 	static inline FString DnaPosesURL = TEXT("/api/export/dnaposes");
 	static inline FString DnaMorphsURL = TEXT("/api/export/dnamorphs");
 
@@ -102,6 +103,10 @@ public:
 		/* The arithmetic a curve expression asset drives its curves with, which cooking leaves
 		 * only as compiled instructions */
 		static TSharedPtr<FJsonObject> GetCurveExpressionsBlocking(const FString& Path);
+
+		/* The typeface a font face carries. Everything else about one is a property; this is the
+		 * font itself, and nothing else brings it over. */
+		static TArray<uint8> GetFontFaceBlocking(const FString& Path);
 
 		/* What each of a head's controls does to its joints, worked out by the Cloud rather than by
 		 * RigLogic. The one way to a MetaHuman face on an engine that has no RigLogic at all.
