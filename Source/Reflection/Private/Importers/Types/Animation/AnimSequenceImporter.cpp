@@ -10,10 +10,10 @@
 #include "Importers/Types/Animation/SAdditiveBaseDialog.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
+#include "Modules/Cloud/Tools/AnimationData.h"
 
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2
 #include "Animation/AnimData/IAnimationDataController.h"
-#include "Modules/Cloud/Tools/AnimationData.h"
 #endif
 
 /* Where the Cloud reads a sequence's keys back out of what the cook left of it */
