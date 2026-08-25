@@ -184,13 +184,12 @@ Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the
 
 5. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you actually want.
 
-Anything that couldn't be rebuilt is collected into a **Reflection Errors** window at the end, rather than being buried in the log.
+Anything that couldn't be rebuilt is collected into a **Errors** window at the end.
 
 #### Other ways in
 | | |
 |---|---|
 | **A whole folder of the game files** | **Folder**, under the Reflection dropdown. Reflects everything under a game path, not one in your project. |
-| **JSON files off disk** | Save an asset out of FModel with `Save Properties`, then use **Reflect Folder of JSON Files** under the Reflection dropdown's Asset Tools. |
 
 -----------------
 
