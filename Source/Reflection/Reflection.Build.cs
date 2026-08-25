@@ -31,10 +31,16 @@ public class Reflection : ModuleRules {
 		PublicDefinitions.Add("REFLECTION_CONTROL_RIG=" + (bControlRig ? "1" : "0"));
 
 		/* RigLogic is what reads a MetaHuman's DNA, and it ships as an engine plugin the same way
-		 * Control Rig does. An engine without it has nothing to hand the bit stream to. */
+		 * Control Rig does. An engine without it has nothing to hand the bit stream to.
+		 *
+		 * 5.2 is the floor, and 5.0 and 5.1 count as not having it. RigLogic there hands a DNA back
+		 * a layer at a time rather than as one reader, knows nothing of the machine learned
+		 * behavior the face is run from, and reads its stream through a class of another name; the
+		 * pose the rig is baked into is written through the animation data controller, which those
+		 * versions haven't got either. None of that is one API away. */
 		var bRigLogic = false;
 
-#if UE_5_0_OR_LATER
+#if UE_5_2_OR_LATER
 		bRigLogic = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic"));
 #endif
 
@@ -59,12 +65,25 @@ public class Reflection : ModuleRules {
 		PublicDefinitions.Add("REFLECTION_RIG_LOGIC_UE_SPACE_READER=" + (bUeSpaceReader ? "1" : "0"));
 
 		/* CurveExpression compiles the arithmetic that drives one curve from others. It started out
-		 * an experimental plugin and has been promoted since, so both homes are looked at. */
+		 * an experimental plugin and has been promoted since, so both homes are looked at.
+		 *
+		 * The asset the expressions are kept in came later than the plugin around it: the earliest
+		 * versions ship the evaluator and the anim node with nothing to store a compiled expression
+		 * in. So it is that asset's header that decides this, not the directory it sits under. */
 		var bCurveExpression = false;
 
 #if UE_5_0_OR_LATER
-		bCurveExpression = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "CurveExpression"))
-			|| Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Experimental", "Animation", "CurveExpression"));
+		foreach (var CurveExpressionRoot in new[] {
+			Path.Combine(EngineDirectory, "Plugins", "Animation", "CurveExpression", "Source"),
+			Path.Combine(EngineDirectory, "Plugins", "Experimental", "Animation", "CurveExpression", "Source")
+		}) {
+			if (Directory.Exists(CurveExpressionRoot)
+				&& Directory.GetFiles(CurveExpressionRoot, "CurveExpressionsDataAsset.h", SearchOption.AllDirectories).Length > 0) {
+				bCurveExpression = true;
+
+				break;
+			}
+		}
 #endif
 
 		PublicDefinitions.Add("REFLECTION_CURVE_EXPRESSION=" + (bCurveExpression ? "1" : "0"));

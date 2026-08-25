@@ -32,7 +32,6 @@ private:
 	int32 BuildTracks(UAnimSequence* AnimSequence, USkeleton* Skeleton, const TSharedPtr<FJsonObject>& Payload) const;
 };
 
-/* Takes animation sequences off the importer that ships with the plugin */
-REGISTER_IMPORTER_OVERRIDE(IAnimSequenceImporter, (TArray<FString>{
+REGISTER_IMPORTER(IAnimSequenceImporter, (TArray<FString>{
 	TEXT("AnimSequence")
 }), TEXT("Animation Assets"));
