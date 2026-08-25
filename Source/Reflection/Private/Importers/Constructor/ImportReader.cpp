@@ -5,6 +5,7 @@
 #include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/Importer.h"
 #include "Importers/Constructor/TemplatedImporter.h"
+#include "Importers/Constructor/Types.h"
 #include "Importers/Types/DataAssetImporter.h"
 #include "Importers/Types/Texture/TextureImporter.h"
 #include "Settings/Runtime.h"
@@ -51,14 +52,30 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 
 			if (ExportType.IsEmpty()) continue;
 
-			/* The one named after the package is the asset; anything else is a part of it */
-			if (Export->GetName().ToString() == Name) {
+			const FString ExportName = Export->GetName().ToString();
+
+			/* The one named after the package is the asset; anything else is a part of it. A
+			 * blueprint's class carries a _C the package it lives in does not. */
+			if (ExportName == Name || ExportName == Name + TEXT("_C")) {
 				Type = ExportType;
 
 				break;
 			}
 
 			if (Type.IsEmpty()) Type = ExportType;
+		}
+
+		/* An importer switched off rather than absent. It reads the same from here and is not the
+		 * same thing at all, so it is worth saying which of the two happened. */
+		if (ImportTypes::Experimental.Contains(Type) && !GetSettings()->EnableExperiments) {
+			FImportIssues::ReportFor(Name, File, Type, EImportIssue::Setting,
+				TEXT("This type is behind Enable Experiments"),
+				FString::Printf(
+					TEXT("'%s' is a %s, which Reflection imports once Enable Experiments is turned on in its settings."),
+					*Name, *Type)
+			);
+
+			return false;
 		}
 
 		FImportIssues::ReportFor(Name, File, Type, EImportIssue::MissingClass,
