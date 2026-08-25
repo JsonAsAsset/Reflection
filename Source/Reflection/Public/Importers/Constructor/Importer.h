@@ -34,6 +34,16 @@ public:
         return false;
     }
 
+    /* Anything worth saying about the asset once it is built, and nothing by default.
+     *
+     * An asset that imported is not the same as an asset that came across whole: a blackboard can
+     * arrive with keys whose type object did not, a font can name typefaces it hasn't got. Those
+     * look ordinary in the editor and only misbehave when something reads them, so they are worth
+     * a word. Overridden where an asset has a way of being half there.
+     *
+     * Called as the asset is finished, so nothing has to override Import to say it. */
+    virtual void Validate(UObject* Asset) const {}
+
     virtual UObject* CreateAsset(UObject* CreatedAsset = nullptr);
 
     template<typename T>

@@ -62,6 +62,33 @@ public:
 	/* A reference that resolved to nothing, ignored when it names part of the asset being imported */
 	static void ReportUnresolvedReference(const FString& Type, const FString& Name, const FString& Path);
 
+	/* How many of a thing came across incomplete, said once rather than per entry.
+	 *
+	 * An asset is rarely all or nothing: a blackboard arrives with keys whose type object did not, a
+	 * font names typefaces that resolved to nothing. Each of those looks like an ordinary entry in
+	 * the editor and only misbehaves when something reads it, so the count is worth stating even
+	 * though the import itself worked.
+	 *
+	 * Summary is filled in as "3 of 12 <summary>", and nothing is reported when nothing is missing.
+	 * The count comes back so the caller can log it or decide the asset is not worth keeping. */
+	template <typename TContainer, typename TPredicate>
+	static int32 ReportIncomplete(const TContainer& Items, TPredicate&& IsMissing, const FString& Summary, const FString& Detail, const EImportIssue Kind = EImportIssue::Data) {
+		int32 Missing = 0;
+		int32 Total = 0;
+
+		for (const auto& Item : Items) {
+			Total++;
+
+			if (IsMissing(Item)) Missing++;
+		}
+
+		if (Missing > 0) {
+			Report(Kind, FString::Printf(TEXT("%d of %d %s"), Missing, Total, *Summary), Detail);
+		}
+
+		return Missing;
+	}
+
 	static const TArray<TSharedPtr<FImportIssueAsset>>& GetAssets();
 
 	/* Issues across every asset, counting repeats */

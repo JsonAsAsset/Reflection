@@ -4,11 +4,11 @@
 
 #include "Importers/Constructor/ObjectImporter.h"
 
-class IFontImporter final : public IObjectImporter {
+class IBlackboardDataImporter final : public IObjectImporter {
 public:
 	virtual void Validate(UObject* Asset) const override;
 };
 
-REGISTER_IMPORTER(IFontImporter, TArray<FString>{
-	TEXT("Font")
-}, TEXT("Font Assets"));
+REGISTER_IMPORTER(IBlackboardDataImporter, TArray<FString>{
+	TEXT("BlackboardData")
+}, TEXT("AI Assets"));

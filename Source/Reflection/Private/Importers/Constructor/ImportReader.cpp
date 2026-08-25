@@ -38,6 +38,39 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 		if (IImporter* Importer = ReadExportAndImport(Container, Export, File, HideNotifications, bUseRelativePath)) OutImporter = Importer;
 	}
 
+	/* Nothing matched. Every export gets offered to the reader and most of them are subobjects with
+	 * no importer of their own, so this is only worth saying once the whole package has been walked
+	 * and come to nothing: otherwise the run counts a file it did not import as one it did. */
+	if (OutImporter == nullptr) {
+		const FString Name = FPaths::GetBaseFilename(File);
+
+		FString Type;
+
+		for (FUObjectExport* Export : Container->Exports) {
+			const FString ExportType = Export->GetType().ToString();
+
+			if (ExportType.IsEmpty()) continue;
+
+			/* The one named after the package is the asset; anything else is a part of it */
+			if (Export->GetName().ToString() == Name) {
+				Type = ExportType;
+
+				break;
+			}
+
+			if (Type.IsEmpty()) Type = ExportType;
+		}
+
+		FImportIssues::ReportFor(Name, File, Type, EImportIssue::MissingClass,
+			FString::Printf(TEXT("Nothing here that can be imported")),
+			FString::Printf(
+				TEXT("'%s' is a %s, and this build has no importer for one. The file was read and nothing was made from it."),
+				*Name, Type.IsEmpty() ? TEXT("type it doesn't recognise") : *Type)
+		);
+
+		return false;
+	}
+
 	return true;
 }
 

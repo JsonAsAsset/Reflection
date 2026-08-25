@@ -6,42 +6,28 @@
 #include "Engine/FontFace.h"
 #include "Engine/EngineUtilities.h"
 
-UObject* IFontImporter::CreateAsset(UObject* CreatedAsset) {
-	return IImporter::CreateAsset(NewObject<UFont>(GetPackage(), UFont::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
-}
+/* Worth saying which of the two it is, since an offline font that arrived without its texture pages
+ * and a runtime font that arrived without its faces both draw nothing and look alike */
+void IFontImporter::Validate(UObject* Asset) const {
+	const UFont* Font = Cast<UFont>(Asset);
+	if (Font == nullptr) return;
 
-bool IFontImporter::Import() {
-	UFont* Font = Create<UFont>();
+	if (Font->FontCacheType != EFontCacheType::Runtime) {
+		UE_LOG(LogReflection, Display, TEXT("\"%s\" is an offline font with %d texture page(s) and %d character(s)"),
+			*GetAssetName(), Font->Textures.Num(), Font->Characters.Num());
 
-	GetObjectSerializer()->DeserializeObjectProperties(GetAssetData(), Font);
-
-	/* Worth saying which of the two it is, since an offline font that arrived without its texture
-	 * pages and a runtime font that arrived without its faces both draw nothing and look alike */
-	const int32 Entries = Font->CompositeFont.DefaultTypeface.Fonts.Num();
-
-	if (Font->FontCacheType == EFontCacheType::Runtime) {
-		int32 Resolved = 0;
-
-		for (const FTypefaceEntry& Entry : Font->CompositeFont.DefaultTypeface.Fonts) {
-			if (Entry.Font.GetFontFaceAsset() != nullptr) Resolved++;
-		}
-
-		UE_LOG(LogReflection, Display, TEXT("\"%s\" is a runtime font naming %d typeface(s), %d of them resolved"), *GetAssetName(), Entries, Resolved);
-
-		if (Entries > 0 && Resolved == 0) {
-			FImportIssues::Report(
-				EImportIssue::Data,
-				TEXT("The font names typefaces it hasn't got"),
-				FString::Printf(
-					TEXT("'%s' lists %d typeface(s) and none of them came through as a font face asset, so it draws nothing."),
-					*GetAssetName(), Entries)
-			);
-		}
-	} else {
-		UE_LOG(LogReflection, Display, TEXT("\"%s\" is an offline font with %d texture page(s) and %d character(s)"), *GetAssetName(), Font->Textures.Num(), Font->Characters.Num());
+		return;
 	}
 
-	Font->PostEditChange();
+	const int32 Entries = Font->CompositeFont.DefaultTypeface.Fonts.Num();
 
-	return OnAssetCreation(Font);
+	const int32 Missing = FImportIssues::ReportIncomplete(
+		Font->CompositeFont.DefaultTypeface.Fonts,
+		[](const FTypefaceEntry& Entry) { return Entry.Font.GetFontFaceAsset() == nullptr; },
+		TEXT("typefaces didn't come through as a font face"),
+		FString::Printf(TEXT("'%s' names them and hasn't got them, so those draw nothing."), *GetAssetName())
+	);
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" is a runtime font naming %d typeface(s), %d of them resolved"),
+		*GetAssetName(), Entries, Entries - Missing);
 }

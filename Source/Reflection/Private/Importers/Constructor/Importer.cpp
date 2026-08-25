@@ -37,6 +37,8 @@ void IImporter::Save() const {
 }
 
 bool IImporter::OnAssetCreation(UObject* Asset) const {
+	Validate(Asset);
+
 	const bool Synced = HandleAssetCreation(Asset, GetPackage());
 	if (Synced) {
 		Save();

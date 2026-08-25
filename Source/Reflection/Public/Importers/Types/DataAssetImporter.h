@@ -2,12 +2,9 @@
 
 #pragma once
 
-#include "Importers/Constructor/Importer.h"
+#include "Importers/Constructor/ObjectImporter.h"
 
-class IDataAssetImporter : public IImporter {
-public:
-	virtual UObject* CreateAsset(UObject* CreatedAsset = nullptr) override;
-	virtual bool Import() override;
+class IDataAssetImporter : public IObjectImporter {
 };
 
 REGISTER_IMPORTER(IDataAssetImporter, {
