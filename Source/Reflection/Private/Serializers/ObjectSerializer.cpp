@@ -121,7 +121,7 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 		ParticleEmitter->PostEditChange();
 		
 		/* Initialize epic detail mode to enabled if it's an older version of the engine */
-		if (!GReflectionRuntime.IsUE5()) {
+		if (!GReflectionRuntime.IsUE5OrNewer()) {
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 3
 			if (ParticleEmitter->DetailModeBitmask & 1 << EParticleDetailMode::PDM_High) {
 				ParticleEmitter->DetailModeBitmask |= 1 << EParticleDetailMode::PDM_Epic;

@@ -28,6 +28,7 @@ struct FRRuntime {
 	bool IsOlderUE4Target() const;
 	bool IsUE5() const;
 	bool IsUE4() const;
+	bool IsUE5OrNewer() const;
 
 	/* Update Functions ~~~~~~~~~~~ */
 	void Update();

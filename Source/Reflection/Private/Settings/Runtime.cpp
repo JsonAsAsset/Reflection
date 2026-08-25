@@ -21,6 +21,10 @@ bool FRRuntime::IsUE4() const {
 	return MajorVersion == 4;
 }
 
+bool FRRuntime::IsUE5OrNewer() const {
+	return MajorVersion >= 5;
+}
+
 void FRRuntime::Update() {
 	FString AppDataPath = FPlatformMisc::GetEnvironmentVariable(TEXT("APPDATA"));
 	AppDataPath = FPaths::Combine(AppDataPath, TEXT("FModel/AppSettings.json"));

@@ -581,7 +581,7 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 
 #if ENGINE_UE4
 		/* Looks like UE5 flipped axes on LocalJointOffset */
-		if (GReflectionRuntime.IsUE5()) {
+		if (GReflectionRuntime.IsUE5OrNewer()) {
 			if (NodeProperties->HasField(TEXT("LocalJointOffset"))) {
 				auto LocalJointOffset = NodeProperties->GetObjectField(TEXT("LocalJointOffset"));
 				LocalJointOffset->SetNumberField("X", -LocalJointOffset->GetNumberField(TEXT("X")));
