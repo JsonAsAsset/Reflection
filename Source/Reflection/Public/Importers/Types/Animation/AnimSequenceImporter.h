@@ -32,6 +32,9 @@ private:
 	int32 BuildTracks(UAnimSequence* AnimSequence, USkeleton* Skeleton, const TSharedPtr<FJsonObject>& Payload) const;
 };
 
-REGISTER_IMPORTER(IAnimSequenceImporter, (TArray<FString>{
+/* Takes animation sequences off IAnimationBaseImporter, which claims the type too and only ever
+ * applies curves and notifies onto a sequence already in the project. Both being in the registry
+ * leaves which one answers to the order a TMap happens to iterate in. */
+REGISTER_IMPORTER_OVERRIDE(IAnimSequenceImporter, (TArray<FString>{
 	TEXT("AnimSequence")
 }), TEXT("Animation Assets"));
