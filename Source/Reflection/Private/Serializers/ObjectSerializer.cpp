@@ -7,11 +7,14 @@
 #include "Engine/Compatibility.h"
 
 #include "Serializers/PropertySerializer.h"
+#include "Serializers/VolumeBrush.h"
 #include "UObject/Package.h"
 #include "Utilities/JsonHelpers.h"
 #include "Utilities/Containers.h"
 #include "Components/ExponentialHeightFogComponent.h"
 #include "Components/PostProcessComponent.h"
+#include "Components/BrushComponent.h"
+#include "Engine/Brush.h"
 #include "Engine/Properties.h"
 #include "Particles/ParticleEmitter.h"
 #include "Particles/ParticleLODLevel.h"
@@ -499,9 +502,14 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 	}
 #endif
 
-	/* Volumes are not supported, yet. ;] */
-	if (UPostProcessComponent* PostProcessComponent = Cast<UPostProcessComponent>(Object)) {
-		PostProcessComponent->bUnbound = true;
+	/* Volumes keep their shape in a brush the cook strips, and it reads back out of the collision
+	 * the editor built from it */
+	if (UBrushComponent* BrushComponent = Cast<UBrushComponent>(Object)) {
+		FVolumeBrush::Rebuild(BrushComponent, Properties, PropertySerializer);
+	}
+
+	if (ABrush* BrushActor = Cast<ABrush>(Object)) {
+		FVolumeBrush::Rebuild(BrushActor);
 	}
 
 	/* This is a use case for importing maps and parsing static mesh components

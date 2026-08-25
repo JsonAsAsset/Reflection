@@ -115,7 +115,10 @@ public class Reflection : ModuleRules {
 #endif
 
 #if UE_5_0_OR_LATER
-			"ContentBrowserData"
+			"ContentBrowserData",
+
+			/* FBSPOps, which built brushes from inside UnrealEd until UE5 moved it out */
+			"BSPUtils"
 #endif
 		});
 
