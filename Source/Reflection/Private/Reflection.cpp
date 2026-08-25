@@ -12,6 +12,7 @@
 
 #include "Http.h"
 #include "Modules/Versioning.h"
+#include "Modules/Support.h"
 
 #include "Modules/UI/StyleModule.h"
 #include "Modules/UI/SupportedAssets/SupportedAssetsTab.h"
@@ -77,6 +78,8 @@ void FReflectionModule::StartupModule() {
 	
 	GReflectionVersioning.Update();
 	GReflectionRuntime.Update();
+
+	FReflectionSupport::Register();
 }
 
 void FReflectionModule::ShutdownModule() {
@@ -96,6 +99,8 @@ void FReflectionModule::ShutdownModule() {
 
 	FValidationTab::Unregister();
 #endif
+
+	FReflectionSupport::Unregister();
 
 	/* Shutdown the plugin style */
 	FReflectionStyle::Shutdown();
