@@ -1,5 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "Engine/Package.h"
 #include "Importers/Types/Mesh/StaticMeshImporter.h"
 
 #include "Engine/EngineUtilities.h"
@@ -80,6 +81,18 @@ bool IStaticMeshImporter::Import() {
 	UStaticMesh* StaticMesh = Create<UStaticMesh>();
 	if (StaticMesh == nullptr) return false;
 
+	/* Given up on rather than left half made.
+	 *
+	 * The mesh is made before its geometry is asked for, so every way out below leaves one sitting
+	 * in the package with no render data behind it. Nothing here draws it, so nothing here notices;
+	 * the editor draws a thumbnail of whatever the content browser is showing, reaches for the LOD
+	 * that was never built and takes the whole editor down. Better no asset than that one. */
+	const auto Abandon = [&StaticMesh] {
+		MoveToTransientPackageAndRename(StaticMesh);
+
+		return false;
+	};
+
 	/* Geometry is not in the export, so it comes off the reflected path */
 	FString FetchPath = GetPackage()->GetPathName(); {
 		FRRedirects::Reverse(FetchPath);
@@ -90,7 +103,7 @@ bool IStaticMeshImporter::Import() {
 	if (!Geometry.IsValid()) {
 		FImportIssues::Report(EImportIssue::Failed, TEXT("No geometry from the Cloud"), TEXT("The Cloud has to be running, and the mesh needs cooked render data to read."));
 
-		return false;
+		return Abandon();
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Slots;
@@ -101,7 +114,7 @@ bool IStaticMeshImporter::Import() {
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Lods;
-	if (!Geometry->TryGetArrayField(TEXT("lods"), Lods)) return false;
+	if (!Geometry->TryGetArrayField(TEXT("lods"), Lods)) return Abandon();
 
 	int32 BuiltLods = 0;
 
@@ -118,13 +131,13 @@ bool IStaticMeshImporter::Import() {
 		FImportIssues::Report(EImportIssue::Data, FString::Printf(TEXT("LOD%d has no usable cooked geometry"), Lod.GetInteger(TEXT("Index"), 0)), TEXT("Its buffers were stripped in the cook, so the remaining LODs move up to fill the gap."));
 	}
 
-	if (BuiltLods == 0) return false;
+	if (BuiltLods == 0) return Abandon();
 
 	/* The build asserts on a mesh whose first LOD has no description */
 	if (!StaticMesh->IsMeshDescriptionValid(0)) {
 		FImportIssues::Report(EImportIssue::Data, TEXT("No geometry for LOD 0"), TEXT("The mesh build requires it. A Nanite only mesh keeps its geometry in the Nanite stream, which is the usual reason."));
 
-		return false;
+		return Abandon();
 	}
 
 	/* Stops the build recomputing over the cooked screen sizes */
