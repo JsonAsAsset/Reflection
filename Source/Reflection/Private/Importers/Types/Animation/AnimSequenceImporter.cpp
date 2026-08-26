@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Animation/AnimSequenceImporter.h"
+#include "Importers/Constructor/ImportJob.h"
 
 #include "Animation/AnimSequence.h"
 #include "Animation/Skeleton.h"
@@ -133,7 +134,18 @@ bool IAnimSequenceImporter::Import() {
 	if (Payload.IsValid() && Payload->HasField(TEXT("needsBase")) && Payload->GetBoolField(TEXT("needsBase"))) {
 		FString BasePath;
 
-		if (SAdditiveBaseDialog::Open(GetAssetName(), BasePath) && !BasePath.IsEmpty()) {
+		/* Asked only of somebody who asked for this one animation.
+		 *
+		 * A run of folders is hundreds of these, and stopping on a dialog for each is not a
+		 * question, it is a queue. Left unasked, the difference is built over the skeleton's own
+		 * pose, which is what going without has always meant. */
+		const bool bAsk = !FImportJob::IsRunning() && !IsRunningCommandlet();
+
+		if (!bAsk) {
+			UE_LOG(LogReflection, Display, TEXT("\"%s\" is a difference with nothing to put it over, and a run of assets is no place to ask what"), *GetAssetName());
+		}
+
+		if (bAsk && SAdditiveBaseDialog::Open(GetAssetName(), BasePath) && !BasePath.IsEmpty()) {
 			if (const TSharedPtr<FJsonObject> Rebuilt = GetAnimation(FetchPath, BasePath)) {
 				Payload = Rebuilt;
 
@@ -228,7 +240,6 @@ bool IAnimSequenceImporter::Import() {
 
 	/* After the notifies are back, since the rows are laid out to hold them */
 	BuildAnimNotifyTracks(AnimSequence);
-
 
 	/* After the tracks: building them initializes the model, which takes the curves with it */
 	if (!ReadAnimationCurves(this, AnimSequence)) {

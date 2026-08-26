@@ -33,7 +33,7 @@ namespace {
 	bool GPumping = false;
 }
 
-FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
+FBlockingRequestScope::FBlockingRequestScope(const FText& Description, const float Total, const float Done) {
 	bTracked = IsInGameThread();
 
 	if (!bTracked) {
@@ -45,10 +45,17 @@ FBlockingRequestScope::FBlockingRequestScope(const FText& Description) {
 	bOwnsProgress = GBlockingScopeDepth++ == 0;
 
 	if (bOwnsProgress) {
-		/* Zero total work: a wait has no measurable length to report, the task exists to keep
-		 * the editor drawn and to carry the Cancel button */
-		GBlockingProgress = MakeUnique<FScopedSlowTask>(0.0f, Description);
+		/* A wait on its own has no measurable length to report, and the task exists to keep the
+		 * editor drawn and to carry the Cancel button. Where the caller knows how far through a
+		 * run of work it is, that is what the bar shows instead of nothing. */
+		GBlockingProgress = MakeUnique<FScopedSlowTask>(Total, Description);
 		GBlockingProgress->MakeDialogDelayed(BlockingProgressDelay, true);
+
+		/* Wound forward to where the caller has already got to. The scope is opened again for
+		 * each piece of work, so this is what carries progress from one to the next. */
+		if (Total > 0.0f && Done > 0.0f) {
+			GBlockingProgress->EnterProgressFrame(FMath::Min(Done, Total), Description);
+		}
 	}
 }
 

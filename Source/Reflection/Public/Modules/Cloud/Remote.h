@@ -30,7 +30,11 @@ using FReflectionHttpResponse = TSharedPtr<IHttpResponse, ESPMode::ThreadSafe>;
  * scope still works, it just looks like a hung editor. */
 class REFLECTION_API FBlockingRequestScope {
 public:
-	explicit FBlockingRequestScope(const FText& Description);
+	/* Description is what the wait is for. Total and Done say how far through a run of work the
+	 * caller is, where it is one of many: a wait on its own has no length to report, but a wait
+	 * that happens partway through importing fifty assets does, and the dialog is the only thing
+	 * the reader is looking at while it lasts. Left out, the bar carries on saying nothing. */
+	explicit FBlockingRequestScope(const FText& Description, float Total = 0.0f, float Done = 0.0f);
 	~FBlockingRequestScope();
 
 	FBlockingRequestScope(const FBlockingRequestScope&) = delete;

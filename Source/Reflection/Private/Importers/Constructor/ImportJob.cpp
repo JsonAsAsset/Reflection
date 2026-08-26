@@ -162,8 +162,26 @@ namespace {
 
 		/* Dependency fetches inside these exports still block, and this keeps them painted and
 		 * cancellable while they do. Scoped to the slice, so no progress dialog is ever held
-		 * across frames. */
-		const FBlockingRequestScope BlockingScope(FText::FromString(TEXT("Reflecting from the Cloud")));
+		 * across frames.
+		 *
+		 * Told how far through the run it is, so the wait a reader sees is measured against the
+		 * assets asked for rather than against nothing. */
+		const FString Reached = FString::Printf(
+			TEXT("Reflecting %d of %d"),
+			FMath::Min(GJob->ImportedFiles + 1, GJob->Files.Num()),
+			GJob->Files.Num()
+		);
+
+		/* The first slice opens the first file, so there is nothing to name yet */
+		const FString Wait = GJob->CurrentFile.IsEmpty()
+			? Reached
+			: Reached + TEXT(": ") + FPaths::GetCleanFilename(GJob->CurrentFile);
+
+		const FBlockingRequestScope BlockingScope(
+			FText::FromString(Wait),
+			static_cast<float>(GJob->Files.Num()),
+			static_cast<float>(GJob->ImportedFiles)
+		);
 
 		do {
 			if (!OpenPendingFile()) {

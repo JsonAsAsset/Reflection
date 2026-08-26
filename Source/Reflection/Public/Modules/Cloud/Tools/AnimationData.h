@@ -7,6 +7,8 @@
 #include "Importers/Constructor/Importer.h"
 #include "Modules/Tools/SelectedAssetsBase.h"
 #include "Utilities/JsonHelpers.h"
+#include "Engine/Package.h"
+#include "Importers/Constructor/ImportIssues.h"
 
 /* The curves a sequence carries, read out of whichever field the export put them in.
  *
@@ -209,7 +211,27 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 	UAnimSequenceBase* AnimSequenceBase = nullptr;
 
 	if (UseSelectedAsset) {
-		AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(false, Container->GetAssetName());
+		/* What the import already resolved, where it resolved one */
+		if (Container->GetAsset()) {
+			AnimSequenceBase = Cast<UAnimSequenceBase>(Container->GetAsset());
+		}
+
+		/* The one this reflects onto, looked up where it belongs rather than asked for.
+		 *
+		 * An animation's own data is not in the export: what is there is everything laid over it,
+		 * the curves and the notifies, so there has to be a sequence in the project already. The
+		 * export says where that sequence lives, which is a better answer than whatever happens to
+		 * be highlighted, and it is the only answer at all when a run of files was named. */
+		if (!AnimSequenceBase && Container->GetPackage() != nullptr) {
+			AnimSequenceBase = LoadObjectByPath<UAnimSequenceBase>(Container->GetPackage()->GetName() + TEXT(".") + Container->GetAssetName());
+		}
+
+		/* Nothing there under that name, so what the reader has picked out is all that is left.
+		 * Quietly, since being told to select something is only useful to somebody who was
+		 * reflecting onto a selection in the first place. */
+		if (!AnimSequenceBase) {
+			AnimSequenceBase = GetSelectedAsset<UAnimSequenceBase>(true, Container->GetAssetName());
+		}
 	} else {
 		if (Container->GetAsset()) {
 			AnimSequenceBase = Cast<UAnimSequenceBase>(Container->GetAsset());
@@ -221,10 +243,17 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 		AnimSequenceBase = NewObject<UAnimMontage>(Container->GetPackage(), Container->GetAssetClass(), *Container->GetAssetName(), RF_Public | RF_Standalone);
 	}
 
-	if (UseSelectedAsset) {
-		if (!AnimSequenceBase) {
-			return false;
-		}
+	if (UseSelectedAsset && !AnimSequenceBase) {
+		/* Said as what it is. The Content Browser has nothing to do with it unless somebody was
+		 * reflecting onto a selection, and blaming it for every file in a run of hundreds says
+		 * nothing about what is actually missing. */
+		FImportIssues::Report(
+			EImportIssue::MissingAsset,
+			TEXT("Nothing to reflect the animation onto"),
+			FString::Printf(TEXT("An animation's own data is not in the export, so \"%s\" has to be in the project already. Import it first, or select one to reflect onto."), *Container->GetAssetName())
+		);
+
+		return false;
 	}
 
 	if (!AnimSequenceBase) return false;
@@ -237,11 +266,18 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 
 	Container->DeserializeExports(AnimSequenceBase);
 
-	/* Update Sequence Length */
-	if (const auto& Data = Container->GetAssetData(); Data->HasField(TEXT("SequenceLength"))) {
-		const float SequenceLength = Data->GetNumberField(TEXT("SequenceLength"));
+	/* Update Sequence Length.
+	 *
+	 * A montage has no length of its own to set: what it lasts is worked out from the segments in
+	 * its slot tracks, and those arrive with the properties below. Setting one here asks a montage
+	 * for an animation data model it does not have, and then settles it while it still holds no
+	 * segments at all. */
+	if (Cast<UAnimMontage>(AnimSequenceBase) == nullptr) {
+		if (const auto& Data = Container->GetAssetData(); Data->HasField(TEXT("SequenceLength"))) {
+			const float SequenceLength = Data->GetNumberField(TEXT("SequenceLength"));
 
-		SetAnimSequenceLength(AnimSequenceBase, SequenceLength);
+			SetAnimSequenceLength(AnimSequenceBase, SequenceLength);
+		}
 	}
 	
 	/* Deserialize properties */
@@ -261,6 +297,28 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 	 * the sync system walks them, and builds the names it matches them against. */
 	if (UAnimSequence* CastedAnimSequence = Cast<UAnimSequence>(AnimSequenceBase)) {
 		CastedAnimSequence->SortSyncMarkers();
+	}
+
+	/* Where in the montage each notify sits.
+	 *
+	 * A notify does not carry a time. It carries a place in a segment, and reading that back needs
+	 * the segment to be there, which it only is once the properties above have been read. Linked
+	 * again here, the same way the engine links them when it loads a montage, so each one resolves
+	 * against the montage it is actually in rather than against nothing. */
+	if (UAnimMontage* Montage = Cast<UAnimMontage>(AnimSequenceBase)) {
+		for (FAnimNotifyEvent& Notify : Montage->Notifies) {
+			Notify.RefreshSegmentOnLoad();
+			Notify.Link(Montage, Notify.GetTime());
+
+			if (Notify.Duration != 0.0f) {
+				Notify.EndLink.Link(Montage, Notify.GetTime() + Notify.Duration);
+			}
+		}
+
+		for (FCompositeSection& Section : Montage->CompositeSections) {
+			Section.RefreshSegmentOnLoad();
+			Section.Link(Montage, Section.GetTime());
+		}
 	}
 
 	BuildAnimNotifyTracks(AnimSequenceBase);
