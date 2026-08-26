@@ -146,7 +146,7 @@ TArray<TSharedPtr<FJsonValue>> FBlueprintVariables::GetDeclared(const TSharedPtr
 	}
 
 	/* Named from elsewhere in the asset, which is where anything older puts them */
-	const TArray<TSharedPtr<FJsonValue>>* Named;
+	const TArray<TSharedPtr<FJsonValue>>* Named = nullptr;
 
 	if (Container == nullptr || !Owner->TryGetArrayField(TEXT("Children"), Named)) {
 		return Declared;

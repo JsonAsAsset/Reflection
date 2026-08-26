@@ -1950,7 +1950,7 @@ bool FBytecodeGraph::FillStruct(const FUObjectJsonValueExport& Statement, const 
 	 * itself, which is all a node has pins for. */
 	FString Named;
 
-	if (const TArray<TSharedPtr<FJsonValue>>* Path; Held.JsonObject.IsValid() && Held.JsonObject->TryGetArrayField(TEXT("Path"), Path) && Path->Num() == 1) {
+	if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr; Held.JsonObject.IsValid() && Held.JsonObject->TryGetArrayField(TEXT("Path"), Path) && Path->Num() == 1) {
 		Named = (*Path)[0]->AsString();
 	}
 
