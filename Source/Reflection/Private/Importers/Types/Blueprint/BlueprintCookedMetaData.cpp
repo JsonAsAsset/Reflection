@@ -80,6 +80,36 @@ namespace {
 	}
 }
 
+TMap<FString, FString> FBlueprintCookedMetaData::WorldContexts(FUObjectExportContainer* Container) {
+	TMap<FString, FString> Said;
+
+	if (Container == nullptr) return Said;
+
+	const FUObjectExport* Kept = Container->FindByType(FString(TEXT("ClassCookedMetaData")));
+
+	if (Kept == nullptr || !Kept->IsJsonValid()) return Said;
+
+	const FUObjectJsonValueExport Metadata(Kept->GetProperties());
+
+	if (!Metadata.Has(TEXT("FunctionsMetaData"))) return Said;
+
+	for (const FUObjectJsonValueExport& Entry : Metadata.GetArray(TEXT("FunctionsMetaData"))) {
+		if (!Entry.Has(TEXT("Key")) || !Entry.Has(TEXT("Value"))) continue;
+
+		const FUObjectJsonValueExport Value = Entry.GetObject(TEXT("Value"));
+
+		if (!Value.Has(TEXT("ObjectMetaData"))) continue;
+
+		for (const TPair<FString, FString>& One : Pairs(Value.GetObject(TEXT("ObjectMetaData")), TEXT("ObjectMetaData"))) {
+			if (One.Key != FBlueprintMetadata::MD_WorldContext.ToString() || One.Value.IsEmpty()) continue;
+
+			Said.Add(Entry.GetString(TEXT("Key")), One.Value);
+		}
+	}
+
+	return Said;
+}
+
 int32 FBlueprintCookedMetaData::Apply(UBlueprint* Blueprint, FUObjectExportContainer* Container) {
 	if (Blueprint == nullptr || Container == nullptr) return 0;
 

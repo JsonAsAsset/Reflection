@@ -76,6 +76,19 @@ private:
 	/* What an expression says, spelled the same way every time, so the same one is recognised */
 	static FString Canonical(const FUObjectJsonValueExport& Expression);
 
+	/* The class a reference stands for, where it names a class's default object rather than an asset */
+	const UClass* ClassNamedBy(const FUObjectJsonValueExport& Expression);
+
+	/* Fetches the asset a class was written in, where a call names one the project hasn't got */
+	void BringInClass(const FUObjectJsonValueExport& Named);
+
+	/* Words filled in, laid back out as the one node that fills them in. Answers what it hands
+	 * back, or nothing where this was somebody calling Format themselves. */
+	UK2Node* FormatText(const FUObjectJsonValueExport& Expression);
+
+	/* A struct filled a member at a time, laid back out as the one node that makes one */
+	bool FillStruct(const FUObjectJsonValueExport& Statement, const FUObjectJsonValueExport& Variable);
+
 	/* A struct written out in full, read back as the text a default is kept in */
 	FString ReadStructConst(const FUObjectJsonValueExport& Expression);
 
@@ -107,7 +120,7 @@ private:
 	FValue ReadExpression(const FUObjectJsonValueExport& Expression);
 
 	/* A call, of any of the four spellings the bytecode has for one */
-	UK2Node* PlaceCall(const FUObjectJsonValueExport& Expression, UEdGraphPin* Target);
+	UK2Node* PlaceCall(const FUObjectJsonValueExport& Expression, UEdGraphPin* Target, const UClass* Against = nullptr);
 
 	/* The function a call names, looked up rather than guessed at */
 	static UFunction* ResolveFunction(const FUObjectJsonValueExport& Reference);

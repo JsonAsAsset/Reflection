@@ -55,6 +55,19 @@ bool IAnimationBlueprintImporter::Import() {
 		const TSharedPtr<FJsonObject> SuperStruct = GetAssetData()->GetObjectField(TEXT("SuperStruct"));
 		UClass* ParentClass = LoadClass(SuperStruct);
 
+		/* An animation blueprint is built on the class it was written against, and a build without
+		 * that class has nothing to build it on. Making one anyway is asked of the engine, which
+		 * takes the parent apart without checking it is there. */
+		if (ParentClass == nullptr) {
+			FImportIssues::Report(
+				EImportIssue::MissingClass,
+				TEXT("Couldn't resolve the parent class"),
+				FString::Printf(TEXT("'%s' is built on a class this build does not carry, so there is nothing to make it from."), *GetAssetName())
+			);
+
+			return false;
+		}
+
 		AnimBlueprint = CreateAnimBlueprint(ParentClass);
 	}
 
@@ -173,15 +186,25 @@ bool IAnimationBlueprintImporter::Import() {
 	}
 
 	CreateGraph(RootGraphAnimProperties, AnimGraph, RootAnimNodeContainer);
-	
+
+	/* And the rest of it, which is a blueprint's whatever else it is. The anim graph above is the
+	 * one part an animation blueprint keeps differently; its events were cooked to bytecode the
+	 * same as any other blueprint's, and were being left in it. */
+	Blueprint = AnimBlueprint;
+
+	ConstructBody();
+
 	return OnAssetCreation(AnimBlueprint);
 }
 
 UAnimBlueprint* IAnimationBlueprintImporter::CreateAnimBlueprint(UClass* ParentClass) {
 	const EBlueprintType BlueprintType = GetBlueprintType(ParentClass);
 
-	if (UBlueprint* Blueprint = FKismetEditorUtilities::CreateBlueprint(ParentClass, GetPackage(), FName(*GetAssetName()), BlueprintType, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass())) {
-		return Cast<UAnimBlueprint>(CreateAsset(Blueprint));
+	if (UBlueprint* Made = FKismetEditorUtilities::CreateBlueprint(ParentClass, GetPackage(), FName(*GetAssetName()), BlueprintType, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass())) {
+		/* Said of the base, which only takes what was made. An animation blueprint is made here,
+		 * where the blueprint importer's own makes one from nothing, and asking for that would put
+		 * a second blueprint over the one just created. */
+		return Cast<UAnimBlueprint>(IImporter::CreateAsset(Made));
 	}
 
 	return nullptr;

@@ -4,7 +4,7 @@
 
 #include "Importers/Constructor/Importer.h"
 
-class IBlueprintImporter final : public IImporter {
+class IBlueprintImporter : public IImporter {
 protected:
 	UBlueprint* Blueprint = nullptr;
 	
@@ -27,6 +27,14 @@ protected:
 	/* Lays every function the class carries back out as a graph, read from the bytecode it was
 	 * cooked as. Returns how many nodes it placed across all of them. */
 	int32 ConstructGraphs();
+
+	/* Everything a blueprint carries beyond its defaults: its timelines, the graphs its functions
+	 * were written in, and what the editor was told about them. Answers how many nodes were laid.
+	 *
+	 * Apart from the rest of the import, since what a blueprint is made of does not depend on what
+	 * kind of blueprint it is. An animation blueprint is built another way entirely and still keeps
+	 * its events in an event graph, cooked to the same bytecode as anybody else's. */
+	int32 ConstructBody();
 
 	/* Rebuilds the timelines the blueprint keeps.
 	 *

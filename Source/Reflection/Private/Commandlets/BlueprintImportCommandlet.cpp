@@ -3,6 +3,8 @@
 #include "BlueprintImportCommandlet.h"
 
 #include "FileHelpers.h"
+#include "Misc/FileHelper.h"
+#include "Serialization/JsonSerializer.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "ScriptDisassembler.h"
 /* Given a header of its own after 5.6, and part of the string header before that */
@@ -11,6 +13,9 @@
 #else
 #include "Containers/UnrealString.h"
 #endif
+#include "EdGraph/EdGraph.h"
+#include "EdGraph/EdGraphNode.h"
+#include "Importers/Types/Blueprint/MacroPattern.h"
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/Importer.h"
@@ -26,6 +31,47 @@ DECLARE_LOG_CATEGORY_CLASS(LogBlueprintImport, All, All);
 
 int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 	UE_LOG(LogBlueprintImport, Display, TEXT("asked for: %s"), *Params);
+
+	/* What a macro means, read out of the engine's own statement of it.
+	 *
+	 * A macro is copied into whatever used it before anything is compiled, so what comes back is
+	 * the copy rather than the macro. Putting one back means knowing its shape, and the shape is
+	 * kept in StandardMacros rather than anywhere it can be guessed from. */
+	if (FString Macro; FParse::Value(*Params, TEXT("macro="), Macro) && !Macro.IsEmpty()) {
+		UEdGraph* Graph = MacroReading::StandardMacro(*Macro);
+
+		if (Graph == nullptr) {
+			UE_LOG(LogBlueprintImport, Error, TEXT("no macro called \"%s\" in StandardMacros"), *Macro);
+
+			return 1;
+		}
+
+		UE_LOG(LogBlueprintImport, Display, TEXT("macro \"%s\", %d node(s)"), *Macro, Graph->Nodes.Num());
+
+		for (const UEdGraphNode* Node : Graph->Nodes) {
+			if (Node == nullptr) continue;
+
+			UE_LOG(LogBlueprintImport, Display, TEXT("  %s [%s]"), *Node->GetName(), *Node->GetNodeTitle(ENodeTitleType::ListView).ToString());
+
+			for (const UEdGraphPin* Pin : Node->Pins) {
+				if (Pin == nullptr) continue;
+
+				FString Leads;
+
+				for (const UEdGraphPin* To : Pin->LinkedTo) {
+					if (To != nullptr) Leads += FString::Printf(TEXT("%s.%s "), *To->GetOwningNode()->GetName(), *To->PinName.ToString());
+				}
+
+				UE_LOG(LogBlueprintImport, Display, TEXT("      %s %s (%s) -> %s"),
+					Pin->Direction == EGPD_Input ? TEXT("in ") : TEXT("out"),
+					*Pin->PinName.ToString(),
+					*Pin->PinType.PinCategory.ToString(),
+					Leads.IsEmpty() ? TEXT("-") : *Leads);
+			}
+		}
+
+		return 0;
+	}
 
 	FString Path;
 
@@ -50,6 +96,23 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 	const TArray<TSharedPtr<FJsonValue>> Exports = Response->GetArrayField(TEXT("exports"));
 
 	UE_LOG(LogBlueprintImport, Display, TEXT("importing \"%s\", %d export(s)"), *Path, Exports.Num());
+
+	/* What was fetched, written out where it was asked for.
+	 *
+	 * What comes back from the cloud is what the import is made from, and it is not always what is
+	 * sitting in somebody's export folder: the two can be different builds of the same asset. What
+	 * came back is the only thing worth checking the result against, so it can be kept. */
+	if (FString Dump; FParse::Value(*Params, TEXT("json="), Dump) && !Dump.IsEmpty()) {
+		FString Written;
+
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Written);
+
+		if (FJsonSerializer::Serialize(Response.ToSharedRef(), Writer) && FFileHelper::SaveStringToFile(Written, *Dump)) {
+			UE_LOG(LogBlueprintImport, Display, TEXT("what the cloud gave back was kept at \"%s\""), *Dump);
+		} else {
+			UE_LOG(LogBlueprintImport, Error, TEXT("could not keep what the cloud gave back at \"%s\""), *Dump);
+		}
+	}
 
 	IImporter* Importer = nullptr;
 

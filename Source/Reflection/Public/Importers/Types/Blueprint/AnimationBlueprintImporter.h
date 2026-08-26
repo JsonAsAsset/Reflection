@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "Importers/Constructor/Importer.h"
+#include "Importers/Types/Blueprint/BlueprintImporter.h"
 
 class UAnimGraphNode_BlendListByEnum;
 class UAnimGraphNode_Base;
@@ -13,7 +13,7 @@ class UAnimGraphNode_Base;
 class UAnimBlueprint;
 #endif
 
-class IAnimationBlueprintImporter final : public IImporter {
+class IAnimationBlueprintImporter final : public IBlueprintImporter {
 public:
 	virtual bool Import() override;
 

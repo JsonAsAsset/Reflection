@@ -197,6 +197,15 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 			TArray<FAssetData> SelectedAssets;
 			ContentBrowser.Get().GetSelectedAssets(SelectedAssets);
 
+			/* And reached without going through either reflect tool, so the project name the
+			 * exports are resolved against is fetched here too. Asked once for the press rather
+			 * than once for each asset, since the answer is the same either way. */
+			if (!Cloud::EnsureMetadataBlocking()) {
+				SpawnPrompt("Reflection", "Cloud didn't say which project it has loaded, so paths can't be resolved.");
+
+				return;
+			}
+
 			/* Reached without going through either reflect tool, so the report is opened and
 			 * closed here as well, or whatever the selection had to say would sit unshown until
 			 * the next run cleared it */

@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "EdGraphSchema_K2.h"
 
 #include "KismetCompilerModule.h"
 #include "MovieScene.h"
@@ -111,6 +112,12 @@ bool IBlueprintImporter::Import() {
 	ConstructScript();
 	ConstructWidgetTree();
 
+	ConstructBody();
+
+	return OnAssetCreation(Blueprint);
+}
+
+int32 IBlueprintImporter::ConstructBody() {
 	/* Before the graphs, since a graph that starts one reads the pins it grew */
 	if (const int32 Timelines = ConstructTimelines(); Timelines > 0) {
 		UE_LOG(LogReflection, Display, TEXT("%d timeline(s) rebuilt"), Timelines);
@@ -146,7 +153,7 @@ bool IBlueprintImporter::Import() {
 		}
 	}
 
-	return OnAssetCreation(Blueprint);
+	return Laid;
 }
 
 int32 IBlueprintImporter::ConstructVariables() {
@@ -365,6 +372,55 @@ void IBlueprintImporter::ConstructWidgetTree() {
 		}
 	});
 }
+namespace {
+	/* Every function the compiler bound to something rather than anybody writing it.
+	 *
+	 * An animation node that works its inputs out each frame is given a function to work them out
+	 * in, and the node says which one by name. Nobody wrote it and there is no graph it belongs to,
+	 * so it is read off the asset rather than recognised by what it is called. */
+	void Bound(const TSharedPtr<FJsonValue>& Value, TSet<FString>& Into) {
+		if (!Value.IsValid()) return;
+
+		if (Value->Type == EJson::Object) {
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+
+			FString Named;
+
+			if (Object->TryGetStringField(TEXT("BoundFunction"), Named) && !Named.IsEmpty() && Named != TEXT("None")) {
+				Into.Add(Named);
+			}
+
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Object->Values) Bound(Field.Value, Into);
+		} else if (Value->Type == EJson::Array) {
+			for (const TSharedPtr<FJsonValue>& Held : Value->AsArray()) Bound(Held, Into);
+		}
+	}
+
+	/* Whether a function is made of poses, which is what an animation graph is made of.
+	 *
+	 * A pose is not a value a graph hands about; it is the thing an animation graph is. A function
+	 * that takes one or hands one back was drawn as an animation graph rather than written as a
+	 * function, and what the class carries for it is not a graph to lay back out. */
+	bool Poses(const TArray<TSharedPtr<FJsonValue>>& Declared) {
+		for (const TSharedPtr<FJsonValue>& Value : Declared) {
+			const TSharedPtr<FJsonObject> Property = Value.IsValid() ? Value->AsObject() : nullptr;
+
+			if (!Property.IsValid()) continue;
+
+			const TSharedPtr<FJsonObject>* Struct;
+
+			if (!Property->TryGetObjectField(TEXT("Struct"), Struct)) continue;
+
+			FString Named;
+
+			/* Both the pose kinds end the same way, which is what says it is one */
+			if ((*Struct)->TryGetStringField(TEXT("ObjectName"), Named) && Named.EndsWith(TEXT("PoseLink'"))) return true;
+		}
+
+		return false;
+	}
+}
+
 int32 IBlueprintImporter::ConstructGraphs() {
 	if (Blueprint == nullptr) return 0;
 
@@ -389,12 +445,27 @@ int32 IBlueprintImporter::ConstructGraphs() {
 	TArray<TTuple<int32, TWeakObjectPtr<UK2Node>, FName>> Resumed;
 	TMap<FString, TArray<TSharedPtr<FJsonValue>>> Signatures;
 
+	/* Which parameter each function is handed its world context through, where any is. The entry
+	 * node of a static function makes that pin itself, so declaring one as well leaves the function
+	 * taking it twice and the signature no longer matching what the script calls. */
+	const TMap<FString, FString> Contexts = FBlueprintCookedMetaData::WorldContexts(GetContainer());
+
+	/* Said once over the whole asset, since a node names its function wherever it happens to sit */
+	TSet<FString> Compilers;
+
+	for (const TSharedPtr<FJsonValue>& Value : GetContainer()->JsonObjects) {
+		Bound(Value, Compilers);
+	}
+
 	for (FUObjectExport* Export : GetContainer()->Exports) {
 		if (Export == nullptr || !Export->IsJsonValid()) continue;
 		if (Export->GetType() != TEXT("Function")) continue;
 		if (!Export->Has(TEXT("ScriptBytecode"))) continue;
 
 		const FString Name = Export->GetName().ToString();
+
+		/* Written by the compiler for a node to work its inputs out in, rather than by anybody */
+		if (Compilers.Contains(Name)) continue;
 
 		/* What a dispatcher hands over is declared as a function of its own, and it is not one:
 		 * nobody wrote it, nobody calls it, and it is laid out as the dispatcher below instead. */
@@ -405,7 +476,7 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		/* What the function keeps of its own, and what it takes: an older asset writes both out as
 		 * exports of their own and names them from the function's Children rather than writing
 		 * them into it */
-		const TArray<TSharedPtr<FJsonValue>> Declared = FBlueprintVariables::GetDeclared(Export->JsonObject, GetContainer());
+		TArray<TSharedPtr<FJsonValue>> Declared = FBlueprintVariables::GetDeclared(Export->JsonObject, GetContainer());
 
 		TArray<FUObjectJsonValueExport> Locals;
 
@@ -415,6 +486,36 @@ int32 IBlueprintImporter::ConstructGraphs() {
 
 		/* Not everything the class carries was written as a function, and which it was is read from
 		 * the function rather than guessed from its name */
+		/* And drawn as an animation graph rather than written as a function */
+		if (Poses(Declared)) continue;
+
+		/* Handed the world it runs in, which the entry node asks for itself.
+		 *
+		 * A static function's entry node makes that pin whether or not anybody declared one, so a
+		 * function declaring it as well takes it twice and no longer answers to what calls it. The
+		 * metadata names it where the cook kept any; where it did not, the engine fixes the name,
+		 * and a static function is the only kind given one. */
+		FString Handing = Contexts.FindRef(Name);
+
+		if (Handing.IsEmpty() && Function.GetString(TEXT("FunctionFlags")).Contains(TEXT("FUNC_Static"))) {
+			/* Named by UK2Node_FunctionEntry, which keeps it to itself */
+			Handing = TEXT("__WorldContext");
+		}
+
+		if (const FString* Handed = Handing.IsEmpty() ? nullptr : &Handing) {
+			for (int32 At = Declared.Num() - 1; At >= 0; --At) {
+				const TSharedPtr<FJsonObject> Property = Declared[At].IsValid() ? Declared[At]->AsObject() : nullptr;
+
+				FString Called;
+
+				if (Property.IsValid() && Property->TryGetStringField(TEXT("Name"), Called) && Called == *Handed) {
+					Declared.RemoveAt(At);
+
+					UE_LOG(LogReflection, Display, TEXT("\"%s\" is handed the world through \"%s\", which its entry node asks for itself"), *Name, **Handed);
+				}
+			}
+		}
+
 		const FBlueprintGraphs::FWritten Written = FBlueprintGraphs::Reads(Function);
 
 		/* What a timeline calls as it plays reads as an event, and it is not one: nobody wrote it,
@@ -451,6 +552,20 @@ int32 IBlueprintImporter::ConstructGraphs() {
 
 					break;
 				}
+			}
+
+			/* Left alone where the graph is not one of these to lay out.
+			 *
+			 * A blueprint keeps graphs that were never written as statements: an animation graph is
+			 * a pose built out of nodes, and a state machine is a machine, and the class carries a
+			 * function for each of them all the same. Read as bytecode they come back as the little
+			 * the compiler left behind, and what was actually drawn is cleared away first.
+			 *
+			 * Which is which is the graph's own answer: a graph written as statements is an
+			 * ordinary one, and a graph that means something else brings a schema of its own to
+			 * say so. */
+			if (Graph != nullptr && Graph->GetSchema() != nullptr && Graph->GetSchema()->GetClass() != UEdGraphSchema_K2::StaticClass()) {
+				continue;
 			}
 
 			if (Graph == nullptr) {

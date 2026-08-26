@@ -16,4 +16,11 @@ struct FUObjectExportContainer;
 struct REFLECTION_API FBlueprintCookedMetaData {
 	/* Says over the blueprint whatever the cook kept, and answers how much it said */
 	static int32 Apply(UBlueprint* Blueprint, FUObjectExportContainer* Container);
+
+	/* Which parameter each function is given a world context through, by the name of the function.
+	 *
+	 * A static function in a library is handed the world it is running in, and the entry node makes
+	 * the pin for that itself. The class carries it as a parameter like any other, so what says it
+	 * is one is the metadata naming it. */
+	static TMap<FString, FString> WorldContexts(FUObjectExportContainer* Container);
 };
