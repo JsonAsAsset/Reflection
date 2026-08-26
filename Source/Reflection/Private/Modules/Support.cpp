@@ -79,5 +79,12 @@ void FReflectionSupport::Show() {
 	Info.bUseThrobber = false;
 	Info.Image = FReflectionStyle::Get().GetBrush("Toolbar.Icon");
 
-	FSlateNotificationManager::Get().AddNotification(Info);
+	/* Handed over the same way as every other notification here rather than straight to the manager.
+	 *
+	 * This one is asked for by a clock rather than by anything somebody did, so it can land on any
+	 * call stack at all, including one a blocking wait is parked on and ticking Slate from. Built
+	 * by that nested tick, it belongs to a list the outer tick has already finished with, and
+	 * nothing drives it afterwards: it fades in and then sits there, because what would have faded
+	 * it out is an Update nobody calls. */
+	AddNotificationWhenSafe(Info, SNotificationItem::CS_None);
 }

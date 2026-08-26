@@ -142,6 +142,7 @@ public class Reflection : ModuleRules {
 		});
 
 		PrivateDependencyModuleNames.AddRange(new[] {
+			"ScriptDisassembler",
 			"Projects",
 			"InputCore",
 			"CoreUObject",

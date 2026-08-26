@@ -51,8 +51,20 @@ UClass* FUObjectExport::GetClass() {
 		OutClass = FindClassByType(GetType().ToString());
 	}
 
-	if (Has("Next") || Has("SuperStruct")) {
-		OutClass = LoadClass(GetSuperStructJsonObject(GetProperties()));
+	/* Where it says it comes from, which is written beside the export as often as it is written
+	 * among its properties */
+	TSharedPtr<FJsonObject> Comes = GetSuperStructJsonObject(GetProperties());
+
+	if (!Comes.IsValid()) {
+		Comes = GetSuperStructJsonObject(JsonObject);
+	}
+
+	/* Kept only where it answers to something. A parent that cannot be found leaves the class it
+	 * was read as, which is a better guess than nothing at all. */
+	if (Comes.IsValid()) {
+		if (UClass* ParentClass = LoadClass(Comes)) {
+			OutClass = ParentClass;
+		}
 	}
 
 	if (!OutClass) return nullptr;

@@ -537,6 +537,17 @@ inline UClass* FindClassByType(const FString& Type) {
 	return Class;
 }
 
+/* Same search as FindClassByType, for a USTRUCT. */
+inline UScriptStruct* FindStructByType(const FString& Type) {
+#if UE5_1_BEYOND
+	UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*Type);
+#else
+	UScriptStruct* Struct = FindObject<UScriptStruct>(ANY_PACKAGE, *Type);
+#endif
+
+	return Struct;
+}
+
 /* Same search as FindClassByType, for a UENUM. Reaches enums declared in a module's private
  * headers, which is the only way to read the names behind ids a plugin defines for itself. */
 inline UEnum* FindEnumByType(const FString& Type) {

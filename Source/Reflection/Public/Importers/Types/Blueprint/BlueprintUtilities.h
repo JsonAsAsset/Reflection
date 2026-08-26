@@ -62,12 +62,21 @@ inline UClass* LoadClass(const TSharedPtr<FJsonObject>& SuperStruct) {
 	return LoadBlueprintClass(ObjectPath);
 }
 
+/* What a class or a struct says it comes from, under whichever name it is written as.
+ *
+ * A struct carries Next, a class made from C++ carries SuperStruct, and one made from another
+ * blueprint carries Super. All three name the same thing, and a class read without finding it is
+ * left parented to nothing at all, which is not something the compiler survives. */
 inline TSharedPtr<FJsonObject> GetSuperStructJsonObject(const TSharedPtr<FJsonObject>& JsonObject) {
-	if (JsonObject->HasField(TEXT("Next"))) {
-		return JsonObject->GetObjectField(TEXT("Next"));
+	if (!JsonObject.IsValid()) return nullptr;
+
+	for (const TCHAR* Named : { TEXT("Next"), TEXT("SuperStruct"), TEXT("Super") }) {
+		if (const TSharedPtr<FJsonObject>* Found = nullptr; JsonObject->TryGetObjectField(Named, Found)) {
+			return *Found;
+		}
 	}
-	
-	return JsonObject->GetObjectField(TEXT("SuperStruct"));
+
+	return nullptr;
 }
 
 inline EBlueprintType GetBlueprintType(const UClass* Class) {

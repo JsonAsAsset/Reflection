@@ -428,14 +428,8 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 }
 
 int32 IControlRigImporter::ConstructVariables(UControlRigBlueprint* Blueprint) {
-	const TArray<TSharedPtr<FJsonValue>>* ChildProperties;
-
-	/* A rig that declared nothing of its own has no ChildProperties at all */
-	if (!GetAssetExport()->TryGetArrayField(TEXT("ChildProperties"), ChildProperties)) {
-		return 0;
-	}
-
-	return FBlueprintVariables::Construct(Blueprint, *ChildProperties);
+	/* A rig that declared nothing of its own declares nothing here either */
+	return FBlueprintVariables::Construct(Blueprint, FBlueprintVariables::GetDeclared(GetAssetExport(), GetContainer()));
 }
 
 void IControlRigImporter::ConstructGraph(UControlRigBlueprint* Blueprint) const {

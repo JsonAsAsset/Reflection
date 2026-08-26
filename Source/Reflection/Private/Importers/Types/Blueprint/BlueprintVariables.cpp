@@ -4,6 +4,7 @@
 
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
+#include "Containers/ExportContainer.h"
 
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
@@ -81,6 +82,118 @@ namespace {
 
 		return false;
 	}
+}
+
+namespace {
+	/* What a property says about itself, as the graph spells the same thing.
+	 *
+	 * A variable made from a pin type alone comes out with whatever the editor gives a new one,
+	 * which is not what the game had: the box that says a variable can be set on a placed actor is
+	 * off, and every one of these has to be ticked by hand otherwise. */
+	EPropertyFlags ReadPropertyFlags(const TSharedPtr<FJsonObject>& Property) {
+		FString Spelled;
+
+		if (!Property.IsValid() || !Property->TryGetStringField(TEXT("PropertyFlags"), Spelled)) {
+			return CPF_None;
+		}
+
+		static const TMap<FString, EPropertyFlags> Named = {
+			{ TEXT("Edit"), CPF_Edit },
+			{ TEXT("BlueprintVisible"), CPF_BlueprintVisible },
+			{ TEXT("BlueprintReadOnly"), CPF_BlueprintReadOnly },
+			{ TEXT("ExposeOnSpawn"), CPF_ExposeOnSpawn },
+			{ TEXT("DisableEditOnInstance"), CPF_DisableEditOnInstance },
+			{ TEXT("DisableEditOnTemplate"), CPF_DisableEditOnTemplate },
+			{ TEXT("EditConst"), CPF_EditConst },
+			{ TEXT("Transient"), CPF_Transient },
+			{ TEXT("SaveGame"), CPF_SaveGame },
+			{ TEXT("Config"), CPF_Config },
+			{ TEXT("Net"), CPF_Net },
+			{ TEXT("RepNotify"), CPF_RepNotify },
+			{ TEXT("Interp"), CPF_Interp },
+			{ TEXT("AdvancedDisplay"), CPF_AdvancedDisplay },
+			{ TEXT("NonTransactional"), CPF_NonTransactional },
+			{ TEXT("Protected"), CPF_Protected }
+		};
+
+		EPropertyFlags Flags = CPF_None;
+
+		TArray<FString> Parts;
+		Spelled.ParseIntoArray(Parts, TEXT("|"));
+
+		for (FString& Part : Parts) {
+			Part.TrimStartAndEndInline();
+
+			if (const EPropertyFlags* Found = Named.Find(Part)) {
+				Flags |= *Found;
+			}
+		}
+
+		return Flags;
+	}
+}
+
+TArray<TSharedPtr<FJsonValue>> FBlueprintVariables::GetDeclared(const TSharedPtr<FJsonObject>& Owner, FUObjectExportContainer* Container) {
+	TArray<TSharedPtr<FJsonValue>> Declared;
+
+	if (!Owner.IsValid()) {
+		return Declared;
+	}
+
+	/* Written into the struct, which is where anything recent puts them */
+	if (const TArray<TSharedPtr<FJsonValue>>* Written; Owner->TryGetArrayField(TEXT("ChildProperties"), Written)) {
+		return *Written;
+	}
+
+	/* Named from elsewhere in the asset, which is where anything older puts them */
+	const TArray<TSharedPtr<FJsonValue>>* Named;
+
+	if (Container == nullptr || !Owner->TryGetArrayField(TEXT("Children"), Named)) {
+		return Declared;
+	}
+
+	for (const TSharedPtr<FJsonValue>& Child : *Named) {
+		const TSharedPtr<FJsonObject> Reference = Child->AsObject();
+
+		if (!Reference.IsValid()) continue;
+
+		const FUObjectExport* Field = Container->GetExportByObjectPath(Reference);
+
+		if (Field == nullptr || !Field->IsJsonValid()) continue;
+
+		/* A struct owns everything under it, and a class owns its functions as well as its values */
+		FString Type;
+
+		if (!Field->JsonObject->TryGetStringField(TEXT("Type"), Type) || !Type.EndsWith(TEXT("Property"))) continue;
+
+		Declared.Add(MakeShared<FJsonValueObject>(Field->JsonObject));
+	}
+
+	return Declared;
+}
+
+TSet<FString> FBlueprintVariables::GetComponentVariables(FUObjectExportContainer* Container) {
+	TSet<FString> Named;
+
+	if (Container == nullptr) return Named;
+
+	for (const FUObjectExport* Export : Container->Exports) {
+		if (Export == nullptr || !Export->IsJsonValid()) continue;
+
+		FString Type;
+
+		if (!Export->JsonObject->TryGetStringField(TEXT("Type"), Type) || Type != TEXT("SCS_Node")) continue;
+
+		const TSharedPtr<FJsonObject>* Properties;
+
+		if (!Export->JsonObject->TryGetObjectField(TEXT("Properties"), Properties)) continue;
+
+		if (FString Called; (*Properties)->TryGetStringField(TEXT("InternalVariableName"), Called) && !Called.IsEmpty()) {
+			Named.Add(Called);
+		}
+	}
+
+	return Named;
 }
 
 bool FBlueprintVariables::IsUserVariable(const TSharedPtr<FJsonObject>& Property) {
@@ -245,6 +358,26 @@ int32 FBlueprintVariables::Construct(UBlueprint* Blueprint, const TArray<TShared
 
 		if (FBlueprintEditorUtils::AddMemberVariable(Blueprint, VariableName, PinType)) {
 			Added++;
+
+			/* Said the way the game said it. What the editor gives a new variable is not what this
+			 * one had, and the difference is a box the reader would have to tick themselves. */
+			const EPropertyFlags Flags = ReadPropertyFlags(Property);
+
+			if (Flags != CPF_None) {
+				for (FBPVariableDescription& Description : Blueprint->NewVariables) {
+					if (Description.VarName != VariableName) continue;
+
+					Description.PropertyFlags |= Flags;
+
+					/* Editable on a placed actor is the absence of the flag that forbids it, so
+					 * saying one means taking the other away */
+					if ((Flags & CPF_Edit) != 0 && (Flags & CPF_DisableEditOnInstance) == 0) {
+						Description.PropertyFlags &= ~CPF_DisableEditOnInstance;
+					}
+
+					break;
+				}
+			}
 		} else {
 			UE_LOG(LogReflection, Warning, TEXT("\"%s\" would not take variable \"%s\""), *Blueprint->GetName(), *Name);
 		}
