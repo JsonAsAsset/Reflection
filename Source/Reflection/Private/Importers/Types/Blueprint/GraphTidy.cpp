@@ -22,19 +22,35 @@ const TArray<TSharedRef<FGraphTidy>>& GetGraphTidies() {
 	return Tidies();
 }
 
-bool SetVariableGetVariation(UK2Node_VariableGet* Get, const EGetNodeVariation Variation) {
+bool SetVariableGetVariation(UK2Node_VariableGet* Get, const FName Variation) {
 	if (Get == nullptr) return false;
 
 	FProperty* Wearing = UK2Node_VariableGet::StaticClass()->FindPropertyByName(TEXT("CurrentVariation"));
 
 	if (Wearing == nullptr) return false;
 
+	/* Asked for by name rather than by the engine's own type.
+	 *
+	 * A get wears its shapes differently from one engine to the next, and one that never heard of
+	 * these wears none: naming the type outright would not build against it at all, where asking
+	 * for a shape it does not have can simply be answered no. */
+	const UEnum* Shapes = nullptr;
+
+	if (const FEnumProperty* AsEnum = CastField<FEnumProperty>(Wearing)) Shapes = AsEnum->GetEnum();
+	else if (const FByteProperty* AsByte = CastField<FByteProperty>(Wearing)) Shapes = AsByte->Enum;
+
+	if (Shapes == nullptr) return false;
+
+	const int64 Wanted = Shapes->GetValueByNameString(Variation.ToString());
+
+	if (Wanted == INDEX_NONE) return false;
+
 	void* Value = Wearing->ContainerPtrToValuePtr<void>(Get);
 
 	if (const FEnumProperty* AsEnum = CastField<FEnumProperty>(Wearing)) {
-		AsEnum->GetUnderlyingProperty()->SetIntPropertyValue(Value, static_cast<int64>(Variation));
+		AsEnum->GetUnderlyingProperty()->SetIntPropertyValue(Value, Wanted);
 	} else if (const FByteProperty* AsByte = CastField<FByteProperty>(Wearing)) {
-		AsByte->SetIntPropertyValue(Value, static_cast<int64>(Variation));
+		AsByte->SetIntPropertyValue(Value, Wanted);
 	} else {
 		return false;
 	}

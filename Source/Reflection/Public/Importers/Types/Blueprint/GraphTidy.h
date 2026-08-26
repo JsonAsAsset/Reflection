@@ -7,9 +7,6 @@
 class UEdGraph;
 class UK2Node_VariableGet;
 
-/* Scoped, so it can be named without dragging the whole node's header in here */
-enum class EGetNodeVariation;
-
 /* A tidying, run over a graph once it has been laid out.
  *
  * The compiler writes out what a node means, not the node: a get that checks what it read comes
@@ -37,7 +34,7 @@ struct FGraphTidy {
  * Which variation a get wears is the node's own business and kept private, so it is said through
  * the property rather than through the node, and the node is laid out again to grow the pins that
  * go with it. */
-REFLECTION_API bool SetVariableGetVariation(UK2Node_VariableGet* Get, EGetNodeVariation Variation);
+REFLECTION_API bool SetVariableGetVariation(UK2Node_VariableGet* Get, FName Variation);
 
 /* Gives everything that was reading a get its own reading of the same variable.
  *

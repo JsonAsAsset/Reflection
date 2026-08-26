@@ -5,7 +5,12 @@
 #include "FileHelpers.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "ScriptDisassembler.h"
+/* Given a header of its own after 5.6, and part of the string header before that */
+#if __has_include("Misc/StringOutputDevice.h")
 #include "Misc/StringOutputDevice.h"
+#else
+#include "Containers/UnrealString.h"
+#endif
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/Importer.h"

@@ -99,7 +99,7 @@ struct FValidatedGetTidy final : FGraphTidy {
 				}
 			}
 
-			if (!SetVariableGetVariation(Get, EGetNodeVariation::ValidatedObject)) {
+			if (!SetVariableGetVariation(Get, TEXT("ValidatedObject"))) {
 				UE_LOG(LogReflectionTidy, Warning, TEXT("the get would not take the variation"));
 
 				continue;

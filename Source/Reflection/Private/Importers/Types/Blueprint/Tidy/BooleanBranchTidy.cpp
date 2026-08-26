@@ -58,7 +58,7 @@ struct FBooleanBranchTidy final : FGraphTidy {
 			const TArray<UEdGraphPin*> WhenTrue = Branch->GetThenPin() != nullptr ? Branch->GetThenPin()->LinkedTo : TArray<UEdGraphPin*>();
 			const TArray<UEdGraphPin*> WhenFalse = Branch->GetElsePin() != nullptr ? Branch->GetElsePin()->LinkedTo : TArray<UEdGraphPin*>();
 
-			if (!SetVariableGetVariation(Get, EGetNodeVariation::Branch)) continue;
+			if (!SetVariableGetVariation(Get, TEXT("Branch"))) continue;
 
 			/* Wired back up as the one node it was written as */
 			if (UEdGraphPin* In = Get->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input)) {

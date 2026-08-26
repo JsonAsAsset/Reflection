@@ -31,14 +31,6 @@ namespace {
 		}
 	}
 
-	/* The entry node of a graph, which is what its signature is written on */
-	UK2Node_FunctionEntry* EntryOf(const UEdGraph* Graph) {
-		for (UEdGraphNode* Node : Graph->Nodes) {
-			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node)) return Entry;
-		}
-
-		return nullptr;
-	}
 
 	/* Puts a node in a graph, the way the editor would have put it there */
 	template <typename T>
@@ -85,6 +77,14 @@ bool FBlueprintGraphs::IsParameter(const TSharedPtr<FJsonObject>& Property, bool
 	}
 
 	return bParameter;
+}
+
+UK2Node_FunctionEntry* FBlueprintGraphs::EntryOf(const UEdGraph* Graph) {
+	for (UEdGraphNode* Node : Graph->Nodes) {
+		if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node)) return Entry;
+	}
+
+	return nullptr;
 }
 
 FBlueprintGraphs::FWritten FBlueprintGraphs::Reads(const FUObjectJsonValueExport& Function) {

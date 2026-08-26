@@ -3,6 +3,7 @@
 #include "Importers/Types/Blueprint/BlueprintCookedMetaData.h"
 
 #include "Containers/ExportContainer.h"
+#include "Importers/Types/Blueprint/BlueprintGraphs.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "Engine/Blueprint.h"
@@ -50,14 +51,6 @@ namespace {
 		return nullptr;
 	}
 
-	/* The entry node of a graph, which is where a function keeps what it is shown as */
-	UK2Node_FunctionEntry* EntryOf(const UEdGraph* Graph) {
-		for (UEdGraphNode* Node : Graph->Nodes) {
-			if (UK2Node_FunctionEntry* Entry = Cast<UK2Node_FunctionEntry>(Node)) return Entry;
-		}
-
-		return nullptr;
-	}
 }
 
 
@@ -157,7 +150,7 @@ int32 FBlueprintCookedMetaData::Apply(UBlueprint* Blueprint, FUObjectExportConta
 			continue;
 		}
 
-		UK2Node_FunctionEntry* Entered = EntryOf(Graph);
+		UK2Node_FunctionEntry* Entered = FBlueprintGraphs::EntryOf(Graph);
 
 		if (Entered == nullptr) continue;
 		const TMap<FString, FString> Told = Value.Has(TEXT("ObjectMetaData"))

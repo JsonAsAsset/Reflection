@@ -8,6 +8,7 @@
 class UBlueprint;
 class UEdGraph;
 class UK2Node;
+class UK2Node_FunctionEntry;
 
 /* Makes the graphs a class's functions were written in.
  *
@@ -64,6 +65,9 @@ struct REFLECTION_API FBlueprintGraphs {
 	static UEdGraph* MakeDispatcher(UBlueprint* Blueprint, const FString& Name, const TArray<TSharedPtr<FJsonValue>>& Declared);
 
 	/* The graph the events were written in */
+	/* The entry node of a graph, which is what a function's signature is written on */
+	static UK2Node_FunctionEntry* EntryOf(const UEdGraph* Graph);
+
 	static UEdGraph* Events(UBlueprint* Blueprint);
 
 	/* Takes back out the event nodes the editor offered and the game's class never carried */

@@ -125,17 +125,6 @@ namespace {
 }
 
 namespace {
-	/* The name a statement writes to, where it writes to a local at all */
-	FString WrittenTo(const FUObjectJsonValueExport& Statement) {
-		if (!Statement.Has(TEXT("Variable"))) return FString();
-
-		const FUObjectJsonValueExport Variable = Statement.GetObject(TEXT("Variable"));
-
-		if (!Variable.Has(TEXT("Variable"))) return FString();
-
-		return MacroReading::NamedProperty(Variable.GetObject(TEXT("Variable")));
-	}
-
 	/* The name a call is made to, where the statement is a call at all */
 	FString Calls(const FUObjectJsonValueExport& Expression) {
 		if (!Expression.Has(TEXT("Function"))) return FString();
