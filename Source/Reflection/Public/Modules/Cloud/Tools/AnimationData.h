@@ -256,6 +256,13 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 		"RawCurveData"
 	}), AnimSequenceBase);
 
+	/* Markers arrive timed against the length the game cooked the sequence at and in whatever order
+	 * they were written. Sorting clamps them into the length it plays for now, orders them the way
+	 * the sync system walks them, and builds the names it matches them against. */
+	if (UAnimSequence* CastedAnimSequence = Cast<UAnimSequence>(AnimSequenceBase)) {
+		CastedAnimSequence->SortSyncMarkers();
+	}
+
 	BuildAnimNotifyTracks(AnimSequenceBase);
 
 	if (!ReadAnimationCurves(Container, AnimSequenceBase)) return false;

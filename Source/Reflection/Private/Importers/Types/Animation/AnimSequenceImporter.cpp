@@ -190,7 +190,16 @@ bool IAnimSequenceImporter::Import() {
 		"SkeletonGuid",
 	}), AnimSequence);
 
-	BuildAnimNotifyTracks(AnimSequence);
+	/* Held onto across the tracks below, which are what set the length the sequence plays for.
+	 * The engine answers a length it considers grown by treating the difference as time inserted
+	 * at the old end, and moves every notify and sync marker at or after that point along by it.
+	 * The keys arrive before any length does, so the old end is the minimum a sequence starts at,
+	 * every mark in the export sits at or after it, and each one is pushed a whole sequence to the
+	 * right and clamped to the end. The engine's own import suppresses that while it populates,
+	 * through a flag nothing outside the class can set. Put back afterwards instead, at the times
+	 * the export gave them. */
+	const TArray<FAnimSyncMarker> AuthoredMarkers = AnimSequence->AuthoredSyncMarkers;
+	const TArray<FAnimNotifyEvent> AuthoredNotifies = AnimSequence->Notifies;
 
 	const int32 WrittenTracks = BuildTracks(AnimSequence, Skeleton, Payload);
 
@@ -206,6 +215,20 @@ bool IAnimSequenceImporter::Import() {
 
 	UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d track(s) over %d frame(s) against skeleton \"%s\""),
 		*GetAssetName(), WrittenTracks, static_cast<int32>(Payload->GetIntegerField(TEXT("numFrames"))), *Skeleton->GetName());
+
+	AnimSequence->AuthoredSyncMarkers = AuthoredMarkers;
+	AnimSequence->Notifies = AuthoredNotifies;
+
+	/* Sorting is what puts the markers in the order the sync system walks them and works out the
+	 * names it matches them against, which are derived from the markers rather than saved beside
+	 * them. It is also what tells the blend spaces already bound to this sequence to look at its
+	 * markers again: a blend space asked to sync against markers it cannot place brings the editor
+	 * down inside the engine's own tick, where the import has nothing to catch. */
+	AnimSequence->SortSyncMarkers();
+
+	/* After the notifies are back, since the rows are laid out to hold them */
+	BuildAnimNotifyTracks(AnimSequence);
+
 
 	/* After the tracks: building them initializes the model, which takes the curves with it */
 	if (!ReadAnimationCurves(this, AnimSequence)) {
