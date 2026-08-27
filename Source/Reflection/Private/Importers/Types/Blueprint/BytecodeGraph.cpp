@@ -1826,6 +1826,24 @@ void FBytecodeGraph::Connect(UEdGraphPin* From, UEdGraphPin* To) {
 	 * Which class it is cast to is the one the pin asks for. */
 	UClass* Target = Cast<UClass>(To->PinType.PinSubCategoryObject.Get());
 
+	/* Unless it is that already.
+	 *
+	 * What comes out of a cast is the thing it was cast to, and reading it is reading something of
+	 * that kind. Casting it again says nothing the value did not already say: it puts a node in the
+	 * graph nobody drew, and the same thing is worked out twice over.
+	 *
+	 * Where the two are compatible and the schema still would not have them, the trouble is
+	 * something else -- a reference held one way against a pin that holds it another -- and a cast
+	 * would not have answered it either. */
+	if (Target != nullptr) {
+		if (const UClass* Already = Cast<UClass>(From->PinType.PinSubCategoryObject.Get()); Already != nullptr && Already->IsChildOf(Target)) {
+			UE_LOG(LogReflectionBytecode, Display, TEXT("\"%s\" is a %s already, so it was not cast to one again"),
+				*From->PinName.ToString(), *Target->GetName());
+
+			return;
+		}
+	}
+
 	if (Target != nullptr && From->PinType.PinCategory == UEdGraphSchema_K2::PC_Object && To->PinType.PinCategory == UEdGraphSchema_K2::PC_Object) {
 		UK2Node_DynamicCast* Node = AddNode<UK2Node_DynamicCast>();
 
