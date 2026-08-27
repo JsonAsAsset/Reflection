@@ -20,3 +20,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+————————————————————————————————————————————————————————————————————————————————————
+THIRD-PARTY SOFTWARE
+
+This plugin bundles and links against the following third-party components.
+Each remains under its own license; the full texts are included alongside the
+sources listed below.
+
+Detex — Copyright (c) 2015 Harm Hanemaaijer (ISC-style permissive license)
+  https://github.com/hglm/detex
+  Source/ThirdParty/Detex/LICENSE.txt
+
+NVIDIA Texture Tools — Copyright NVIDIA Corporation 2007 (MIT License)
+  https://docs.nvidia.com/texture-tools/index.html
+  Source/ThirdParty/NVTT/LICENSE.txt
