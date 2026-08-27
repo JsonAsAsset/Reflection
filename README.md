@@ -17,7 +17,7 @@
 Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/master/LICENSE)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE)
 
 [![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
 [![Discord](https://img.shields.io/discord/1110083898043551835.svg?style=for-the-badge&color=0363ff&logo=discord)](https://discord.gg/xXEw4jc2UT)
