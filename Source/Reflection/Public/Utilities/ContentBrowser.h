@@ -132,8 +132,21 @@ T* GetSelectedAsset(const bool SuppressErrors = false, FString OptionalAssetName
 inline FString GetSelectedContentBrowserFolder() {
 	const FContentBrowserModule& ContentBrowserModule = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
 
+	/* The folder that was clicked, before the folder the tree happens to be sitting on.
+	 *
+	 * A folder can be selected two ways at once: in the tree down the side, and among the assets
+	 * in the middle. Opening a folder in the middle does not move the tree, the tree stays on the
+	 * folder above, which is the one that contains what is being looked at.
+	 *
+	 * So a folder right-clicked among the assets asked the tree instead, and the tree answered with
+	 * its parent: every reflect from there took in the folder above the one that was asked for, and
+	 * everything else beneath it. */
 	TArray<FString> SelectedFolders;
-	ContentBrowserModule.Get().GetSelectedPathViewFolders(SelectedFolders);
+	ContentBrowserModule.Get().GetSelectedFolders(SelectedFolders);
+
+	if (SelectedFolders.Num() == 0) {
+		ContentBrowserModule.Get().GetSelectedPathViewFolders(SelectedFolders);
+	}
 
 	if (SelectedFolders.Num() == 0) {
 		return FString();
