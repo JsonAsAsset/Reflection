@@ -624,7 +624,24 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		 * bound to, which is what the compiler's own are told apart by. */
 		if (Name.StartsWith(TEXT("EvaluateGraphExposedInputs"))) {
 			for (const FUObjectJsonValueExport& One : Export->GetArray(TEXT("ScriptBytecode"))) {
-				if (One.GetString(TEXT("Token")) != TEXT("EX_LocalFinalFunction")) continue;
+				if (!One.Has(TEXT("Function")) || !One.Has(TEXT("Parameters"))) continue;
+
+				/* Told apart by what it calls rather than by how it calls it.
+				 *
+				 * The same jump is written as a plain call by one build and as a virtual one by
+				 * another, and a call is spelled either as a bare name or as a reference carrying
+				 * the class it is on. Read by the opcode, a build that spells it the other way has
+				 * no handlers at all and every stretch they would have accounted for is laid out
+				 * among the events instead, as a run of reads wired to nothing. */
+				FString Calls;
+
+				if (One.JsonObject.IsValid() && One.JsonObject->HasTypedField<EJson::String>(TEXT("Function"))) {
+					Calls = One.GetString(TEXT("Function"));
+				} else {
+					Calls = One.GetObject(TEXT("Function")).GetString(TEXT("ObjectName"));
+				}
+
+				if (!Calls.Contains(UEdGraphSchema_K2::FN_ExecuteUbergraphBase.ToString())) continue;
 
 				for (const FUObjectJsonValueExport& Parameter : One.GetArray(TEXT("Parameters"))) {
 					if (Parameter.GetString(TEXT("Token")) != TEXT("EX_IntConst")) continue;
@@ -832,47 +849,59 @@ int32 IBlueprintImporter::ConstructGraphs() {
 
 			if (At == INDEX_NONE) continue;
 
-			int32 To = From;
+			/* How far the stretch runs, which is only knowable while it runs straight.
+			 *
+			 * A stretch is a run of statements one after another, ending in the write that says
+			 * what it was worked out for. That holds only while nothing jumps: the compiler is free
+			 * to put the working out anywhere and jump to it, and where it does, the statements
+			 * after the address belong to whatever happened to be written next.
+			 *
+			 * Read as though it ran straight regardless, a stretch that begins with a jump swallows
+			 * everything to the end of the ubergraph so every graph it is laid into gets almost
+			 * the whole blueprint, and everything it is left out of loses it. Better to leave a
+			 * stretch where it was written than to take the wrong half of the graph with it. */
+			int32 To = INDEX_NONE;
 
 			const FDecided* Into = nullptr;
 
 			for (int32 Index = At; Index < Ubergraphed.Num(); ++Index) {
 				const FUObjectJsonValueExport& One = Ubergraphed[Index];
 
-				To = One.GetInteger(TEXT("StatementIndex"), To);
+				const FString Token = One.GetString(TEXT("Token"));
+
+				/* Where it stops running straight, there is no telling what is still its own */
+				if (Token == TEXT("EX_Jump") || Token == TEXT("EX_JumpIfNot") || Token == TEXT("EX_ComputedJump")
+					|| Token == TEXT("EX_PushExecutionFlow") || Token == TEXT("EX_PopExecutionFlow")
+					|| Token == TEXT("EX_PopExecutionFlowIfNot")) {
+					break;
+				}
 
 				/* What it sets, where what it sets is a member of something the class carries */
 				const FUObjectJsonValueExport Variable = One.GetObject(TEXT("Variable"));
 
-				if (Into == nullptr && Variable.GetString(TEXT("Token")) == TEXT("EX_StructMemberContext")) {
-					FString Member;
+				if (Variable.GetString(TEXT("Token")) == TEXT("EX_StructMemberContext")) {
+					FString Owner, Member;
 
-					if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr;
-						Variable.GetObject(TEXT("Property")).JsonObject.IsValid()
-						&& Variable.GetObject(TEXT("Property")).JsonObject->TryGetArrayField(TEXT("Path"), Path)
-						&& Path->Num() == 1) {
-						Member = (*Path)[0]->AsString();
-					}
-
-					const FString Owner = Variable
-						.GetObject(TEXT("StructExpression"))
-						.GetObject(TEXT("Variable"))
-						.GetObject(TEXT("Property"))
-						.GetString(TEXT("Name"));
+					ReadStructMemberContext(Variable, Owner, Member);
 
 					for (const FDecided& Says : Decides) {
 						if (Says.Owner == Owner && Says.Member == FName(*Member)) {
 							Into = &Says;
+
+							/* The write is the end of it, and nothing past it was worked out here */
+							To = One.GetInteger(TEXT("StatementIndex"), INDEX_NONE);
 
 							break;
 						}
 					}
 				}
 
-				const FString Token = One.GetString(TEXT("Token"));
+				if (Into != nullptr) break;
 
 				if (Token == TEXT("EX_Return") || Token == TEXT("EX_EndOfScript")) break;
 			}
+
+			if (To == INDEX_NONE || To < From) continue;
 
 			if (Into == nullptr || Into->Pin == nullptr || Into->Pin->GetOwningNode() == nullptr) continue;
 
@@ -990,9 +1019,16 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		Builder->Clear();
 	}
 
-	for (const TSharedPtr<FBytecodeGraph>& Rule : Rules) {
-		Rule->Clear();
-	}
+	/* A stretch never clears the graph it lays into.
+	 *
+	 * Clearing is what a graph does to itself before it is written: everything in it came from the
+	 * last run and is about to be written again. A stretch is not that it is a run of statements
+	 * being laid into a graph that belongs to something else and is already full of it.
+	 *
+	 * Cleared anyway, the first stretch to land in a graph empties it: an animation graph loses
+	 * every pose and every node in it, and what is left is the reads that stretch was made of,
+	 * standing in an empty graph. Whoever owns the graph has already emptied it if it needed
+	 * emptying. */
 
 	int32 Declared = 0;
 

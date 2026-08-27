@@ -13,6 +13,82 @@
 #include "Kismet/BlueprintFunctionLibrary.h"
 #endif
 
+/* What a write into a struct member names, said either way round.
+ *
+ * A build spells the member as a way down to it and the thing it is in as a property of a property;
+ * an older one spells the member as a reference to the property itself and the thing it is in as a
+ * plain name. Read one way only, the other comes back naming nothing, and a write that names
+ * nothing matches nothing. */
+/* The struct a property is on and what it is called on it, said either way round.
+ *
+ * A build says the two apart the way down to the member, and the struct resolved beside it. An
+ * older one says them together, as one reference to the property itself: the struct before the
+ * colon and the member after it. Read the first way only, the older spelling answers nothing for
+ * both, and a member of nothing on a struct of nothing is not something that can be laid out. */
+inline void ReadPropertyReference(const FUObjectJsonValueExport& Property, FString& Owner, FString& Member) {
+	if (!Property.JsonObject.IsValid()) return;
+
+	if (Member.IsEmpty()) {
+		Property.JsonObject->TryGetStringField(TEXT("Name"), Member);
+	}
+
+	if (Member.IsEmpty()) {
+		if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr; Property.JsonObject->TryGetArrayField(TEXT("Path"), Path) && Path->Num() > 0) {
+			Member = (*Path)[Path->Num() - 1]->AsString();
+		}
+	}
+
+	if (!Owner.IsEmpty() && !Member.IsEmpty()) return;
+
+	FString Spelled;
+
+	if (!Property.JsonObject->TryGetStringField(TEXT("ObjectName"), Spelled)) return;
+
+	/* FloatProperty'SomeStruct:Member' -> SomeStruct, Member */
+	FString Held;
+
+	if (!Spelled.Split(TEXT("'"), nullptr, &Held)) return;
+
+	Held.RemoveFromEnd(TEXT("'"));
+
+	FString Before, After;
+
+	if (!Held.Split(TEXT(":"), &Before, &After)) return;
+
+	if (Owner.IsEmpty()) Owner = Before;
+	if (Member.IsEmpty()) Member = After;
+}
+
+inline void ReadStructMemberContext(const FUObjectJsonValueExport& Variable, FString& Owner, FString& Member) {
+	Owner.Empty();
+	Member.Empty();
+
+	const FUObjectJsonValueExport Inside = Variable.GetObject(TEXT("StructExpression")).GetObject(TEXT("Variable"));
+
+	if (Inside.JsonObject.IsValid() && !Inside.JsonObject->TryGetStringField(TEXT("Name"), Owner)) {
+		if (const TSharedPtr<FJsonObject> Held = Inside.GetObject(TEXT("Property")).JsonObject; Held.IsValid()) {
+			Held->TryGetStringField(TEXT("Name"), Owner);
+		}
+	}
+
+	const TSharedPtr<FJsonObject> Named = Variable.GetObject(TEXT("Property")).JsonObject;
+
+	if (!Named.IsValid()) return;
+
+	if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr; Named->TryGetArrayField(TEXT("Path"), Path) && Path->Num() == 1) {
+		Member = (*Path)[0]->AsString();
+
+		return;
+	}
+
+	/* Spelled as a reference, of which the member is whatever comes after the class it is on */
+	if (FString Spelled; Named->TryGetStringField(TEXT("ObjectName"), Spelled)) {
+		Spelled.Split(TEXT(":"), nullptr, &Spelled);
+
+		Member = Spelled.Replace(TEXT("'"), TEXT(""));
+	}
+}
+
 inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const FString& ObjectPath) {
 	const FString FullPath = ObjectPath + TEXT(".") + ObjectName;
 

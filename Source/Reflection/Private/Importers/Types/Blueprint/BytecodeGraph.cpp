@@ -1,5 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "Importers/Types/Blueprint/BlueprintUtilities.h"
 #include "Importers/Types/Blueprint/BytecodeGraph.h"
 
 #include "EdGraphSchema_K2.h"
@@ -1218,6 +1219,9 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 			SplitReference(Property.GetObject(TEXT("ResolvedOwner")), Owner, Unused);
 		}
 
+		/* Or said as one reference, the way an older build says it */
+		ReadPropertyReference(Property, Owner, Member);
+
 		UScriptStruct* Struct = Owner.IsEmpty() ? nullptr : FindFirstObject<UScriptStruct>(*Owner);
 
 		if (Held.Pin != nullptr && Struct != nullptr && !Member.IsEmpty()) {
@@ -1968,6 +1972,13 @@ bool FBytecodeGraph::FillStruct(const FUObjectJsonValueExport& Statement, const 
 	FString Owner, Member;
 	SplitReference(Held.GetObject(TEXT("ResolvedOwner")), Owner, Member);
 
+	/* Or said as one reference, the way an older build says it */
+	if (Owner.IsEmpty()) {
+		FString Named;
+
+		ReadPropertyReference(Held, Owner, Named);
+	}
+
 	UScriptStruct* Kind = FindStructByType(Member.IsEmpty() ? Owner : Member);
 
 	if (Kind == nullptr) {
@@ -2052,15 +2063,9 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 			 * node that already exists, which is what one of these looks like laid out in the wrong
 			 * graph. What was meant is the node this graph ends at, so the answer is wired to it. */
 			if (Decided.Num() > 0) {
-				const FUObjectJsonValueExport Held = Variable.GetObject(TEXT("Property"));
+				FString Owner, Member;
 
-				FString Member;
-
-				if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr; Held.JsonObject.IsValid() && Held.JsonObject->TryGetArrayField(TEXT("Path"), Path) && Path->Num() == 1) {
-					Member = (*Path)[0]->AsString();
-				}
-
-				const FString Owner = MacroReading::NamedProperty(Variable.GetObject(TEXT("StructExpression")).GetObject(TEXT("Variable")));
+				ReadStructMemberContext(Variable, Owner, Member);
 
 				if (UEdGraphPin* const* Answers = Decided.Find(FString::Printf(TEXT("%s.%s"), *Owner, *Member))) {
 					if (Expression.Pin != nullptr) {

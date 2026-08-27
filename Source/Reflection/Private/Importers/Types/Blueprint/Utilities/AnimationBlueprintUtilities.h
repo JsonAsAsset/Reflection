@@ -2,6 +2,7 @@
 
 #pragma once
 
+#include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
 #include "AnimGraphNode_Base.h"
 #include "AnimGraphNode_BlendListByEnum.h"
 #include "Dom/JsonObject.h"
@@ -166,6 +167,43 @@ inline void HarvestAndTagConnectedStateMachineNodes(const FString& StartKey, con
  *
  * 5.3 and below still keep PropertyBindings on the node itself, public and undeprecated, so there
  * the map is simply written to. */
+/* Every pin something is already handed a value on, however it came to be handed one.
+ *
+ * A node can be bound from either shape the cook comes in the older one, read off the node's own
+ * copy records, or the newer one, read off the class and neither says anything about whether the
+ * pin is drawn. Asked of the node instead, both are answered at once. */
+inline TArray<FName> BoundPinNames(UAnimGraphNode_Base* Node) {
+	TArray<FName> Named;
+
+	if (Node == nullptr) return Named;
+
+#if UE5_4_BEYOND
+	const FObjectProperty* BindingProperty = CastField<FObjectProperty>(Node->GetClass()->FindPropertyByName(TEXT("Binding")));
+
+	if (BindingProperty == nullptr) return Named;
+
+	UObject* BindingObject = BindingProperty->GetObjectPropertyValue_InContainer(Node);
+
+	if (BindingObject == nullptr) return Named;
+
+	const FMapProperty* MapProperty = CastField<FMapProperty>(BindingObject->GetClass()->FindPropertyByName(TEXT("PropertyBindings")));
+
+	if (MapProperty == nullptr) return Named;
+
+	FScriptMapHelper MapHelper(MapProperty, MapProperty->ContainerPtrToValuePtr<void>(BindingObject));
+
+	for (int32 At = 0; At < MapHelper.GetMaxIndex(); ++At) {
+		if (!MapHelper.IsValidIndex(At)) continue;
+
+		Named.Add(*static_cast<FName*>(static_cast<void*>(MapHelper.GetKeyPtr(At))));
+	}
+#else
+	Node->PropertyBindings.GetKeys(Named);
+#endif
+
+	return Named;
+}
+
 inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, const FAnimGraphNodePropertyBinding& PropertyBinding) {
 #if UE5_4_BEYOND
 	/* Taken by reflection so the private binding type never has to be named */
@@ -212,7 +250,7 @@ inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, c
 	 *
 	 * A binding is put on a node before the node has any pins, and said again once it has them so
 	 * each one can be asked what it carries. Added rather than replaced, the second telling puts a
-	 * second entry under a key the map already has -- which is not a map any more, and the node
+	 * second entry under a key the map already has which is not a map any more, and the node
 	 * ends up with none of its bindings rather than one of them. */
 	for (int32 At = MapHelper.GetMaxIndex() - 1; At >= 0; --At) {
 		if (!MapHelper.IsValidIndex(At)) continue;
@@ -238,7 +276,7 @@ inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, c
 }
 #endif
 
-inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TSharedPtr<FJsonValue>>& JsonObjects, UAnimGraphNode_Base* Node, IImporter* Importer, UAnimBlueprint* AnimBlueprint) {
+inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TSharedPtr<FJsonValue>>& JsonObjects, UAnimGraphNode_Base* Node, IAnimationBlueprintImporter* Importer, UAnimBlueprint* AnimBlueprint) {
 	const TSharedPtr<FJsonObject> NodeProperties = NodeExport->JsonObject;
 	
 	/* Let the user know that this node has nodes plugged into it */
@@ -344,9 +382,14 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 						}
 					}
 
-					if (!AddPropertyBinding(Node, PinNameAsName, PropertyBinding)) {
-						UE_LOG(LogReflection, Warning, TEXT("Binding dropped: %s.%s <- %s"), *Node->GetClass()->GetName(), *PinName, *SourcePropertyName);
-					}
+					/* Handed over rather than bound outright.
+					 *
+					 * An older cook says what feeds a pin on the node itself and a newer one says it
+					 * on the class, and they were being answered differently: one drawn into the
+					 * graph, the other tucked into a pin. They are the same thing said twice, so
+					 * both are handed to the one place that decides what to do with it which
+					 * draws what can be drawn, and binds only what cannot. */
+					Importer->Hands(NodeExport->GetName().ToString(), PinNameAsName, PropertyBinding.PropertyPath);
 #endif
 
 					if (PinName == "ActiveEnumValue" && Node != nullptr) {

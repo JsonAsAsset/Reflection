@@ -93,7 +93,23 @@ UK2Node_FunctionEntry* FBlueprintGraphs::EntryOf(const UEdGraph* Graph) {
 FBlueprintGraphs::FWritten FBlueprintGraphs::Reads(const FUObjectJsonValueExport& Function) {
 	FWritten Written;
 
-	if (Says(Function, TEXT("FUNC_UbergraphFunction"))) {
+	/* The one graph everything a blueprint runs was written into.
+	 *
+	 * It says so in its flags, where the flags were kept. Not every build writes them out some
+	 * come back saying nothing at all and read without them the ubergraph is taken for an
+	 * ordinary function: a graph is made under its name, which the class already has one of, and
+	 * the blueprint will not compile for having the same function twice. Every event that was
+	 * written in it is left with nowhere to go besides.
+	 *
+	 * So the name settles it where the flags do not. The compiler builds that name rather than
+	 * anybody typing it, and it is the engine's own, asked for here rather than spelled out. */
+	FString Named;
+
+	if (Function.JsonObject.IsValid()) {
+		Function.JsonObject->TryGetStringField(TEXT("Name"), Named);
+	}
+
+	if (Says(Function, TEXT("FUNC_UbergraphFunction")) || Named.StartsWith(UEdGraphSchema_K2::FN_ExecuteUbergraphBase.ToString())) {
 		Written.Kind = EWritten::Ubergraph;
 
 		return Written;

@@ -59,6 +59,9 @@ private:
 	void ReadBindings(const TSharedPtr<FJsonObject>& Nodes, const TArray<FString>& Keys);
 
 public:
+	/* Says that something hands a value to one of a node's pins, however the cook spelled it */
+	void Hands(const FString& Key, FName Member, const TArray<FString>& Path);
+
 	/* Puts those back on a node, drawn or bound.
 	 *
 	 * Said out here because a transition result is made where the state machine is laid out rather
@@ -74,6 +77,12 @@ protected:
 
 	/* Draws a variable, and a Not where it was turned round, into the graph a node is in */
 	void Draw(UAnimGraphNode_Base* Node, FName Member, const FString& Named, bool bTurned, int32 Row) const;
+
+	/* Draws a property on the node so something can be wired to it, and says whether it had to */
+	bool Expose(UAnimGraphNode_Base* Node, FName Member) const;
+
+	/* Says every pin of every node as somewhere a stretch of the ubergraph can answer into */
+	void AnswerThrough(FUObjectExportContainer* Container);
 
 	/* Reads every variable a node is handed into the graph beside it, once the graph is laid out */
 	void DrawBindings(FUObjectExportContainer* Container) const;

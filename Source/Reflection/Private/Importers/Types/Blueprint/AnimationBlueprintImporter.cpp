@@ -1,5 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "AnimGraphNode_BlendListByInt.h"
 #include "AnimGraphNode_CustomProperty.h"
 #include "Kismet/KismetMathLibrary.h"
 #include "K2Node_CallFunction.h"
@@ -1041,7 +1042,26 @@ void IAnimationBlueprintImporter::Draw(UAnimGraphNode_Base* Node, const FName Me
 
 	UEdGraphPin* Onto = Node->FindPin(Member, EGPD_Input);
 
-	if (Into == nullptr || Onto == nullptr) return;
+	/* A property that was never drawn has no pin to feed.
+	 *
+	 * Most of them say to stay hidden and the node obeys, whatever is driving them and a node
+	 * whose asset is driven rather than set reads as a node with no asset at all: the compiler says
+	 * outright that it points at an animation nobody has heard of. The one thing that settles it is
+	 * that something is handing it a value, which is what is being drawn here. */
+	if (Onto == nullptr && Expose(Node, Member)) {
+		Node->ReconstructNode();
+
+		Onto = Node->FindPin(Member, EGPD_Input);
+	}
+
+	if (Into == nullptr || Onto == nullptr) {
+		if (Onto == nullptr) {
+			UE_LOG(LogReflection, Warning, TEXT("\"%s\" is handed to %s.%s, which has no pin and will not take one"),
+				*Named, *Node->GetName(), *Member.ToString());
+		}
+
+		return;
+	}
 
 	/* Drawn once. Saying it again is how a pin learns what it carries, and the run that draws it
 	 * would otherwise put down a second variable and a second Not every time it was asked. */
@@ -1107,6 +1127,18 @@ void IAnimationBlueprintImporter::Draw(UAnimGraphNode_Base* Node, const FName Me
 	Into->NotifyGraphChanged();
 }
 
+void IAnimationBlueprintImporter::Hands(const FString& Key, const FName Member, const TArray<FString>& Path) {
+	if (Key.IsEmpty() || Member.IsNone() || Path.Num() == 0) return;
+
+	TArray<FHandedOver>& Says = Bindings.FindOrAdd(Key);
+
+	for (const FHandedOver& One : Says) {
+		if (One.Member == Member) return;
+	}
+
+	Says.Add(FHandedOver{ Member, Path, false });
+}
+
 void IAnimationBlueprintImporter::ApplyBindings(const FString& Key, UAnimGraphNode_Base* Node) const {
 	if (Node == nullptr || Key.IsEmpty()) return;
 
@@ -1127,6 +1159,17 @@ void IAnimationBlueprintImporter::ApplyBindings(const FString& Key, UAnimGraphNo
 	int32 Row = 0;
 
 	for (const FHandedOver& One : *Says) {
+		/* Drawn on the node whichever way it is fed.
+		 *
+		 * A property that is hidden reads as a property nobody set, and for one holding an asset
+		 * that is an error outright: the node points at an animation nobody has heard of. Being
+		 * handed a value settles that, and it settles it the same way whether the value is read
+		 * from one variable or reached through something so the pin is drawn either way, and
+		 * only how it is fed is decided below. */
+		if (Expose(Node, One.Member)) {
+			Node->ReconstructNode();
+		}
+
 		if (One.Path.Num() == 1) {
 			Draw(Node, One.Member, One.Path[0], One.bTurned, Row++);
 
@@ -1196,6 +1239,74 @@ void IAnimationBlueprintImporter::ExposeHandedOver(UAnimGraphNode_Base* Node, co
 	UE_LOG(LogReflection, Display, TEXT("\"%s\" hands over %d value(s), which it is given pins for"), *Node->GetName(), Named.Num());
 }
 
+bool IAnimationBlueprintImporter::Expose(UAnimGraphNode_Base* Node, const FName Member) const {
+	/* The ones the node keeps openly, which are its own properties */
+	for (FOptionalPinFromProperty& Held : Node->ShowPinForProperties) {
+		if (Held.PropertyName != Member) continue;
+
+		if (Held.bShowPin) return false;
+
+		Held.bShowPin = true;
+
+		return true;
+	}
+
+	/* And the ones it makes for whatever it drives, which it keeps to itself */
+	const FArrayProperty* Exposed = FindFProperty<FArrayProperty>(Node->GetClass(), TEXT("CustomPinProperties"));
+
+	if (Exposed == nullptr) return false;
+
+	const FStructProperty* Inner = CastField<FStructProperty>(Exposed->Inner);
+
+	if (Inner == nullptr || Inner->Struct != FOptionalPinFromProperty::StaticStruct()) return false;
+
+	FScriptArrayHelper Holds(Exposed, Exposed->ContainerPtrToValuePtr<void>(Node));
+
+	for (int32 At = 0; At < Holds.Num(); ++At) {
+		FOptionalPinFromProperty* Says = reinterpret_cast<FOptionalPinFromProperty*>(Holds.GetRawPtr(At));
+
+		if (Says->PropertyName != Member) continue;
+
+		if (Says->bShowPin) return false;
+
+		Says->bShowPin = true;
+
+		return true;
+	}
+
+	return false;
+}
+
+void IAnimationBlueprintImporter::AnswerThrough(FUObjectExportContainer* Container) {
+	if (Container == nullptr) return;
+
+	/* Every pin of every node, said as somewhere a stretch of the ubergraph can answer into.
+	 *
+	 * An input worked out rather than typed in is not written on the node: the compiler puts the
+	 * working out in the ubergraph, gives the node a handler that jumps to it, and has it write the
+	 * answer back onto the node when it lands. Laid out as written, that working out goes where it
+	 * was written among the events and comes back as a handful of reads sitting in the event
+	 * graph, wired to nothing, while the pin they were worked out for stays empty.
+	 *
+	 * Where it belongs is beside the node, feeding the pin. Saying so for every pin is what lets a
+	 * stretch be recognised: each one names the node and the property it writes, and only a stretch
+	 * that writes to one of these is taken out of the events. */
+	for (const FUObjectExport* NodeExport : Container->Exports) {
+		UAnimGraphNode_Base* Node = Cast<UAnimGraphNode_Base>(NodeExport->Object);
+
+		if (Node == nullptr) continue;
+
+		for (UEdGraphPin* Pin : Node->Pins) {
+			if (Pin == nullptr || Pin->Direction != EGPD_Input) continue;
+
+			/* A pose is drawn from node to node, and was never worked out anywhere */
+			if (UAnimationGraphSchema::IsPosePin(Pin->PinType)) continue;
+
+			Answers(NodeExport->GetName().ToString(), Pin->PinName, Pin);
+		}
+	}
+}
+
 void IAnimationBlueprintImporter::DrawBindings(FUObjectExportContainer* Container) const {
 	if (Container == nullptr) return;
 
@@ -1219,9 +1330,15 @@ void IAnimationBlueprintImporter::ShowBoundPins(const TSharedPtr<FJsonObject>& A
 
 		if (Node == nullptr) continue;
 
-		const TArray<FHandedOver>* Says = Bindings.Find(NodeExport->GetName().ToString());
+		/* Asked of the node, since a binding can have come from either shape the cook arrives in
+		 * and only the node knows about both */
+		TArray<FName> Says = BoundPinNames(Node);
 
-		if (Says == nullptr) continue;
+		for (const FHandedOver& One : Bindings.FindRef(NodeExport->GetName().ToString())) {
+			Says.AddUnique(One.Member);
+		}
+
+		if (Says.Num() == 0) continue;
 
 		/* Drawn on the node rather than left in the details.
 		 *
@@ -1235,14 +1352,8 @@ void IAnimationBlueprintImporter::ShowBoundPins(const TSharedPtr<FJsonObject>& A
 		 * the more useful of the two readings rather than the provably right one. */
 		bool bAny = false;
 
-		for (FOptionalPinFromProperty& Held : Node->ShowPinForProperties) {
-			for (const FHandedOver& One : *Says) {
-				if (Held.PropertyName != One.Member || Held.bShowPin) continue;
-
-				Held.bShowPin = true;
-
-				bAny = true;
-			}
+		for (const FName One : Says) {
+			bAny |= Expose(Node, One);
 		}
 
 		if (bAny) {
@@ -1296,6 +1407,19 @@ void IAnimationBlueprintImporter::CreateGraph(const TSharedPtr<FJsonObject>& Ani
 	ConnectAnimGraphNodes(Container, AnimGraph);
 	AutoLayoutAnimGraphNodes(Container->Exports);
 	DrawBindings(Container);
+
+	/* An input worked out in the ubergraph is left where it was written.
+	 *
+	 * Saying every pin of every node as somewhere a stretch could answer into is what let those
+	 * stretches be recognised, and recognising them is only half of it: a stretch has to be bounded
+	 * before it can be moved, and a stretch that is jumped to cannot be bounded by reading forward
+	 * from where it begins. Taken anyway, hundreds of them each claimed most of the blueprint and
+	 * the graph they were laid into was buried.
+	 *
+	 * So it is not said, and those stretches stay among the events which is untidy, and is a
+	 * graph that still holds everything it held before. Following the jumps is what this needs, and
+	 * that is a different piece of work to the one that broke it. */
+	// AnswerThrough(Container);
 
 	for (const FUObjectExport* ExportNode : Container->Exports) {
 		const TSharedPtr<FJsonObject> ExportJsonObject = ExportNode->JsonObject;
@@ -1608,17 +1732,34 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 
 		/* Post-processing modifications ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 		if (NodeProperties->HasField(TEXT("GroupRole")) && NodeProperties->HasField(TEXT("GroupIndex"))) {
-			const int GroupIndexInteger = NodeProperties->GetIntegerField(TEXT("GroupIndex"));
+			/* -1 is no group at all, and the class only names as many as it has */
+			if (const int32 Which = NodeProperties->GetIntegerField(TEXT("GroupIndex")); SyncGroupNames.IsValidIndex(Which)) {
+				const FStructProperty* Inside = GetNodeStructProperty(Node);
+				const UScriptStruct* Holds = Inside != nullptr ? Inside->Struct : nullptr;
 
-			/* -1 is no group role */
-			if (GroupIndexInteger != -1) {
-				TSharedPtr<FJsonObject> SyncGroup = MakeShared<FJsonObject>();
-				FString SyncGroupName = SyncGroupNames[GroupIndexInteger];
-			
-				SyncGroup->SetStringField(TEXT("GroupName"), SyncGroupName);
-				SyncGroup->SetStringField(TEXT("GroupRole"), NodeProperties->GetStringField(TEXT("GroupRole")));
+				/* Which sync group it plays in, said the way this engine says it.
+				 *
+				 * An older one numbers them, against a list the class keeps, and holds the number
+				 * and the part it plays together in one struct. A newer one names the group on the
+				 * node itself and says separately whether it syncs at all.
+				 *
+				 * Written the old way and read by the new, none of it lands anywhere: the struct it
+				 * was put in does not exist, so the node plays in no group and nothing says why. */
+				if (Holds != nullptr && Holds->FindPropertyByName(TEXT("GroupName")) != nullptr) {
+					NodeProperties->SetStringField(TEXT("GroupName"), SyncGroupNames[Which]);
 
-				NodeProperties->SetObjectField(TEXT("SyncGroup"), SyncGroup);
+					/* Named but never told to use it, a group is just a name sitting on a node */
+					if (Holds->FindPropertyByName(TEXT("Method")) != nullptr && !NodeProperties->HasField(TEXT("Method"))) {
+						NodeProperties->SetStringField(TEXT("Method"), TEXT("EAnimSyncMethod::SyncGroup"));
+					}
+				} else {
+					TSharedPtr<FJsonObject> SyncGroup = MakeShared<FJsonObject>();
+
+					SyncGroup->SetStringField(TEXT("GroupName"), SyncGroupNames[Which]);
+					SyncGroup->SetStringField(TEXT("GroupRole"), NodeProperties->GetStringField(TEXT("GroupRole")));
+
+					NodeProperties->SetObjectField(TEXT("SyncGroup"), SyncGroup);
+				}
 			}
 		}
 
@@ -1799,6 +1940,46 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 		/* And whatever the class hands it, which is said the way newer engines say it */
 		ApplyBindings(NodeExport->GetName().ToString(), Node);
 
+		/* A blend by an enum this build has not got, blended by number instead.
+		 *
+		 * The node blends one pose per entry of an enum, and which enum is not on the node: the
+		 * editor works it back out from whatever drives it. Where that enum belongs to a build this
+		 * one is not, there is nothing to work out, and the node is past saving the editor says
+		 * as much, and says the only thing to do is delete it and start again.
+		 *
+		 * Blending by number is the same node underneath: the same poses in the same order, chosen
+		 * by index rather than by name. What is lost is the names, so they are said in a comment
+		 * rather than quietly dropped. */
+		if (const UAnimGraphNode_BlendListByEnum* ByEnum = Cast<UAnimGraphNode_BlendListByEnum>(Node); ByEnum != nullptr && ByEnum->GetEnum() == nullptr) {
+			if (UEdGraph* Into = Node->GetGraph()) {
+				UAnimGraphNode_BlendListByInt* ByNumber = NewObject<UAnimGraphNode_BlendListByInt>(Into);
+
+				Into->AddNode(ByNumber, false, false);
+
+				ByNumber->CreateNewGuid();
+
+				/* Read again into the new node, since the poses and their times are the same */
+				GetObjectSerializer()->DeserializeObjectProperties(NodeProperties, ByNumber);
+
+				FString Said = TEXT("was blended by an enum this build has not got");
+
+				if (FString Named; NodeProperties->TryGetStringField(TEXT("BoundEnum"), Named) && !Named.IsEmpty()) {
+					Said = FString::Printf(TEXT("was blended by \"%s\", which this build has not got"), *Named);
+				}
+
+				ByNumber->NodeComment = Said;
+				ByNumber->bCommentBubbleVisible = true;
+
+				Into->RemoveNode(Node);
+
+				NodeExport->Object = ByNumber;
+
+				Node = ByNumber;
+
+				UE_LOG(LogReflection, Warning, TEXT("\"%s\" %s, so it blends by number"), *NodeExport->GetName().ToString(), *Said);
+			}
+		}
+
 		const UReflectionSettings* Settings = GetSettings();
 		if (Settings->AssetSettings.AnimationBlueprint.NodeIDComments) {
 			Node->NodeComment = NodeExport->GetName().ToString();
@@ -1807,7 +1988,65 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 		
 		Node->AllocateDefaultPins();
 		Node->Modify();
+
+		/* How many poses it was written with, taken before anything is added to it */
+		int32 Poses = INDEX_NONE;
+
+		if (const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr; NodeProperties->TryGetArrayField(TEXT("BlendPose"), Listed)) {
+			Poses = Listed->Num();
+		}
+
 		Node->PostPlacedNewNode();
+
+		/* Put back to the number of poses it was written with.
+		 *
+		 * Placing a blend node gives it a pose to start from, which is right for one somebody has
+		 * just dropped into a graph and wrong for one that is being read back: it was written with
+		 * every pose it had. Left alone, each of them comes back one pose over, wired to nothing,
+		 * and the times no longer line up with the poses they were for. */
+		if (Poses != INDEX_NONE) {
+			if (const FStructProperty* Inside = GetNodeStructProperty(Node); Inside != nullptr && Inside->Struct != nullptr) {
+				void* Held = Inside->ContainerPtrToValuePtr<void>(Node);
+
+				bool bTrimmed = false;
+
+				for (const TCHAR* Named : { TEXT("BlendPose"), TEXT("BlendTime") }) {
+					const FArrayProperty* Listed = CastField<FArrayProperty>(Inside->Struct->FindPropertyByName(Named));
+
+					if (Listed == nullptr) continue;
+
+					FScriptArrayHelper Holds(Listed, Listed->ContainerPtrToValuePtr<void>(Held));
+
+					if (Holds.Num() <= Poses) continue;
+
+					Holds.Resize(Poses);
+
+					bTrimmed = true;
+				}
+
+				if (bTrimmed) {
+					Node->ReconstructNode();
+
+					/* And the pin the pose left behind goes with it.
+					 *
+					 * Laying a node out again keeps a pin that no longer answers to anything, so
+					 * long as somebody had put something on it the point being to show what was
+					 * about to be lost rather than drop it quietly. Here what was put on it is the
+					 * blend time the editor gave the pose it added of its own accord, and that pose
+					 * is the one just taken off again. Nothing is being lost, so nothing is shown:
+					 * the pin is taken off with it. */
+					for (int32 At = Node->Pins.Num() - 1; At >= 0; --At) {
+						UEdGraphPin* Pin = Node->Pins[At];
+
+						if (Pin == nullptr || !Pin->bOrphanedPin) continue;
+
+						Pin->BreakAllPinLinks();
+
+						Node->RemovePin(Pin);
+					}
+				}
+			}
+		}
 	}
 }
 
