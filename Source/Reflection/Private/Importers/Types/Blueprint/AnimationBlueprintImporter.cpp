@@ -1,5 +1,6 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
 #include "AnimGraphNode_BlendListByInt.h"
 #include "AnimGraphNode_CustomProperty.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -10,7 +11,6 @@
 #include "AnimationGraphSchema.h"
 #include "Animation/BlendProfile.h"
 #include "AnimationGraph.h"
-#include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
 
 #include "AnimationStateMachineGraph.h"
 #include "AnimationStateMachineSchema.h"

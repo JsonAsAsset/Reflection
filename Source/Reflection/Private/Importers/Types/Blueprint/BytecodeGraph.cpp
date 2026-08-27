@@ -1,7 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-#include "Importers/Types/Blueprint/BlueprintUtilities.h"
 #include "Importers/Types/Blueprint/BytecodeGraph.h"
+#include "Importers/Types/Blueprint/BlueprintUtilities.h"
 
 #include "EdGraphSchema_K2.h"
 #include "Engine/Compatibility.h"

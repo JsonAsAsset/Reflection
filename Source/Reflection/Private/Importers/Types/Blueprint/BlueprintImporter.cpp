@@ -1,8 +1,8 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "Importers/Types/Blueprint/BlueprintImporter.h"
 #include "AnimationGraphSchema.h"
 #include "AnimGraphNode_Root.h"
-#include "Importers/Types/Blueprint/BlueprintImporter.h"
 #include "EdGraphSchema_K2.h"
 
 #include "KismetCompilerModule.h"

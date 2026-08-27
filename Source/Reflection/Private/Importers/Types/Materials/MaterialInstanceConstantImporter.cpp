@@ -35,6 +35,74 @@ bool IMaterialInstanceConstantImporter::Import() {
 		"CachedReferencedTextures"
 	}), MaterialInstanceConstant);
 
+	/* What to draw with instead where Nanite is drawing.
+	 *
+	 * The material an instance names for Nanite is kept twice over: a hard reference the editor
+	 * shows and works from, and another the cook writes for the game to run on. The editor's is
+	 * editor-only and is left out of the cook on purpose, so what comes back names the material in
+	 * the half the editor never reads and the field it does read stays empty.
+	 *
+	 * Worse, the cooked half is not written as a property at all: the struct serializes itself and
+	 * keeps that reference to itself, so nothing put it anywhere either. Set through the instance,
+	 * which fills in both halves. */
+	if (GetAssetDataAsValue().Has(TEXT("NaniteOverrideMaterial"))) {
+		const FUObjectJsonValueExport Override = GetAssetDataAsValue().GetObject(TEXT("NaniteOverrideMaterial"));
+
+		TSharedPtr<FJsonObject> Named = Override.GetObject(TEXT("OverrideMaterial")).JsonObject;
+
+		/* Or the way an older one named it, which is a path rather than a reference */
+		if (!Named.IsValid() || !Named->HasField(TEXT("ObjectName"))) {
+			if (const FUObjectJsonValueExport Held = Override.GetObject(TEXT("OverrideMaterialRef")); Held.JsonObject.IsValid()) {
+				if (FString Path; Held.JsonObject->TryGetStringField(TEXT("AssetPathName"), Path) && !Path.IsEmpty() && Path != TEXT("None")) {
+					Named = MakeShared<FJsonObject>();
+
+					Named->SetStringField(TEXT("ObjectName"), FPaths::GetBaseFilename(Path));
+					Named->SetStringField(TEXT("ObjectPath"), Path);
+				}
+			}
+		}
+
+		if (Named.IsValid() && Named->HasField(TEXT("ObjectName"))) {
+			TObjectPtr<UObject> Loaded;
+
+			LoadExport<UObject>(&Named, Loaded);
+
+			if (UMaterialInterface* Drawn = Cast<UMaterialInterface>(Loaded.Get())) {
+				bool bOverride = true;
+
+				Override.JsonObject->TryGetBoolField(TEXT("bEnableOverride"), bOverride);
+
+				/* Put in place through the class, since the one call that does this is not one the
+				 * engine hands out to anybody outside it */
+				if (const FStructProperty* Holds = CastField<FStructProperty>(MaterialInstanceConstant->GetClass()->FindPropertyByName(TEXT("NaniteOverrideMaterial")))) {
+					void* Inside = Holds->ContainerPtrToValuePtr<void>(MaterialInstanceConstant);
+
+					/* The half the editor shows, and the half the cook writes whichever this
+					 * build has. Older ones keep only the second. */
+					const FObjectProperty* Shown = CastField<FObjectProperty>(Holds->Struct->FindPropertyByName(TEXT("OverrideMaterialEditor")));
+
+					if (Shown == nullptr) {
+						Shown = CastField<FObjectProperty>(Holds->Struct->FindPropertyByName(TEXT("OverrideMaterial")));
+					}
+
+					if (Shown != nullptr) {
+						Shown->SetObjectPropertyValue(Shown->ContainerPtrToValuePtr<void>(Inside), Drawn);
+
+						if (const FBoolProperty* Enabled = CastField<FBoolProperty>(Holds->Struct->FindPropertyByName(TEXT("bEnableOverride")))) {
+							Enabled->SetPropertyValue(Enabled->ContainerPtrToValuePtr<void>(Inside), bOverride);
+						}
+
+						MaterialInstanceConstant->Modify();
+
+						UE_LOG(LogReflection, Display, TEXT("\"%s\" draws with \"%s\" where Nanite draws"), *GetAssetName(), *Drawn->GetName());
+					} else {
+						UE_LOG(LogReflection, Warning, TEXT("\"%s\" names \"%s\" for Nanite, and this build keeps it nowhere the editor reads"), *GetAssetName(), *Drawn->GetName());
+					}
+				}
+			}
+		}
+	}
+
 	TArray<FUObjectJsonValueExport> StaticSwitchParametersObjects;
 	TArray<FUObjectJsonValueExport> StaticComponentMaskParametersObjects;
 	

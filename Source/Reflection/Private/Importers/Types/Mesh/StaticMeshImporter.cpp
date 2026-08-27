@@ -1,7 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
-#include "Engine/Package.h"
 #include "Importers/Types/Mesh/StaticMeshImporter.h"
+#include "Engine/Package.h"
 
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
@@ -138,6 +138,63 @@ bool IStaticMeshImporter::Import() {
 		FImportIssues::Report(EImportIssue::Data, TEXT("No geometry for LOD 0"), TEXT("The mesh build requires it. A Nanite only mesh keeps its geometry in the Nanite stream, which is the usual reason."));
 
 		return Abandon();
+	}
+
+	/* Built as Nanite where it was Nanite.
+	 *
+	 * What the cook keeps of Nanite is the built thing: a stream of clusters, drawn straight and
+	 * never read back into geometry. There is no turning that into what the editor holds, and no
+	 * point trying the editor builds Nanite itself, from the geometry, every time the mesh is
+	 * built. What it needs told is that this mesh is one, and how finely to keep it.
+	 *
+	 * So the stream is left where it is and the settings behind it are read instead. The mesh comes
+	 * back Nanite and is built as Nanite here, off the geometry the cook kept beside it. */
+	if (const FUObjectJsonValueExport Nanite = FUObjectJsonValueExport(GetAssetExport()).GetObject(TEXT("RenderData")).GetObject(TEXT("NaniteResources")); Nanite.JsonObject.IsValid()) {
+		if (const int32 Clusters = Nanite.GetInteger(TEXT("NumClusters"), 0); Clusters > 0) {
+			StaticMesh->NaniteSettings.bEnabled = true;
+
+			/* Kept as finely as it was, where the cook says. Left alone otherwise, since the
+			 * engine's own default is not a number either. */
+			if (Nanite.Has(TEXT("PositionPrecision"))) {
+				StaticMesh->NaniteSettings.PositionPrecision = Nanite.GetInteger(TEXT("PositionPrecision"), StaticMesh->NaniteSettings.PositionPrecision);
+			}
+
+			if (Nanite.Has(TEXT("NormalPrecision"))) {
+				StaticMesh->NaniteSettings.NormalPrecision = Nanite.GetInteger(TEXT("NormalPrecision"), StaticMesh->NaniteSettings.NormalPrecision);
+			}
+
+			/* Whether what it was built from is the mesh or the fallback.
+			 *
+			 * The cluster stream is readable, and where it was read the geometry beside it is the
+			 * mesh itself. Where it was not an older Cloud, or a stream this build cannot make
+			 * sense of what is left is the fallback the cook keeps for where Nanite will not
+			 * draw, which is cut down from what somebody modelled. Nanite built from that is a
+			 * Nanite mesh, and it is not the one the game shipped, which is worth saying. */
+			bool bReadBack = false;
+
+			for (const TSharedPtr<FJsonValue>& LodValue : *Lods) {
+				const FUObjectJsonValueExport One = LodValue;
+
+				if (One.JsonObject.IsValid() && One.JsonObject->HasField(TEXT("nanite")) && One.GetBool(TEXT("nanite"))) {
+					bReadBack = true;
+
+					break;
+				}
+			}
+
+			UE_LOG(LogReflection, Display, TEXT("\"%s\" was Nanite over %d cluster(s), and its geometry was %s"),
+				*GetAssetName(), Clusters, bReadBack ? TEXT("read back out of the stream") : TEXT("taken from the fallback"));
+
+			if (!bReadBack) {
+				if (const int32 Triangles = Nanite.GetInteger(TEXT("NumInputTriangles"), 0); Triangles > 0) {
+					FImportIssues::Report(
+						EImportIssue::Data,
+						TEXT("Nanite was built from the fallback"),
+						FString::Printf(TEXT("'%s' was Nanite over %d triangle(s), and the cluster stream was not read back, so Nanite is built here from the fallback the cook kept beside it, which is a cut-down mesh. A Cloud that reads the stream gives the mesh itself."), *GetAssetName(), Triangles)
+					);
+				}
+			}
+		}
 	}
 
 	/* Stops the build recomputing over the cooked screen sizes */

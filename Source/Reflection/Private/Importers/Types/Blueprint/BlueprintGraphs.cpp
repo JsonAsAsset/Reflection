@@ -1,9 +1,9 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "Importers/Types/Blueprint/BlueprintGraphs.h"
 #include "AnimationGraphSchema.h"
 #include "AnimationGraph.h"
 #include "AnimGraphNode_LinkedInputPose.h"
-#include "Importers/Types/Blueprint/BlueprintGraphs.h"
 #include "Importers/Types/Blueprint/BlueprintVariables.h"
 #include "Importers/Types/Blueprint/MacroPattern.h"
 
