@@ -61,6 +61,9 @@ public:
 	/* Everything but the stretch between these addresses, which is being laid out somewhere else */
 	void LeaveOut(int32 From, int32 To);
 
+	/* And one statement on its own, where what to leave out was worked out a statement at a time */
+	void LeaveOutAt(int32 Address);
+
 	/* Where a write into one of the class's own properties goes, rather than being written.
 	 *
 	 * A rule ends by setting a member of the node it decides. That is not a node writing a
@@ -245,6 +248,9 @@ private:
 
 	/* The stretches that belong to some other graph */
 	TArray<TPair<int32, int32>> Elsewhere;
+
+	/* And the statements that do, said one at a time */
+	TSet<int32> ElsewhereAt;
 
 	/* What a write answers into, against the property it would have been written to */
 	TMap<FString, UEdGraphPin*> Decided;

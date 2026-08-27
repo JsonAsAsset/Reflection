@@ -1268,6 +1268,33 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 			}
 		}
 
+		/* Or split, where the struct cannot be taken apart.
+		 *
+		 * Breaking a struct is a node, and that node can only be made for a struct a blueprint is
+		 * allowed to hold. An animation node's own struct is not one of those, and neither is every
+		 * struct a game declares for itself so the node comes out with no members on it at all
+		 * and the field cannot be reached through it.
+		 *
+		 * Splitting the pin reaches the same field without a node: the members are read straight off
+		 * whatever hands the struct over, which is what the editor does with a struct it will not
+		 * break. */
+		if (Held.Pin != nullptr && !Member.IsEmpty()) {
+			if (Held.Pin->SubPins.Num() == 0) {
+				GetDefault<UEdGraphSchema_K2>()->SplitPin(Held.Pin, false);
+			}
+
+			for (UEdGraphPin* Piece : Held.Pin->SubPins) {
+				if (Piece == nullptr) continue;
+
+				/* Named for the pin it came off as well as the field, so only the tail is the field */
+				if (!Piece->PinName.ToString().EndsWith(Member)) continue;
+
+				Value.Pin = Piece;
+
+				return Value;
+			}
+		}
+
 		Unhandled.AddUnique(FString::Printf(TEXT("%s off %s"), *Member, *Owner));
 
 		return Value;
@@ -2397,6 +2424,10 @@ void FBytecodeGraph::LeaveOut(const int32 From, const int32 To) {
 	Elsewhere.Add(TPair<int32, int32>(From, To));
 }
 
+void FBytecodeGraph::LeaveOutAt(const int32 Address) {
+	if (Address >= 0) ElsewhereAt.Add(Address);
+}
+
 void FBytecodeGraph::HandsInto(const FString& Owner, const FName Member, UEdGraphPin* Pin) {
 	if (Owner.IsEmpty() || Pin == nullptr) return;
 
@@ -3146,6 +3177,16 @@ int32 FBytecodeGraph::Build() {
 	 * up front wherever it was matched it has to be, since a loop's body can be written before
 	 * the loop so a macro in somebody else's stretch would be made here regardless of the run
 	 * ever reaching it, which is a graph holding macros nothing in it runs. */
+	if (ElsewhereAt.Num() > 0) {
+		Ignored.Append(ElsewhereAt);
+
+		for (TMap<int32, FMacroMatch>::TIterator It(Macros); It; ++It) {
+			const int32 At = Statements.IsValidIndex(It.Key()) ? MacroReading::AddressOf(Statements[It.Key()]) : INDEX_NONE;
+
+			if (At >= 0 && ElsewhereAt.Contains(At)) It.RemoveCurrent();
+		}
+	}
+
 	if (Stretch.Num() > 0 || Elsewhere.Num() > 0) {
 		const auto Inside = [](const TArray<TPair<int32, int32>>& Stretches, const int32 At) {
 			for (const TPair<int32, int32>& One : Stretches) {
@@ -3408,6 +3449,45 @@ int32 FBytecodeGraph::Build() {
 		UEdGraphPin* Then = Node->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output);
 
 		UE_LOG(LogReflectionBytecode, Display, TEXT("entry \"%s\" carries %d link(s) out of it"), *Node->GetName(), Then != nullptr ? Then->LinkedTo.Num() : -1);
+	}
+
+	/* What works something out for nobody.
+	 *
+	 * A node with no way in and no way out and nothing reading what it hands over does nothing at
+	 * all: it is worked out and thrown away. Nobody writes one. They are what is left of the
+	 * compiler's own working out the arithmetic behind a node's inputs, written into the one
+	 * graph everything is written into and reached only by a jump from elsewhere and read back
+	 * as statements, the reads it was made of are laid out with nothing to attach to.
+	 *
+	 * Only ones wired to nothing whatsoever go. A read that feeds something is that thing's input,
+	 * however little else is around it, and something with a way in or out is part of a run. */
+	int32 Idle = 0;
+
+	for (int32 At = Graph->Nodes.Num() - 1; At >= 0; --At) {
+		UEdGraphNode* One = Graph->Nodes[At];
+
+		if (One == nullptr || !One->CanUserDeleteNode()) continue;
+		if (One->IsA<UK2Node_Event>() || One->IsA<UK2Node_FunctionEntry>() || One->IsA<UK2Node_FunctionResult>() || One->IsA<UK2Node_Timeline>()) continue;
+
+		bool bRuns = false;
+		bool bWired = false;
+
+		for (const UEdGraphPin* Pin : One->Pins) {
+			if (Pin == nullptr) continue;
+
+			if (Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Exec) bRuns = true;
+			if (Pin->LinkedTo.Num() > 0) bWired = true;
+		}
+
+		if (bRuns || bWired) continue;
+
+		Graph->RemoveNode(One);
+
+		Idle++;
+	}
+
+	if (Idle > 0) {
+		UE_LOG(LogReflectionBytecode, Display, TEXT("\"%s\": %d node(s) worked something out for nobody, and were left out"), *Graph->GetName(), Idle);
 	}
 
 	UE_LOG(LogReflectionBytecode, Display, TEXT("\"%s\": entered from %s, %d node(s) chained, %d left out of the run"), *Graph->GetName(), Flow != nullptr ? TEXT("a pin") : TEXT("nothing"), Chained, Orphaned);

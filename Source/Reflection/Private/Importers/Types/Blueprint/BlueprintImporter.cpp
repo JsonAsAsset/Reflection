@@ -929,6 +929,96 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		}
 	}
 
+	/* What only the compiler's own way in ever reaches.
+	 *
+	 * Everything a blueprint runs is written into the one ubergraph, and not all of it was written
+	 * by anybody: an input worked out for an animation node goes in there too, reached only by the
+	 * handler made for it and by nothing an event can get to. Laid out with the rest, it comes back
+	 * as reads and arithmetic standing among the events, attached to nothing anyone wrote.
+	 *
+	 * Which statements those are cannot be read off an address: the compiler puts a stretch
+	 * wherever it likes and jumps to it, so a stretch is not the run of statements after its own
+	 * address. What does say is where the run can get to so the run is followed, from the events
+	 * and from the handlers separately, and what only a handler reaches is left out.
+	 *
+	 * Taken that way round on purpose. Missing something a handler reaches leaves a little of its
+	 * working out lying about, which is untidy; mistaking something an event reaches for a
+	 * handler's would take a piece of the blueprint with it, so anything both can reach is kept. */
+	if (Ubergraph.IsValid() && Handlers.Num() > 0 && Ubergraphed.Num() > 0) {
+		TMap<int32, int32> Where;
+
+		for (int32 Index = 0; Index < Ubergraphed.Num(); ++Index) {
+			Where.Add(Ubergraphed[Index].GetInteger(TEXT("StatementIndex"), INDEX_NONE), Index);
+		}
+
+		const auto Follow = [&Where, &Ubergraphed](const int32 From, TSet<int32>& Into) {
+			TArray<int32> Waiting;
+			Waiting.Add(From);
+
+			while (Waiting.Num() > 0) {
+				int32 At = Waiting.Pop();
+
+				while (const int32* Index = Where.Find(At)) {
+					const FUObjectJsonValueExport& One = Ubergraphed[*Index];
+
+					if (Into.Contains(At)) break;
+
+					Into.Add(At);
+
+					const FString Token = One.GetString(TEXT("Token"));
+
+					/* Where it goes, and where it may go as well as carrying on */
+					if (Token == TEXT("EX_Jump")) {
+						At = One.GetInteger(TEXT("CodeOffset"), INDEX_NONE);
+
+						continue;
+					}
+
+					if (Token == TEXT("EX_JumpIfNot")) {
+						Waiting.Add(One.GetInteger(TEXT("CodeOffset"), INDEX_NONE));
+					} else if (Token == TEXT("EX_PushExecutionFlow")) {
+						Waiting.Add(One.GetInteger(TEXT("PushingAddress"), INDEX_NONE));
+					} else if (Token == TEXT("EX_Return") || Token == TEXT("EX_EndOfScript")
+						|| Token == TEXT("EX_PopExecutionFlow") || Token == TEXT("EX_ComputedJump")) {
+						break;
+					}
+
+					/* Otherwise it carries on to whatever was written next */
+					if (!Ubergraphed.IsValidIndex(*Index + 1)) break;
+
+					At = Ubergraphed[*Index + 1].GetInteger(TEXT("StatementIndex"), INDEX_NONE);
+				}
+			}
+		};
+
+		TSet<int32> Written;
+		TSet<int32> Worked;
+
+		for (const TPair<FString, FBlueprintGraphs::FWritten>& Event : Events) {
+			Follow(Event.Value.EntryPoint, Written);
+		}
+
+		for (const TTuple<int32, TWeakObjectPtr<UK2Node>, FName>& Resuming : Resumed) {
+			Follow(Resuming.Get<0>(), Written);
+		}
+
+		for (const int32 One : Handlers) {
+			Follow(One, Worked);
+		}
+
+		int32 Left = 0;
+
+		for (const int32 One : Worked) {
+			if (Written.Contains(One)) continue;
+
+			Ubergraph->LeaveOutAt(One);
+
+			Left++;
+		}
+
+		UE_LOG(LogReflection, Display, TEXT("%d statement(s) of the ubergraph are the compiler's own working out, and are left out of the events"), Left);
+	}
+
 	/* The delegates the blueprint declares.
 	 *
 	 * A dispatcher is neither a variable nor a function: it is a delegate other things bind to, and
