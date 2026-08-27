@@ -642,12 +642,14 @@ void FBytecodeGraph::BringInClass(const FUObjectJsonValueExport& Named) {
 	FString Owner, Member;
 	SplitReference(Named, Owner, Member);
 
-	const FString Called = Member.IsEmpty() ? Owner : Member;
+	FString Kind = Member.IsEmpty() ? Owner : Member;
 
-	if (!Called.StartsWith(DEFAULT_OBJECT_PREFIX)) return;
-
-	/* Named after the class it is the default of, so the class is the name without the prefix */
-	const FString Kind = Called.RightChop(FCString::Strlen(DEFAULT_OBJECT_PREFIX));
+	/* Named after the class it is the default of, where it is one: a call made on a class names the
+	 * one object of it that always exists, and a cast names the class itself. Either way what has to
+	 * be gone and got is the class. */
+	if (Kind.StartsWith(DEFAULT_OBJECT_PREFIX)) {
+		Kind = Kind.RightChop(FCString::Strlen(DEFAULT_OBJECT_PREFIX));
+	}
 
 	/* Already here, whether the project shipped with it or something earlier asked for it */
 	if (Kind.IsEmpty() || FindClassByType(Kind) != nullptr) return;
@@ -901,6 +903,17 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 		SplitReference(Expression.GetObject(TEXT("InterfaceClass")), Owner, Member);
 
 		UClass* To = const_cast<UClass*>(FindClassByType(Member.IsEmpty() ? Owner : Member));
+
+		/* Gone and got where the project has not got it.
+		 *
+		 * A cast names a class the blueprint was written against, and that class is an asset like
+		 * any other an interface, or another blueprint. Without it there is nothing to cast to
+		 * and the rest of the run reads off the end of it. */
+		if (To == nullptr) {
+			BringInClass(Expression.GetObject(TEXT("InterfaceClass")));
+
+			To = const_cast<UClass*>(FindClassByType(Member.IsEmpty() ? Owner : Member));
+		}
 
 		if (To == nullptr) {
 			Unhandled.AddUnique(FString::Printf(TEXT("cast to \"%s\", which this build does not carry"), *Owner));
@@ -1358,6 +1371,13 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 		SplitReference(Names(Expression), Owner, Member);
 
 		UClass* To = const_cast<UClass*>(FindClassByType(Member.IsEmpty() ? Owner : Member));
+
+		/* Gone and got where the project has not got it, the same as any other cast */
+		if (To == nullptr) {
+			BringInClass(Names(Expression));
+
+			To = const_cast<UClass*>(FindClassByType(Member.IsEmpty() ? Owner : Member));
+		}
 
 		if (To == nullptr) {
 			Unhandled.AddUnique(FString::Printf(TEXT("a cast to \"%s\", which this build does not carry"), *Owner));
