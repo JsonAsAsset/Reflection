@@ -208,6 +208,20 @@ inline bool AddPropertyBinding(UAnimGraphNode_Base* Node, const FName PinName, c
 
 	FScriptMapHelper MapHelper(MapProperty, MapProperty->ContainerPtrToValuePtr<void>(BindingObject));
 
+	/* Said again replaces what was said before.
+	 *
+	 * A binding is put on a node before the node has any pins, and said again once it has them so
+	 * each one can be asked what it carries. Added rather than replaced, the second telling puts a
+	 * second entry under a key the map already has -- which is not a map any more, and the node
+	 * ends up with none of its bindings rather than one of them. */
+	for (int32 At = MapHelper.GetMaxIndex() - 1; At >= 0; --At) {
+		if (!MapHelper.IsValidIndex(At)) continue;
+
+		if (*static_cast<FName*>(static_cast<void*>(MapHelper.GetKeyPtr(At))) == PinName) {
+			MapHelper.RemoveAt(At);
+		}
+	}
+
 	const int32 Index = MapHelper.AddDefaultValue_Invalid_NeedsRehash();
 
 	*static_cast<FName*>(static_cast<void*>(MapHelper.GetKeyPtr(Index))) = PinName;
@@ -360,9 +374,6 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 					}
 				}
 			}
-
-			Node->NodeComment = NodeExport->GetName().ToString();
-			Node->bCommentBubbleVisible = bBoundFunction;
 		}
 	}
 }

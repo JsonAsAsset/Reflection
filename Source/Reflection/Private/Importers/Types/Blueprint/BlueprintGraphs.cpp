@@ -1,5 +1,8 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
+#include "AnimationGraphSchema.h"
+#include "AnimationGraph.h"
+#include "AnimGraphNode_LinkedInputPose.h"
 #include "Importers/Types/Blueprint/BlueprintGraphs.h"
 #include "Importers/Types/Blueprint/BlueprintVariables.h"
 #include "Importers/Types/Blueprint/MacroPattern.h"
@@ -154,12 +157,81 @@ UEdGraph* FBlueprintGraphs::Events(UBlueprint* Blueprint) {
 	return nullptr;
 }
 
+UEdGraph* FBlueprintGraphs::MakeLayer(UBlueprint* Blueprint, const FString& Name, const TArray<TSharedPtr<FJsonValue>>& Declared) {
+	if (Blueprint == nullptr || Name.IsEmpty()) return nullptr;
+
+	UEdGraph* Graph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*Name), UAnimationGraph::StaticClass(), UAnimationGraphSchema::StaticClass());
+
+	if (Graph == nullptr) return nullptr;
+
+	/* Added the way the editor adds a layer, which fills the graph in once.
+	 *
+	 * Added as a function instead it is filled in twice: once for the graph, which is where an
+	 * animation graph gets its output pose, and again for the signature. The second one makes a
+	 * second output pose, and the schema insists there is only ever one. */
+	FBlueprintEditorUtils::AddDomainSpecificGraph(Blueprint, Graph);
+
+	TArray<TSharedPtr<FJsonObject>> Takes;
+	TArray<TSharedPtr<FJsonObject>> GivesBack;
+
+	ReadSignature(Declared, Takes, GivesBack);
+
+	/* What a layer takes is not pins on an entry node.
+	 *
+	 * Each pose it takes is a node of its own standing for the pose whoever calls it hands in, and
+	 * anything else it takes is drawn on that node. The compiler reads a layer's signature back the
+	 * same way round a node, then whatever else that node carries so a value belongs with the
+	 * pose it was declared after, and they come out in the order they went in. */
+	UAnimGraphNode_LinkedInputPose* Handing = nullptr;
+
+	int32 Which = 0;
+
+	for (const TSharedPtr<FJsonObject>& Parameter : Takes) {
+		FEdGraphPinType Type;
+
+		if (!FBlueprintVariables::GetPinType(Parameter, Type)) continue;
+
+		const FName Named(*Parameter->GetStringField(TEXT("Name")));
+
+		if (UAnimationGraphSchema::IsPosePin(Type)) {
+			Handing = NewObject<UAnimGraphNode_LinkedInputPose>(Graph);
+
+			Graph->AddNode(Handing, false, false);
+
+			Handing->CreateNewGuid();
+			Handing->PostPlacedNewNode();
+
+			Handing->Node.Name = Named;
+			Handing->InputPoseIndex = Which++;
+
+			Handing->AllocateDefaultPins();
+
+			continue;
+		}
+
+		/* A value handed in before any pose has nowhere to be drawn */
+		if (Handing == nullptr) continue;
+
+		Handing->Inputs.Add(FAnimBlueprintFunctionPinInfo(Named, Type));
+	}
+
+	/* Laid out again once, since each of them grows a pin for everything it carries */
+	for (UEdGraphNode* Node : Graph->Nodes) {
+		if (UAnimGraphNode_LinkedInputPose* Takes_Pose = Cast<UAnimGraphNode_LinkedInputPose>(Node); Takes_Pose != nullptr && Takes_Pose->Inputs.Num() > 0) {
+			Takes_Pose->ReconstructNode();
+		}
+	}
+
+	return Graph;
+}
+
 UEdGraph* FBlueprintGraphs::Make(UBlueprint* Blueprint, const FString& Name, const FUObjectJsonValueExport& Function, const TArray<TSharedPtr<FJsonValue>>& Declared) {
 	if (Blueprint == nullptr || Name.IsEmpty()) return nullptr;
 
 	UEdGraph* Graph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*Name), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
 
 	if (Graph == nullptr) return nullptr;
+
 
 	/* Answering one the parent already declares is that function's signature rather than a new one,
 	 * and the entry node is laid out from it */
@@ -263,6 +335,32 @@ UK2Node* FBlueprintGraphs::MakeEvent(UBlueprint* Blueprint, UEdGraph* EventGraph
 
 	/* Answering something the parent declares is that event, reached through the parent */
 	if (const UFunction* Declares = Blueprint->ParentClass != nullptr ? Blueprint->ParentClass->FindFunctionByName(*Name) : nullptr) {
+		UK2Node_Event* Event = Place<UK2Node_Event>(EventGraph);
+
+		Event->EventReference.SetExternalMember(FName(*Name), Declares->GetOwnerClass());
+		Event->bOverrideFunction = true;
+
+		Event->AllocateDefaultPins();
+
+		return Event;
+	}
+
+	/* Or something an interface the blueprint answers for declares, reached through the interface.
+	 *
+	 * An interface function that hands nothing back is never given a graph: implementing the
+	 * interface leaves one for everything that returns something and nothing at all for the rest,
+	 * because the blueprint is meant to answer those with an event.
+	 *
+	 * Read off the parent alone there is nothing declaring it the parent does not, the interface
+	 * does so it is taken for something the blueprint made up and written as an event of its
+	 * own. That is a second function under a name the class already carries from the interface, and
+	 * the blueprint stops compiling: the name is spoken for. */
+	for (const FBPInterfaceDescription& Implemented : Blueprint->ImplementedInterfaces) {
+		const UClass* Interface = Implemented.Interface;
+		const UFunction* Declares = Interface != nullptr ? Interface->FindFunctionByName(FName(*Name)) : nullptr;
+
+		if (Declares == nullptr) continue;
+
 		UK2Node_Event* Event = Place<UK2Node_Event>(EventGraph);
 
 		Event->EventReference.SetExternalMember(FName(*Name), Declares->GetOwnerClass());

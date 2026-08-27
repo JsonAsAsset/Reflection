@@ -7,12 +7,29 @@
 class IBlueprintImporter : public IImporter {
 protected:
 	UBlueprint* Blueprint = nullptr;
-	
+
+	/* A property the class carries that some graph answers through, rather than writing */
+	struct FDecided {
+		FString Owner;
+		FName Member;
+		UEdGraphPin* Pin = nullptr;
+	};
+
+	TArray<FDecided> Decides;
+
 public:
 	virtual UObject* CreateAsset(UObject* CreatedAsset = nullptr) override;
 	
 	virtual bool Import() override;
-	
+
+	/* Says that a write into one of the class's own properties is answered by a pin.
+	 *
+	 * A transition rule is not written in the event graph, but it is compiled into the ubergraph
+	 * with everything else, and it ends by setting a member of the node it decides. Said here, the
+	 * stretch that does it is laid out in the graph that pin belongs to, and what it would have
+	 * written is wired to the pin instead. */
+	void Answers(const FString& Owner, FName Member, UEdGraphPin* Pin);
+
 protected:
 	/* Recreates the variables the blueprint declares, returns how many were added.
 	 * Not const, reading the export off the container isn't. */
@@ -27,6 +44,9 @@ protected:
 	/* Lays every function the class carries back out as a graph, read from the bytecode it was
 	 * cooked as. Returns how many nodes it placed across all of them. */
 	int32 ConstructGraphs();
+
+	/* Says which interfaces the blueprint answers for, and answers how many it took on */
+	int32 ConstructInterfaces();
 
 	/* Everything a blueprint carries beyond its defaults: its timelines, the graphs its functions
 	 * were written in, and what the editor was told about them. Answers how many nodes were laid.

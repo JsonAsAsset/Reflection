@@ -455,7 +455,7 @@ UK2Node* FBytecodeGraph::FormatText(const FUObjectJsonValueExport& Expression) {
 UEdGraphPin* FBytecodeGraph::PointAtDelegate(UK2Node_BaseMCDelegate* Node, const FUObjectJsonValueExport& Named) {
 	if (Node == nullptr) return nullptr;
 
-	/* Kept by something else, which the run says by reaching it through that thing. What is named
+	/* Stretch by something else, which the run says by reaching it through that thing. What is named
 	 * is the delegate; what it is reached through is the target the node is asked against. */
 	if (Named.Has(TEXT("ObjectExpression"))) {
 		const FValue On = Read(Named.GetObject(TEXT("ObjectExpression")));
@@ -536,7 +536,7 @@ bool FBytecodeGraph::IsMade(const FString& Name) const {
 
 	/* A macro's own scratch that no macro claimed. It would be a local of its own, which is the
 	 * honest reading, but the event graph cannot keep one: a local lives on a function's entry
-	 * node and there is no entry node here. Dropped rather than written as something that does not
+	 * node and there is no entry node here. Elsewhere rather than written as something that does not
 	 * exist, and said out loud, since what it really means is a macro nobody has read back yet. */
 	if (Name.StartsWith(TEXT("Temp_")) && !HoldsLocals()) return true;
 
@@ -1401,7 +1401,7 @@ UClass* FBytecodeGraph::EnsureComponentTemplate(const FString& Name) {
 
 	if (Class == nullptr || !Class->IsChildOf(UActorComponent::StaticClass())) return nullptr;
 
-	/* Kept under the class rather than under the blueprint.
+	/* Stretch under the class rather than under the blueprint.
 	 *
 	 * A template is what the node copies every time it runs, and the class is what carries it: the
 	 * engine checks every template it has been given is kept there and refuses the class outright
@@ -1432,7 +1432,7 @@ void FBytecodeGraph::Remember(const FString& Same, const FValue& Value) {
 	 * everywhere it was written, and sharing one would drop all but the first. */
 	if (MadeOwningNode == nullptr || MadeOwningNode->FindPin(UEdGraphSchema_K2::PN_Execute, EGPD_Input) != nullptr) return;
 
-	/* Kept against where it was read, so how far away it is can be asked later */
+	/* Stretch against where it was read, so how far away it is can be asked later */
 	Reused.Add(Same, FShared{ Value.Pin, Placing });
 }
 
@@ -1465,7 +1465,19 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 	}
 
 	if (Function == nullptr) {
-		Unhandled.AddUnique(FString::Printf(TEXT("unresolved function in %s"), *Expression.GetString(TEXT("Token"))));
+		/* Said by name, since which function it was is the whole of what went wrong.
+		 *
+		 * A call names the function it makes, and a build that has not got that function has
+		 * nothing to make the call against the class is there, the function on it is not,
+		 * because the asset was cooked against a build that had it. Nothing here can put it back,
+		 * and reading the name out of the report is what says so. */
+		const FString Names = Expression.JsonObject.IsValid() && Expression.JsonObject->HasTypedField<EJson::String>(TEXT("Function"))
+			? Expression.GetString(TEXT("Function"))
+			: Expression.GetObject(TEXT("Function")).GetString(TEXT("ObjectName"));
+
+		Unhandled.AddUnique(FString::Printf(TEXT("%s calls %s, which this build has not got"),
+			*Expression.GetString(TEXT("Token")),
+			Names.IsEmpty() ? TEXT("a function it does not name") : *Names));
 
 		return nullptr;
 	}
@@ -1833,7 +1845,7 @@ void FBytecodeGraph::Connect(UEdGraphPin* From, UEdGraphPin* To) {
 	 * graph nobody drew, and the same thing is worked out twice over.
 	 *
 	 * Where the two are compatible and the schema still would not have them, the trouble is
-	 * something else -- a reference held one way against a pin that holds it another -- and a cast
+	 * something else a reference held one way against a pin that holds it another and a cast
 	 * would not have answered it either. */
 	if (Target != nullptr) {
 		if (const UClass* Already = Cast<UClass>(From->PinType.PinSubCategoryObject.Get()); Already != nullptr && Already->IsChildOf(Target)) {
@@ -2033,6 +2045,34 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 		/* A struct built a member at a time, which is a Make Struct. The script has no way to say
 		 * a whole struct at once, so it names the struct it is filling and then each member. */
 		if (MacroReading::TokenOf(Variable) == TEXT("EX_StructMemberContext")) {
+			/* Unless the graph answers through it.
+			 *
+			 * A transition rule ends by setting the member of the node it decides, and read as
+			 * written that is a struct being filled a member at a time a Make Struct built for a
+			 * node that already exists, which is what one of these looks like laid out in the wrong
+			 * graph. What was meant is the node this graph ends at, so the answer is wired to it. */
+			if (Decided.Num() > 0) {
+				const FUObjectJsonValueExport Held = Variable.GetObject(TEXT("Property"));
+
+				FString Member;
+
+				if (const TArray<TSharedPtr<FJsonValue>>* Path = nullptr; Held.JsonObject.IsValid() && Held.JsonObject->TryGetArrayField(TEXT("Path"), Path) && Path->Num() == 1) {
+					Member = (*Path)[0]->AsString();
+				}
+
+				const FString Owner = MacroReading::NamedProperty(Variable.GetObject(TEXT("StructExpression")).GetObject(TEXT("Variable")));
+
+				if (UEdGraphPin* const* Answers = Decided.Find(FString::Printf(TEXT("%s.%s"), *Owner, *Member))) {
+					if (Expression.Pin != nullptr) {
+						Connect(Expression.Pin, *Answers);
+					} else if (!Expression.Literal.IsEmpty()) {
+						ApplyLiteral(*Answers, Expression.Literal);
+					}
+
+					return true;
+				}
+			}
+
 			return FillStruct(Statement, Variable);
 		}
 
@@ -2046,7 +2086,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 			if (Expression.Pin != nullptr) {
 				Locals.Add(Name, Expression.Pin);
 			} else if (Constants.Contains(Name) && !Expression.Literal.IsEmpty()) {
-				/* Kept as what it says rather than laid down as a node. Whoever reads it is a pin
+				/* Stretch as what it says rather than laid down as a node. Whoever reads it is a pin
 				 * that was given this value, and a pin holds its own value. */
 				Carried.Add(Name, Expression.Literal);
 			}
@@ -2344,6 +2384,20 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 	return false;
 }
 
+void FBytecodeGraph::Only(const int32 From, const int32 To) {
+	Stretch.Add(TPair<int32, int32>(From, To));
+}
+
+void FBytecodeGraph::LeaveOut(const int32 From, const int32 To) {
+	Elsewhere.Add(TPair<int32, int32>(From, To));
+}
+
+void FBytecodeGraph::HandsInto(const FString& Owner, const FName Member, UEdGraphPin* Pin) {
+	if (Owner.IsEmpty() || Pin == nullptr) return;
+
+	Decided.Add(FString::Printf(TEXT("%s.%s"), *Owner, *Member.ToString()), Pin);
+}
+
 void FBytecodeGraph::EnterAt(const int32 Address, UK2Node* Node, const FName Through) {
 	if (Node == nullptr || Address < 0) return;
 
@@ -2360,7 +2414,7 @@ void FBytecodeGraph::EnterAt(const int32 Address, UK2Node* Node, const FName Thr
 		Begins = Statements[Stub].GetInteger(TEXT("CodeOffset"), Address);
 	}
 
-	/* Kept as a list. Two events can be written over the same run: one of them is entered at the
+	/* Stretch as a list. Two events can be written over the same run: one of them is entered at the
 	 * address the other jumps to, and both are ways into it. Held one to an address, the second of
 	 * them takes the first's place and whichever lost comes out an event with nothing under it. */
 	Starts.FindOrAdd(Begins).Add(TPair<TWeakObjectPtr<UK2Node>, FName>(Node, Through));
@@ -3005,6 +3059,18 @@ void FBytecodeGraph::Clear() {
 			continue;
 		}
 
+		/* And so does anything nobody is allowed to take out.
+		 *
+		 * A graph that answers through a node of its own a transition through its result, an
+		 * animation graph through its output pose is given that node when it is made, and the
+		 * editor will not let it be deleted because the graph means nothing without it. Nothing
+		 * laid out from bytecode is like that, so this takes out the run and leaves the terminus. */
+		if (!Node->CanUserDeleteNode()) {
+			Node->BreakAllNodeLinks();
+
+			continue;
+		}
+
 		Graph->RemoveNode(Node);
 	}
 }
@@ -3062,6 +3128,45 @@ int32 FBytecodeGraph::Build() {
 
 				break;
 			}
+		}
+	}
+
+	/* What belongs to some other graph is passed over.
+	 *
+	 * Said as addresses rather than by walking what each stretch reaches, because that is how the
+	 * compiler says it: a handler names the address its stretch begins at, and the stretch runs to
+	 * the return that ends it.
+	 *
+	 * Settled before anything is laid down, and not only before the run is walked. A macro is made
+	 * up front wherever it was matched it has to be, since a loop's body can be written before
+	 * the loop so a macro in somebody else's stretch would be made here regardless of the run
+	 * ever reaching it, which is a graph holding macros nothing in it runs. */
+	if (Stretch.Num() > 0 || Elsewhere.Num() > 0) {
+		const auto Inside = [](const TArray<TPair<int32, int32>>& Stretches, const int32 At) {
+			for (const TPair<int32, int32>& One : Stretches) {
+				if (At >= One.Key && At <= One.Value) return true;
+			}
+
+			return false;
+		};
+
+		const auto Ours = [&Inside, this](const int32 At) {
+			if (At < 0) return true;
+			if (Stretch.Num() > 0 && !Inside(Stretch, At)) return false;
+
+			return !Inside(Elsewhere, At);
+		};
+
+		for (const FUObjectJsonValueExport& One : Statements) {
+			const int32 At = MacroReading::AddressOf(One);
+
+			if (At >= 0 && !Ours(At)) Ignored.Add(At);
+		}
+
+		for (TMap<int32, FMacroMatch>::TIterator It(Macros); It; ++It) {
+			const int32 At = Statements.IsValidIndex(It.Key()) ? MacroReading::AddressOf(Statements[It.Key()]) : INDEX_NONE;
+
+			if (!Ours(At)) It.RemoveCurrent();
 		}
 	}
 

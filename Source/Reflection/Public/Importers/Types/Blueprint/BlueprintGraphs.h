@@ -54,6 +54,12 @@ struct REFLECTION_API FBlueprintGraphs {
 	/* Whether a property is part of a function's signature rather than something it keeps */
 	static bool IsParameter(const TSharedPtr<FJsonObject>& Property, bool& bOutGivenBack);
 
+	/* The graph an animation layer was drawn in, made where the blueprint hasn't got one.
+	 *
+	 * A layer is not a function graph: it is made of poses, it answers through an output pose, and
+	 * what it takes is drawn on nodes rather than declared on an entry. */
+	static UEdGraph* MakeLayer(UBlueprint* Blueprint, const FString& Name, const TArray<TSharedPtr<FJsonValue>>& Declared);
+
 	/* The graph a function was written in, made where the blueprint hasn't got one */
 	static UEdGraph* Make(UBlueprint* Blueprint, const FString& Name, const FUObjectJsonValueExport& Function, const TArray<TSharedPtr<FJsonValue>>& Declared);
 

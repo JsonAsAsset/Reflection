@@ -49,6 +49,25 @@ public:
 	 * properties by name, but nobody ever wrote one: what was drawn is the timeline's own pin. */
 	void HandOverTrack(const FString& Name, UK2Node* Node, FName Pin);
 
+	/* Only the stretch of statements between these addresses, and nothing else.
+	 *
+	 * A function is not always one graph. The compiler writes everything a blueprint runs into the
+	 * one ubergraph, and some of what it writes there was never drawn in the event graph: a
+	 * transition rule is a graph of its own, decided in the ubergraph and entered only by the
+	 * handler made for it. Laid out with the rest, it lands among the events as a run nothing
+	 * reaches. */
+	void Only(int32 From, int32 To);
+
+	/* Everything but the stretch between these addresses, which is being laid out somewhere else */
+	void LeaveOut(int32 From, int32 To);
+
+	/* Where a write into one of the class's own properties goes, rather than being written.
+	 *
+	 * A rule ends by setting a member of the node it decides. That is not a node writing a
+	 * variable: the graph answers through the node, the way a function answers through its return,
+	 * so what would have been written is wired to the pin instead. */
+	void HandsInto(const FString& Owner, FName Member, UEdGraphPin* Pin);
+
 	/* Says which node a timeline is, by the name the class keeps it under */
 
 	/* Takes out whatever a previous run left in the graph, before the blueprint is compiled */
@@ -220,6 +239,15 @@ private:
 
 	/* Statements that only say where a run begins, and stand for nothing in a graph */
 	TSet<int32> Ignored;
+
+	/* The stretch this graph is, where it is only part of a function */
+	TArray<TPair<int32, int32>> Stretch;
+
+	/* The stretches that belong to some other graph */
+	TArray<TPair<int32, int32>> Elsewhere;
+
+	/* What a write answers into, against the property it would have been written to */
+	TMap<FString, UEdGraphPin*> Decided;
 
 	/* The name the graph reads a value under, against the name whoever entered it calls it */
 	TMap<FString, FString> Handed;

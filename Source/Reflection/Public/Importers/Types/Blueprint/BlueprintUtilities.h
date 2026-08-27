@@ -79,6 +79,14 @@ inline TSharedPtr<FJsonObject> GetSuperStructJsonObject(const TSharedPtr<FJsonOb
 	return nullptr;
 }
 
+/* The kind of blueprint an asset was, as the asset itself says.
+ *
+ * A cooked class keeps what the editor knew it as in its tags, and that is the only place some of
+ * them are said at all: an animation layer interface is a class like any other with an ordinary
+ * parent, and read off the parent it comes back as a normal blueprint with its layers turned into
+ * functions nobody can call. Where nothing says, the parent is still the best that can be done. */
+inline EBlueprintType GetBlueprintTypeSaid(const TSharedPtr<FJsonObject>& AssetData, const UClass* Class);
+
 inline EBlueprintType GetBlueprintType(const UClass* Class) {
 	EBlueprintType BlueprintType = BPTYPE_Normal;
 
@@ -95,6 +103,25 @@ inline EBlueprintType GetBlueprintType(const UClass* Class) {
 	}
 	
 	return BlueprintType;
+}
+
+inline EBlueprintType GetBlueprintTypeSaid(const TSharedPtr<FJsonObject>& AssetData, const UClass* Class) {
+	const TSharedPtr<FJsonObject>* Tags = nullptr;
+
+	if (AssetData.IsValid() && AssetData->TryGetObjectField(TEXT("EditorTags"), Tags)) {
+		FString Says;
+
+		if ((*Tags)->TryGetStringField(TEXT("BlueprintType"), Says) && !Says.IsEmpty()) {
+			/* Spelled the way the engine spells it, so the engine is asked what it means */
+			if (const UEnum* Kinds = StaticEnum<EBlueprintType>()) {
+				const int64 Which = Kinds->GetValueByNameString(Says);
+
+				if (Which != INDEX_NONE) return static_cast<EBlueprintType>(Which);
+			}
+		}
+	}
+
+	return GetBlueprintType(Class);
 }
 
 inline FUObjectExport* GetClassDefaultObject(FUObjectExportContainer* AssetContainer, const FUObjectJsonValueExport& JsonObject) {

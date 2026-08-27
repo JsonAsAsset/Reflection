@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
+#include "Importers/Types/Blueprint/BlueprintImporter.h"
 #include "AnimationBlueprintUtilities.h"
 #include "AnimationStateGraph.h"
 #include "AnimationStateMachineGraph.h"
@@ -129,6 +131,16 @@ inline void AutoLayoutStateMachineGraph(UAnimationStateMachineGraph* StateMachin
         }
     }
     
+    /* And the way in, above the state it leads to.
+     *
+     * Nothing ever placed it, so it stayed where a node starts, which is where the first state is
+     * laid out as well: the entry sat under the state it points at, and every state machine came
+     * back looking like that however tidy the rest of it was. */
+    if (StateMachineGraph->EntryNode) {
+        StateMachineGraph->EntryNode->NodePosX = InitialState->NodePosX;
+        StateMachineGraph->EntryNode->NodePosY = InitialState->NodePosY - 120;
+    }
+
     StateMachineGraph->NotifyGraphChanged();
 }
 
@@ -138,7 +150,7 @@ inline void CreateStateMachineGraph(
 	UObjectSerializer* ObjectSerializer,
 	FUObjectExportContainer* RootContainer,
 	TArray<FString> ReversedNodesKeys,
-	IImporter* Importer,
+	IAnimationBlueprintImporter* Importer,
 	UAnimBlueprint* AnimBlueprint
 ) {
 	if (!StateMachineGraph || !StateMachineJsonObject.IsValid()) {
@@ -182,14 +194,42 @@ inline void CreateStateMachineGraph(
 
 			Node = ConduitNode;
 
-			if (EntryRuleNodeIndex != -1) {
+			if (EntryRuleNodeIndex != -1 && ReversedNodesKeys.IsValidIndex(EntryRuleNodeIndex)) {
 				FString DelegateExportName = ReversedNodesKeys[EntryRuleNodeIndex];
 
 				UAnimationTransitionGraph* TransGraph = CastChecked<UAnimationTransitionGraph>(BoundGraph);
-				UAnimGraphNode_TransitionResult* ResultNode = TransGraph->GetResultNode();
-				
-				ResultNode->NodeComment = DelegateExportName;
-				ResultNode->bCommentBubbleVisible = true;
+
+				if (UAnimGraphNode_TransitionResult* ResultNode = TransGraph->GetResultNode()) {
+					UEdGraphPin* Decides = ResultNode->FindPin(TEXT("bCanEnterTransition"), EGPD_Input);
+
+					/* What says the conduit is worth passing through.
+					 *
+					 * A conduit is a state nothing rests in: it is entered only to be left again,
+					 * and whether it can be entered at all is a rule of its own the same thing a
+					 * transition has, named by the state that holds it rather than by a transition.
+					 *
+					 * Nothing read it, so every conduit came back with the rule it starts life with,
+					 * which is false, and the compiler says as much: the conduit will never be
+					 * taken. Most of them are a plain yes, and a yes is a value on the node rather
+					 * than anything drawn, which is why there was nothing to notice missing. */
+					if (const FUObjectExport* Rule = RootContainer->Find(DelegateExportName); Rule != nullptr && Rule->IsJsonValid()) {
+						if (bool bEnters; Rule->JsonObject->TryGetBoolField(TEXT("bCanEnterTransition"), bEnters)) {
+							ResultNode->Node.bCanEnterTransition = bEnters;
+
+							if (Decides != nullptr) {
+								Decides->DefaultValue = bEnters ? TEXT("true") : TEXT("false");
+							}
+						}
+					}
+
+					/* And where a rule that is more than a value is laid out, the same as a
+					 * transition's: worked out in the ubergraph, or handed over from a variable. */
+					if (Decides != nullptr) {
+						Importer->Answers(DelegateExportName, TEXT("bCanEnterTransition"), Decides);
+					}
+
+					Importer->ApplyBindings(DelegateExportName, ResultNode);
+				}
 			}
 		} else {
 			UAnimStateNode* StateNode = FEdGraphSchemaAction_NewStateNode::SpawnNodeFromTemplate<UAnimStateNode>(
@@ -304,8 +344,18 @@ inline void CreateStateMachineGraph(
 
 			HandlePropertyBinding(DelegateExport, Importer->GetContainer()->JsonObjects, TransitionResult, Importer, AnimBlueprint);
 
-			TransitionResult->NodeComment = DelegateExportName;
-			TransitionResult->bCommentBubbleVisible = true;
+			/* And where the rule that decides this transition answers.
+			 *
+			 * The rule itself was compiled into the ubergraph, and it ends by setting this node's
+			 * member. Said here, it is laid out in this transition's own graph and wired to the
+			 * pin, rather than left among the events as a run nothing reaches. */
+			if (UEdGraphPin* Decides = TransitionResult->FindPin(TEXT("bCanEnterTransition"), EGPD_Input)) {
+				Importer->Answers(DelegateExportName, TEXT("bCanEnterTransition"), Decides);
+			}
+
+			/* And whatever the class hands it. A transition result is made here rather than with the
+			 * rest of the nodes, so nothing else has had the chance to. */
+			Importer->ApplyBindings(DelegateExportName, TransitionResult);
 		}
 		
 		/* Connect State Nodes together using the Transition Node */
