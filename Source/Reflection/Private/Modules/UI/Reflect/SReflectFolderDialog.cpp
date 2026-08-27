@@ -180,6 +180,11 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 
 	FString SelectedFolder = InArgs._InitialFolder;
 
+	/* A folder that was picked out beats whatever happens to be on the clipboard. */
+	if (SelectedFolder.IsEmpty()) {
+		SelectedFolder = GetSelectedContentBrowserFolder();
+	}
+
 	if (SelectedFolder.IsEmpty()) {
 		const FString Clipboard = GetClipboard().TrimStartAndEnd();
 
@@ -188,10 +193,6 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 			 * the folder that gets listed */
 			SelectedFolder = ToFolderPath(StripObjectOuter(Clipboard));
 		}
-	}
-
-	if (SelectedFolder.IsEmpty()) {
-		SelectedFolder = GetSelectedContentBrowserFolder();
 	}
 
 	if (!SelectedFolder.IsEmpty()) {
