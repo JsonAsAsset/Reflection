@@ -1,15 +1,11 @@
-THIRD-PARTY SOFTWARE NOTICES
-
 Reflection itself is licensed under the MIT License; see the LICENSE file.
 
 This plugin bundles and links against the third-party components listed
 below. Each remains under its own license, reproduced here in full.
 
-========================================================================
-Detex - ISC License
+# Detex - ISC License
 https://github.com/hglm/detex
 Bundled at: Source/ThirdParty/Detex
-========================================================================
 
 Copyright (c) 2015 Harm Hanemaaijer <fgenfb@yahoo.com>
 
@@ -25,11 +21,9 @@ WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN
 ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
-========================================================================
-NVIDIA Texture Tools - MIT License
+# NVIDIA Texture Tools - MIT License
 https://docs.nvidia.com/texture-tools/index.html
 Bundled at: Source/ThirdParty/NVTT
-========================================================================
 
 Copyright NVIDIA Corporation 2007 -- Ignacio Castano <icastano@nvidia.com>
 
