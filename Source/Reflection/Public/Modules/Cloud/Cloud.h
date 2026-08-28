@@ -62,6 +62,7 @@ public:
 	static inline FString FontFaceURL = TEXT("/api/export/fontface");
 	static inline FString DnaPosesURL = TEXT("/api/export/dnaposes");
 	static inline FString DnaMorphsURL = TEXT("/api/export/dnamorphs");
+	static inline FString CurveMappingURL = TEXT("/api/export/curvemapping");
 
 	class REFLECTION_API Export {
 	public:
@@ -111,16 +112,26 @@ public:
 		/* What each of a head's controls does to its joints, worked out by the Cloud rather than by
 		 * RigLogic. The one way to a MetaHuman face on an engine that has no RigLogic at all.
 		 *
-		 * Naming a curve mapping asks for an older head's poses instead, each driving a handful of
-		 * this rig's controls at once. Those are evaluated rather than added up from single control
-		 * poses, so the mapping goes with the request rather than being resolved here. */
-		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, const FString& Mapping = FString());
+		 * Asking to backport gets an older head's poses instead, each driving a handful of this
+		 * rig's controls at once. Those are evaluated against the mapping where the mapping is, which
+		 * is the project the Cloud has open. */
+		static TSharedPtr<FJsonObject> GetDnaPosesBlocking(const FString& Path, bool bBackport = false);
+
+		/* What an older head's curves are worth in this rig's controls, as a table.
+
+		 * Which mapping that is, is a fact about the game rather than a choice, so it is not asked
+		 * for and cannot be got wrong here: the Cloud has the project open and reads it there. Each
+		 * entry is one control and the curves that went into it, weighed by running the expression.
+
+		 * Read forward it says what an older animation becomes and read backwards what a newer one
+		 * was made of, which is why it comes over as the table rather than as either answer. */
+		static TSharedPtr<FJsonObject> GetCurveMappingBlocking();
 
 		/* The same faces as morph targets: where the vertices end up rather than what the joints did.
 		 * A pose asset multiplies rotations together where the rig adds the angles up, which stops
 		 * agreeing once a joint turns far, and this face turns lips and eyelids forty degrees. Vertex
 		 * offsets just add, so the arithmetic that was wrong stops being in the way. */
-		static TSharedPtr<FJsonObject> GetDnaMorphsBlocking(const FString& Path, const FString& Mapping = FString());
+		static TSharedPtr<FJsonObject> GetDnaMorphsBlocking(const FString& Path, bool bBackport = false);
 	};
 
 	/* Folder Endpoints ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

@@ -5,6 +5,7 @@
 #include "ISettingsModule.h"
 #include "Modules/Metadata.h"
 #include "Settings/ReflectionSettings.h"
+#include "Settings/ModdingSettings.h"
 
 #if (ENGINE_MAJOR_VERSION != 4 || ENGINE_MINOR_VERSION < 27)
 #include "Engine/DeveloperSettings.h"
@@ -12,6 +13,30 @@
 
 inline UReflectionSettings* GetSettings() {
 	return GetMutableDefault<UReflectionSettings>();
+}
+
+inline UReflectionModdingSettings* GetModdingSettings() {
+	return GetMutableDefault<UReflectionModdingSettings>();
+}
+
+/* What the modding page asks for, or nothing where it is switched off.
+ *
+ * Read through here rather than off the page directly, so the switch is honoured in one place
+ * instead of at every point that asks a question of it. */
+inline const FRModdingSettings& GetModdingAssetSettings() {
+	static const FRModdingSettings Off = [] {
+		FRModdingSettings Settings;
+
+		Settings.Material.Stubs = false;
+		Settings.MetaHuman.Bake = ERDnaBake::None;
+		Settings.MetaHuman.Curves = ERDnaCurves::Controls;
+
+		return Settings;
+	}();
+
+	const UReflectionModdingSettings* Settings = GetModdingSettings();
+
+	return Settings->Enabled ? Settings->Settings : Off;
 }
 
 inline void SavePluginSettings(UDeveloperSettings* EditorSettings) {

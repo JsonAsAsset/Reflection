@@ -107,12 +107,9 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	/* Backporting names an older head's curves and says what each is made of, which the Cloud
 	 * resolves against this rig: several controls at once is where the correctives fire, so those
 	 * poses have to be evaluated there rather than added up from single control ones here. */
-	const FRDnaSettings& DnaSettings = GetSettings()->AssetSettings.DNA;
-	const FRDnaBackportSettings& Backport = DnaSettings.Backport;
+	const FRDnaSettings& DnaSettings = GetModdingAssetSettings().MetaHuman;
 
-	const FString Mapping = Backport.BackportPoses ? Backport.CurveMapping : FString();
-
-	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, Mapping);
+	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, DnaSettings.Curves == ERDnaCurves::Legacy);
 
 	if (!Response.IsValid()) {
 		FImportIssues::Report(
@@ -213,14 +210,13 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 		BoneBindPose.Add(RefSkeleton.GetRefBonePose()[Bone]);
 	}
 
-	/* Asked for and not got, which is the mapping being wrong rather than the head */
-	if (!Mapping.IsEmpty() && !Response->GetBoolField(TEXT("backported"))) {
+	/* Asked for and not got, which is the mapping not covering this head rather than the head
+	 * being wrong */
+	if (DnaSettings.Curves == ERDnaCurves::Legacy && !Response->GetBoolField(TEXT("backported"))) {
 		FImportIssues::Report(
 			EImportIssue::Data,
-			TEXT("The backport mapping didn't resolve"),
-			FString::Printf(
-				TEXT("'%s' is what says how this rig's controls line up with the older head's curves. Nothing in it named a control this head has, so its own controls are baked instead."),
-				*Mapping)
+			TEXT("The legacy curve mapping didn't resolve"),
+			TEXT("It says how this rig's controls line up with an older head's curves. Nothing in it named a control this head has, so its own controls are baked instead.")
 		);
 	}
 
@@ -398,7 +394,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	UE_LOG(LogReflection, Display,
 		TEXT("\"%s\" built %d pose(s) over %d bone(s) out of the Cloud's reading of its DNA%s"),
 		*GetAssetName(), PoseDeltas.Num(), BoneNames.Num(),
-		bBackported ? *FString::Printf(TEXT(", backported from \"%s\""), *FPaths::GetBaseFilename(Mapping)) : TEXT(""));
+		bBackported ? TEXT(", read back into an older head's curves") : TEXT(""));
 
 	/* Worth saying, since it is the difference between a head that animates and one that drags the
 	 * body with it */

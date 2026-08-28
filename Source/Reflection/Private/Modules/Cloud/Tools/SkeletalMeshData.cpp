@@ -165,17 +165,6 @@ void TSkeletalMeshData::Process(UObject* Object, const TArray<TSharedPtr<FJsonVa
 			}
 
 			BrowseToWhenFinished(SkeletalMesh);
-
-			/* Notification */
-			AppendNotification(
-				FText::FromString("Reflected Skeletal Mesh Data: " + SkeletalMesh->GetName()),
-				FText::FromString(SkeletalMesh->GetName()),
-				3.5f,
-				FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
-				SNotificationItem::CS_Success,
-				false,
-				310.0f
-			);
 		}
 	}
 }

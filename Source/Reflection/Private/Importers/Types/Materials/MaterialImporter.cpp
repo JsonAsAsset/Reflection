@@ -63,7 +63,7 @@ bool IMaterialImporter::Import() {
 	/* If Missing Material Data */
 	if (ExpressionContainer->Num() == 0) {
 #if ENGINE_UE5
-		if (GetSettings()->AssetSettings.Material.Stubs) {
+		if (GetModdingAssetSettings().Material.Stubs) {
 			CreateStubs(this);
 			ReportCreatedStubs();
 		}

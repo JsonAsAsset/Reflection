@@ -2,6 +2,8 @@
 
 #pragma once
 
+#include "Importers/Types/Animation/LegacyCurves.h"
+#include "Settings/SettingsAccess.h"
 #include "CoreMinimal.h"
 #include "Animation/AnimMontage.h"
 #include "Importers/Constructor/Importer.h"
@@ -50,6 +52,11 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 	
 	if (Container->GetAssetExport()->TryGetObjectField(TEXT("CompressedCurveData"), RawCurveData)) {
 		FloatCurves = Container->GetAssetExport()->GetObjectField(TEXT("CompressedCurveData"))->GetArrayField(TEXT("FloatCurves"));
+	}
+
+	/* Said in the names an older head drives, where that was asked for */
+	if (GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy) {
+		FReflectionLegacyCurves::Rewrite(FloatCurves, Container->GetAssetName());
 	}
 
 	int32 UnnamedCurves = 0;

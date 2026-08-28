@@ -318,8 +318,21 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 						PinCategory = PinCategory.ToLower();
 					}
 
-					/* Cannot be compiled */
-					if (PinName.Equals(TEXT("BlendTime")) || PinName.Equals(TEXT("BlendWeights"))) continue;
+					/* An array member is exposed as a pin per element rather than one pin for the
+					 * whole array, so the index the record carries belongs in the name: BlendWeights
+					 * written at index 0 is the pin called BlendWeights_0.
+					 *
+					 * The type in front of the property is what says it is an array, which the
+					 * category above already reads off. Bound under the bare name these name a pin
+					 * the node hasn't got, which is what made them worth skipping rather than
+					 * anything about the binding itself. */
+					if (PinCategory == TEXT("array")) {
+						int32 DestArrayIndex = 0;
+
+						CopyRecordAsObject->TryGetNumberField(TEXT("DestArrayIndex"), DestArrayIndex);
+
+						PinName = FString::Printf(TEXT("%s_%d"), *PinName, DestArrayIndex);
+					}
 
 					UClass* AnimClass = AnimBlueprint->GeneratedClass;
 
@@ -389,7 +402,25 @@ inline void HandlePropertyBinding(FUObjectExport* NodeExport, const TArray<TShar
 					 * graph, the other tucked into a pin. They are the same thing said twice, so
 					 * both are handed to the one place that decides what to do with it which
 					 * draws what can be drawn, and binds only what cannot. */
-					Importer->Hands(NodeExport->GetName().ToString(), PinNameAsName, PropertyBinding.PropertyPath);
+					/* And whether it is turned round on the way, which the older shape says on the
+					 * copy record itself rather than on the class.
+					 *
+					 * A rule that is one variable inverted is never compiled as a graph: the class
+					 * copies the variable and negates it as it goes. Handed over without that, the
+					 * node reads the variable the right way up, which is the wrong answer every
+					 * frame and nothing drawn to show it. */
+					bool bTurned = false;
+
+					if (FString Doing; CopyRecordAsObject->TryGetStringField(TEXT("PostCopyOperation"), Doing) && !Doing.EndsWith(TEXT("::None"))) {
+						if (Doing.EndsWith(TEXT("::LogicalNegateBool"))) {
+							bTurned = true;
+						} else {
+							UE_LOG(LogReflection, Warning, TEXT("\"%s\" hands \"%s\" to %s as %s, which nothing here draws"),
+								*AnimBlueprint->GetName(), *SourcePropertyName, *PinName, *Doing);
+						}
+					}
+
+					Importer->Hands(NodeExport->GetName().ToString(), PinNameAsName, PropertyBinding.PropertyPath, bTurned);
 #endif
 
 					if (PinName == "ActiveEnumValue" && Node != nullptr) {

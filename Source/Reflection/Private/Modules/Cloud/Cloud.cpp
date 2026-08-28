@@ -186,11 +186,25 @@ TSharedPtr<FJsonObject> Cloud::Export::GetCurveExpressionsBlocking(const FString
 	return Response;
 }
 
-TSharedPtr<FJsonObject> Cloud::Export::GetDnaMorphsBlocking(const FString& Path, const FString& Mapping) {
+TSharedPtr<FJsonObject> Cloud::Export::GetCurveMappingBlocking() {
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(CurveMappingURL, {}, {});
+
+	if (!Response.IsValid() || !Response->HasField(TEXT("entries"))) {
+		return nullptr;
+	}
+
+	return Response;
+}
+
+TSharedPtr<FJsonObject> Cloud::Export::GetDnaMorphsBlocking(const FString& Path, const bool bBackport) {
 	TMap<FString, FString> Parameters = { { TEXT("path"), Path } };
 
-	if (!Mapping.IsEmpty()) {
-		Parameters.Add(TEXT("mapping"), Mapping);
+	/* Asked for rather than pointed at.
+	 *
+	 * Which mapping an older head's curves are written in terms of is a fact about the game, not a
+	 * choice, so the Cloud knows it and this says only whether it is wanted. */
+	if (bBackport) {
+		Parameters.Add(TEXT("backport"), TEXT("true"));
 	}
 
 	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(DnaMorphsURL, Parameters, {});
@@ -202,11 +216,12 @@ TSharedPtr<FJsonObject> Cloud::Export::GetDnaMorphsBlocking(const FString& Path,
 	return Response;
 }
 
-TSharedPtr<FJsonObject> Cloud::Export::GetDnaPosesBlocking(const FString& Path, const FString& Mapping) {
+TSharedPtr<FJsonObject> Cloud::Export::GetDnaPosesBlocking(const FString& Path, const bool bBackport) {
 	TMap<FString, FString> Parameters = { { TEXT("path"), Path } };
 
-	if (!Mapping.IsEmpty()) {
-		Parameters.Add(TEXT("mapping"), Mapping);
+	/* Asked for rather than pointed at, the same as the morphs */
+	if (bBackport) {
+		Parameters.Add(TEXT("backport"), TEXT("true"));
 	}
 
 	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(DnaPosesURL, Parameters, {});

@@ -219,7 +219,7 @@ bool IStaticMeshImporter::Import() {
 	/* Dropped to the first LOD worth showing. A cook can strip the colours from LOD 0, and landing
 	 * there renders the mesh white. */
 #if ENGINE_UE5
-	if (GetSettings()->AssetSettings.StaticMesh.IgnoreMinQualityLevelLODDefault) {
+	if (GetSettings()->AssetSettings.Mesh.IgnoreMinQualityLevelLODDefault) {
 		FPerQualityLevelInt MinQualityLevelLOD = StaticMesh->GetQualityLevelMinLOD();
 
 		MinQualityLevelLOD.Default = FMath::Max(FirstColoredLod, 0);

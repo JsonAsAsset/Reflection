@@ -555,18 +555,16 @@ bool ISkeletalMeshImporter::Import() {
 		bool bBakedPoses = false;
 
 		/* The faces as morph targets, which is the one shape that stacks the way the rig does */
-		if (GetSettings()->AssetSettings.DNA.MorphTargets) {
-			const FRDnaBackportSettings& Backport = GetSettings()->AssetSettings.DNA.Backport;
-
+		if (GetModdingAssetSettings().MetaHuman.Bake == ERDnaBake::MorphTargets) {
 			const int32 Built = BuildMorphTargets(SkeletalMesh,
-				Cloud::Export::GetDnaMorphsBlocking(FetchPath, Backport.BackportPoses ? Backport.CurveMapping : FString()));
+				Cloud::Export::GetDnaMorphsBlocking(FetchPath, GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy));
 
 			bBakedPoses = Built > 0;
 
 			UE_LOG(LogReflection, Display, TEXT("\"%s\" built %d morph target(s) out of its DNA"), *GetAssetName(), Built);
 		}
 
-		if (GetSettings()->AssetSettings.DNA.BakeToPoseAsset) {
+		if (GetModdingAssetSettings().MetaHuman.Bake == ERDnaBake::PoseAsset) {
 			const UPoseAsset* PoseAsset = bAppliedDna
 				? BakeDnaPoseAsset(SkeletalMesh)
 				: BakeDnaPoseAssetFromCloud(SkeletalMesh, FetchPath);
@@ -661,7 +659,7 @@ bool ISkeletalMeshImporter::Import() {
 
 	/* Dropped to the best LOD the mesh has, rather than wherever the game's quality settings
 	 * started it drawing */
-	if (GetSettings()->AssetSettings.SkeletalMesh.IgnoreMinQualityLevelLODDefault) {
+	if (GetSettings()->AssetSettings.Mesh.IgnoreMinQualityLevelLODDefault) {
 		SetMeshMinLod(SkeletalMesh, FPerPlatformInt(0));
 
 #if ENGINE_UE5

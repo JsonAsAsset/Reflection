@@ -5,7 +5,7 @@
 #include "Widgets/Input/SButton.h"
 #include "Widgets/SBoxPanel.h"
 
-FName GReflectionSettingsCategoryName = FName("General");
+FName GReflectionSettingsCategoryName = FName("Reflection");
 FName GReflectionInternalName = FName("AmbientAudio");
 
 UReflectionSettings::UReflectionSettings() {
@@ -14,5 +14,5 @@ UReflectionSettings::UReflectionSettings() {
 }
 
 FText UReflectionSettings::GetSectionText() const {
-	return FText::FromString("Reflection");
+	return FText::FromString("Settings");
 }

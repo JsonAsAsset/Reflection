@@ -60,7 +60,7 @@ private:
 
 public:
 	/* Says that something hands a value to one of a node's pins, however the cook spelled it */
-	void Hands(const FString& Key, FName Member, const TArray<FString>& Path);
+	void Hands(const FString& Key, FName Member, const TArray<FString>& Path, bool bTurned = false);
 
 	/* Puts those back on a node, drawn or bound.
 	 *

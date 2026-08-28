@@ -27,10 +27,7 @@
 #include "Animation/AnimSequence.h"
 #include "Animation/PoseAsset.h"
 
-#if REFLECTION_CURVE_EXPRESSION
-#include "CurveExpressionsDataAsset.h"
-#include "ExpressionEvaluator.h"
-#endif
+#include "Importers/Types/Animation/LegacyCurves.h"
 #include "Animation/AnimData/IAnimationDataController.h"
 #endif
 
@@ -584,39 +581,17 @@ namespace {
  * Empty when the mapping cannot be had or none of its controls are ones this DNA has, which leaves
  * the caller to bake the rig's own controls instead. */
 bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>& Behavior, TArray<FDnaPosePlan>& OutPlan) {
-	const FString MappingPath = GetSettings()->AssetSettings.DNA.Backport.CurveMapping;
+	TMap<FName, TArray<FLegacyCurveDrive>> ByCurve;
 
-	if (MappingPath.IsEmpty()) return false;
-
-#if REFLECTION_CURVE_EXPRESSION
-	/* The mapping is read as the asset rather than as text, and run by the engine's own evaluator,
-	 * because that is the thing that decides what these expressions mean. Reading coefficients off
-	 * them instead only works while they stay a weighted sum, and they do not: half of them clamp. */
-	UCurveExpressionsDataAsset* Mapping = LoadObject<UCurveExpressionsDataAsset>(nullptr, *MappingPath);
-
-	const TSharedPtr<const FExpressionData> Data = Mapping != nullptr ? Mapping->GetCompiledExpressionData() : nullptr;
-
-	if (!Data.IsValid() || Data->ExpressionMap.IsEmpty()) {
-		FImportIssues::Report(
-			EImportIssue::Data,
-			TEXT("The backport mapping isn't in the project"),
-			FString::Printf(
-				TEXT("'%s' is what says how the older head's curves drive this rig, and nothing is there to read. Import it first, or the rig's own controls are baked instead."),
-				*MappingPath)
-		);
-
-		return false;
-	}
+	if (!FReflectionLegacyCurves::Read(ByCurve)) return false;
 
 	/* A pose per curve of the older head, which is what the mapping reads rather than what it
 	 * writes: the expressions are named for this rig's controls and driven by the older head's
-	 * curves, so the curves are the constants in them.
-	 *
-	 * Taken off the compiled data rather than asked of each expression, because the call that would
-	 * ask is not one the plugin exports and nothing outside its own module can link it. */
+	 * curves, so the curves are the constants in them. */
 	const TMap<FString, uint16> ByName = MapControlsByName(Behavior);
 
-	TArray<FName> Ordered = Data->NamedConstants;
+	TArray<FName> Ordered;
+	ByCurve.GetKeys(Ordered);
 	Ordered.Sort(FNameLexicalLess());
 
 	int32 Unresolved = 0;
@@ -626,16 +601,8 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 		Pose.Name = Source;
 
 		/* That one curve the whole way up and nothing else, which is what the pose means */
-		const auto DriveOne = [&Source](const FName Constant) -> TOptional<float> {
-			return Constant == Source ? TOptional<float>(1.0f) : TOptional<float>(0.0f);
-		};
-
-		for (const TTuple<FName, CurveExpression::Evaluator::FExpressionObject>& Assignment : Data->ExpressionMap) {
-			const float Value = CurveExpression::Evaluator::FEngine().Execute(Assignment.Value, DriveOne);
-
-			if (FMath::IsNearlyZero(Value)) continue;
-
-			const uint16* Control = ByName.Find(Assignment.Key.ToString());
+		for (const FLegacyCurveDrive& Drive : ByCurve[Source]) {
+			const uint16* Control = ByName.Find(Drive.Control.ToString());
 
 			/* A mapping covers a whole family of heads, so a curve naming a control this DNA has
 			 * not got is the mapping being broader than this face rather than a fault */
@@ -645,7 +612,7 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 				continue;
 			}
 
-			Pose.Drive.Add({ *Control, Value });
+			Pose.Drive.Add({ *Control, Drive.Weight });
 		}
 
 		/* A curve none of whose controls this rig has is a pose that would come out as the neutral,
@@ -658,14 +625,11 @@ bool ISkeletalMeshImporter::BuildBackportedPosePlan(const TSharedPtr<IDNAReader>
 	if (OutPlan.Num() == 0) return false;
 
 	UE_LOG(LogReflection, Display,
-		TEXT("\"%s\" backporting %d pose(s) from \"%s\"%s"),
-		*GetAssetName(), OutPlan.Num(), *FPaths::GetBaseFilename(MappingPath),
+		TEXT("\"%s\" backporting %d pose(s) from the curve mapping%s"),
+		*GetAssetName(), OutPlan.Num(),
 		Unresolved > 0 ? *FString::Printf(TEXT(", %d control reference(s) this DNA hasn't got"), Unresolved) : TEXT(""));
 
 	return true;
-#else
-	return false;
-#endif
 }
 #else
 
@@ -744,7 +708,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	TArray<FDnaPosePlan> Plan;
 
 	const bool bBackported =
-		GetSettings()->AssetSettings.DNA.Backport.BackportPoses &&
+		GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy &&
 		BuildBackportedPosePlan(Behavior, Plan);
 
 	if (!bBackported) {

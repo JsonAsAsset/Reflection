@@ -1127,7 +1127,7 @@ void IAnimationBlueprintImporter::Draw(UAnimGraphNode_Base* Node, const FName Me
 	Into->NotifyGraphChanged();
 }
 
-void IAnimationBlueprintImporter::Hands(const FString& Key, const FName Member, const TArray<FString>& Path) {
+void IAnimationBlueprintImporter::Hands(const FString& Key, const FName Member, const TArray<FString>& Path, const bool bTurned) {
 	if (Key.IsEmpty() || Member.IsNone() || Path.Num() == 0) return;
 
 	TArray<FHandedOver>& Says = Bindings.FindOrAdd(Key);
@@ -1136,7 +1136,7 @@ void IAnimationBlueprintImporter::Hands(const FString& Key, const FName Member, 
 		if (One.Member == Member) return;
 	}
 
-	Says.Add(FHandedOver{ Member, Path, false });
+	Says.Add(FHandedOver{ Member, Path, bTurned });
 }
 
 void IAnimationBlueprintImporter::ApplyBindings(const FString& Key, UAnimGraphNode_Base* Node) const {
@@ -1239,42 +1239,64 @@ void IAnimationBlueprintImporter::ExposeHandedOver(UAnimGraphNode_Base* Node, co
 	UE_LOG(LogReflection, Display, TEXT("\"%s\" hands over %d value(s), which it is given pins for"), *Node->GetName(), Named.Num());
 }
 
+namespace {
+	/* One property of a node, shown, where the node has it under exactly that name */
+	bool ExposeNamed(UAnimGraphNode_Base* Node, const FName Member) {
+		/* The ones the node keeps openly, which are its own properties */
+		for (FOptionalPinFromProperty& Held : Node->ShowPinForProperties) {
+			if (Held.PropertyName != Member) continue;
+
+			if (Held.bShowPin) return false;
+
+			Held.bShowPin = true;
+
+			return true;
+		}
+
+		/* And the ones it makes for whatever it drives, which it keeps to itself */
+		const FArrayProperty* Exposed = FindFProperty<FArrayProperty>(Node->GetClass(), TEXT("CustomPinProperties"));
+
+		if (Exposed == nullptr) return false;
+
+		const FStructProperty* Inner = CastField<FStructProperty>(Exposed->Inner);
+
+		if (Inner == nullptr || Inner->Struct != FOptionalPinFromProperty::StaticStruct()) return false;
+
+		FScriptArrayHelper Holds(Exposed, Exposed->ContainerPtrToValuePtr<void>(Node));
+
+		for (int32 At = 0; At < Holds.Num(); ++At) {
+			FOptionalPinFromProperty* Says = reinterpret_cast<FOptionalPinFromProperty*>(Holds.GetRawPtr(At));
+
+			if (Says->PropertyName != Member) continue;
+
+			if (Says->bShowPin) return false;
+
+			Says->bShowPin = true;
+
+			return true;
+		}
+
+		return false;
+	}
+}
+
 bool IAnimationBlueprintImporter::Expose(UAnimGraphNode_Base* Node, const FName Member) const {
-	/* The ones the node keeps openly, which are its own properties */
-	for (FOptionalPinFromProperty& Held : Node->ShowPinForProperties) {
-		if (Held.PropertyName != Member) continue;
+	if (ExposeNamed(Node, Member)) return true;
 
-		if (Held.bShowPin) return false;
+	/* An element of an array names its pin with the index on the end, where the node holds the
+	 * array itself under the bare name and makes a pin per element off that one entry. So a name
+	 * nothing answers to is worth trying again with the index taken off. */
+	FString Named = Member.ToString();
 
-		Held.bShowPin = true;
+	int32 Last = INDEX_NONE;
 
-		return true;
-	}
+	if (!Named.FindLastChar(TEXT('_'), Last)) return false;
 
-	/* And the ones it makes for whatever it drives, which it keeps to itself */
-	const FArrayProperty* Exposed = FindFProperty<FArrayProperty>(Node->GetClass(), TEXT("CustomPinProperties"));
+	const FString Index = Named.Mid(Last + 1);
 
-	if (Exposed == nullptr) return false;
+	if (Index.IsEmpty() || !Index.IsNumeric()) return false;
 
-	const FStructProperty* Inner = CastField<FStructProperty>(Exposed->Inner);
-
-	if (Inner == nullptr || Inner->Struct != FOptionalPinFromProperty::StaticStruct()) return false;
-
-	FScriptArrayHelper Holds(Exposed, Exposed->ContainerPtrToValuePtr<void>(Node));
-
-	for (int32 At = 0; At < Holds.Num(); ++At) {
-		FOptionalPinFromProperty* Says = reinterpret_cast<FOptionalPinFromProperty*>(Holds.GetRawPtr(At));
-
-		if (Says->PropertyName != Member) continue;
-
-		if (Says->bShowPin) return false;
-
-		Says->bShowPin = true;
-
-		return true;
-	}
-
-	return false;
+	return ExposeNamed(Node, FName(*Named.Left(Last)));
 }
 
 void IAnimationBlueprintImporter::AnswerThrough(FUObjectExportContainer* Container) {

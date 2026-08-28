@@ -7,10 +7,7 @@
 
 /* Settings Substructures */
 #include "Types/AnimationBlueprintSettings.h"
-#include "Types/DNASettings.h"
-#include "Types/MaterialSettings.h"
-#include "Types/SkeletalMeshSettings.h"
-#include "Types/StaticMeshSettings.h"
+#include "Types/MeshSettings.h"
 #include "Types/TextureSettings.h"
 #include "Redirector.h"
 
@@ -26,9 +23,9 @@ struct FRSettings
 public:
 	/* Constructor to initialize default values */
 	FRSettings() {
-		Material = FRMaterialSettings();
-		Texture = FRTextureSettings();
 		AnimationBlueprint = FRAnimationBlueprintSettings();
+		Texture = FRTextureSettings();
+		Mesh = FRMeshSettings();
 	}
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
@@ -36,18 +33,9 @@ public:
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRTextureSettings Texture;
-	
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRMaterialSettings Material;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRStaticMeshSettings StaticMesh;
-
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRSkeletalMeshSettings SkeletalMesh;
-
-	UPROPERTY(EditAnywhere, Config, Category = Settings)
-	FRDnaSettings DNA;
+	FRMeshSettings Mesh;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;
