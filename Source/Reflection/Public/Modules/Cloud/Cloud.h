@@ -92,7 +92,9 @@ public:
 		static TSharedPtr<FJsonObject> GetMorphTargetsBlocking(const FString& Path);
 
 		/* The cooked static mesh geometry and its slots. Null when the Cloud has none at Path. */
-		static TSharedPtr<FJsonObject> GetStaticMeshBlocking(const FString& Path);
+		/* Named where the package holds more than one mesh, since the Cloud answers with the
+		 * first it finds otherwise, and an HLOD proxy keeps a mesh per thing it stands in for */
+		static TSharedPtr<FJsonObject> GetStaticMeshBlocking(const FString& Path, const FString& Named = FString());
 
 		/* A MetaHuman head's DNA, as the bytes RigLogic reads. Empty for a mesh without one. */
 		static TArray<uint8> GetDnaBlocking(const FString& Path);

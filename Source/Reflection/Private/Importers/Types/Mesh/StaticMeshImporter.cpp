@@ -109,7 +109,9 @@ bool IStaticMeshImporter::Import() {
 		FRRedirects::Reverse(FetchPath);
 	}
 
-	const TSharedPtr<FJsonObject> Geometry = Cloud::Export::GetStaticMeshBlocking(FetchPath);
+	/* Said by name as well as by path. A package holding one mesh answers the same either way; one
+	 * holding several would otherwise hand the first mesh's geometry back for every one of them. */
+	const TSharedPtr<FJsonObject> Geometry = Cloud::Export::GetStaticMeshBlocking(FetchPath, GetAssetName());
 
 	if (!Geometry.IsValid()) {
 		FImportIssues::Report(EImportIssue::Failed, TEXT("No geometry from the Cloud"), TEXT("The Cloud has to be running, and the mesh needs cooked render data to read."));

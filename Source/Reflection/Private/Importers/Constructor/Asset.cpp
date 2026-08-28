@@ -189,15 +189,28 @@ template bool FAssetUtilities::ConstructAsset<UFontFace>(const FString&, const F
 template bool FAssetUtilities::ConstructAsset<USkeleton>(const FString&, const FString&, const FString&, TObjectPtr<USkeleton>&, bool&);
 
 namespace {
-	/* Paths with an import open further down the stack, innermost last. */
+	/* Packages with an import open further down the stack, innermost last. */
 	TArray<FString> GAssetsUnderConstruction;
 
-	/* Marks a path as being built for as long as the call constructing it is running, and reports
+	/* The file a path names, without the asset inside it.
+	 *
+	 * Kept by the file rather than by the asset because a file is imported whole: every export in it
+	 * is built by the one run. An HLOD proxy keeps four meshes, four materials and four textures
+	 * under the one name, and each mesh reaches for the others while it is being built. Asked for by
+	 * asset, those are four separate keys and none of them matches the run already open, so each one
+	 * fetches the file again and builds all four again, four levels deeper every time. */
+	FString FileOf(const FString& Path) {
+		FString Named;
+
+		return Path.Split(TEXT("."), &Named, nullptr, ESearchCase::CaseSensitive, ESearchDir::FromStart) ? Named : Path;
+	}
+
+	/* Marks a file as being built for as long as the call constructing it is running, and reports
 	 * whether that call is the one that opened it. */
 	struct FConstructionScope {
 		explicit FConstructionScope(const FString& InPath)
-			: Path(InPath)
-			, bOwned(!GAssetsUnderConstruction.Contains(InPath))
+			: Path(FileOf(InPath))
+			, bOwned(!GAssetsUnderConstruction.Contains(Path))
 		{
 			if (bOwned) {
 				GAssetsUnderConstruction.Add(Path);
@@ -213,6 +226,36 @@ namespace {
 		FString Path;
 		bool bOwned;
 	};
+
+	/* The asset a reference names, wherever it ended up.
+	 *
+	 * A reference says the file the asset was cooked in and the asset inside it. Kept together that
+	 * is where it lands and the path reads straight through. Split apart it lands in a file of its
+	 * own beside the others, and the same reference has to be read a second way: the folder that
+	 * file is in, and the asset's own name. */
+	template <typename T>
+	TObjectPtr<T> FindByReference(const FString& Path) {
+		FString Redirected = Path;
+		FRRedirects::Redirect(Redirected);
+
+		if (TObjectPtr<T> Found = LoadObjectByPath<T>(Redirected)) {
+			return Found;
+		}
+
+		FString Folder, File, Asset;
+
+		if (!Redirected.Split(TEXT("."), &Folder, &Asset, ESearchCase::CaseSensitive, ESearchDir::FromEnd)) return nullptr;
+		if (!Folder.Split(TEXT("/"), &Folder, &File, ESearchCase::IgnoreCase, ESearchDir::FromEnd)) return nullptr;
+
+		/* The file is already named for the asset, so there is no second spelling to try */
+		if (File == Asset) return nullptr;
+
+		/* Nor for a part of an asset. A subobject is named for the thing that holds it and never
+		 * becomes a file of its own, so reading it as one would ask for a path nothing is at. */
+		if (Asset.Contains(TEXT(":"))) return nullptr;
+
+		return LoadObjectByPath<T>(Folder + TEXT("/") + Asset + TEXT(".") + Asset);
+	}
 }
 
 /* Importing assets from Cloud */
@@ -237,13 +280,22 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 		return false;
 	}
 
+	const bool IsTexture = FTextureTypes::IsSupported(Type);
+
 	const FConstructionScope ConstructionScope(Path);
 
-	if (!ConstructionScope.bOwned) {
-		FString InFlightPath = RealPath;
-		FRRedirects::Redirect(InFlightPath);
-
-		OutObject = LoadObjectByPath<T>(InFlightPath);
+	/* Handed back unresolved only where the run that already has this file open is going to build it.
+	 *
+	 * That run builds the exports the reader takes and turns the rest down, and what it turns down
+	 * is fetched here instead, one asset at a time, as each is referenced. A texture is the standing
+	 * example: no package import has ever built one. Declining any of those waits on the open run to
+	 * produce something it is never going to produce, and whatever asked comes out empty.
+	 *
+	 * So the question is not whether the file is open. It is whether the run holding it open builds
+	 * this, which is the same question the reader asks of every export it is offered. Asked the same
+	 * way here, a type nobody has taught the reader about still gets fetched rather than dropped. */
+	if (!ConstructionScope.bOwned && CanImport(Type)) {
+		OutObject = FindByReference<T>(RealPath);
 		bSuccess = OutObject != nullptr;
 
 		return true;
@@ -263,8 +315,6 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 		NSLOCTEXT("Reflection", "CloudReflecting", "Reflecting {0}"),
 		FText::FromString(Path)
 	));
-
-	const bool IsTexture = FTextureTypes::IsSupported(Type);
 
 	FString GamePath = Path;
 
@@ -308,10 +358,7 @@ bool FAssetUtilities::ConstructAsset(const FString& Path, const FString& RealPat
 			bSuccess = IImportReader::ReadExportsAndImport(Response->GetArrayField(TEXT("exports")), PackagePath, OutImporter, true);
 
 			/* Define found object */
-			FString RedirectedPath = RealPath;
-			
-			FRRedirects::Redirect(RedirectedPath);
-			OutObject = LoadObjectByPath<T>(RedirectedPath);
+			OutObject = FindByReference<T>(RealPath);
 
 			return OutObject != nullptr;
 		}

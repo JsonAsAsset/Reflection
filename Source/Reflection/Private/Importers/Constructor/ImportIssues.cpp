@@ -31,18 +31,39 @@ namespace {
 	/* Anything reported outside an asset's import lands here */
 	const FString UnattributedName = TEXT("Import");
 
-	/* Whether the reference is in the project now, at the path it named or the redirected one */
-	bool ReferenceResolves(const FPendingReference& Pending) {
-		const FString ObjectPath = Pending.Path + TEXT(".") + Pending.Name;
-
-		if (LoadObjectByPath<UObject>(ObjectPath) != nullptr) {
+	/* Whether the reference is in the project now, at the path it named or the redirected one.
+	 *
+	 * And beside the file it named, since an asset out of a package holding several is written to a
+	 * file of its own where they are being split apart. Asked only at the path the reference used,
+	 * every one of those reads as missing however well it resolved. */
+	bool ResolvesAt(const FString& Path) {
+		if (LoadObjectByPath<UObject>(Path) != nullptr) {
 			return true;
 		}
 
-		FString RedirectedPath = ObjectPath;
-		FRRedirects::Redirect(RedirectedPath);
+		FString Redirected = Path;
+		FRRedirects::Redirect(Redirected);
 
-		return RedirectedPath != ObjectPath && LoadObjectByPath<UObject>(RedirectedPath) != nullptr;
+		return Redirected != Path && LoadObjectByPath<UObject>(Redirected) != nullptr;
+	}
+
+	bool ReferenceResolves(const FPendingReference& Pending) {
+		if (ResolvesAt(Pending.Path + TEXT(".") + Pending.Name)) {
+			return true;
+		}
+
+		/* A part of an asset is never a file of its own, so there is no second place to look */
+		if (Pending.Name.Contains(TEXT(":"))) {
+			return false;
+		}
+
+		FString Folder;
+
+		if (!Pending.Path.Split(TEXT("/"), &Folder, nullptr, ESearchCase::IgnoreCase, ESearchDir::FromEnd)) {
+			return false;
+		}
+
+		return ResolvesAt(Folder + TEXT("/") + Pending.Name + TEXT(".") + Pending.Name);
 	}
 
 	TSharedPtr<FImportIssueAsset> FindOrAddAsset(const FString& Name, const FString& Path, const FString& Type) {

@@ -323,8 +323,14 @@ TSharedPtr<FJsonObject> Cloud::Export::GetMorphTargetsBlocking(const FString& Pa
 	return Response;
 }
 
-TSharedPtr<FJsonObject> Cloud::Export::GetStaticMeshBlocking(const FString& Path) {
-	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(StaticMeshURL, { { TEXT("path"), Path } }, {});
+TSharedPtr<FJsonObject> Cloud::Export::GetStaticMeshBlocking(const FString& Path, const FString& Named) {
+	TMap<FString, FString> Parameters = { { TEXT("path"), Path } };
+
+	if (!Named.IsEmpty()) {
+		Parameters.Add(TEXT("export_name"), Named);
+	}
+
+	const TSharedPtr<FJsonObject> Response = Cloud::GetBlocking(StaticMeshURL, Parameters, {});
 
 	if (!Response.IsValid() || !Response->HasField(TEXT("lods"))) {
 		return nullptr;
