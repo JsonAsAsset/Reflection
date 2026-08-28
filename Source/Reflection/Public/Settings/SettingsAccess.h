@@ -6,6 +6,7 @@
 #include "Modules/Metadata.h"
 #include "Settings/ReflectionSettings.h"
 #include "Settings/ModdingSettings.h"
+#include "Engine/Compatibility.h"
 
 #if (ENGINE_MAJOR_VERSION != 4 || ENGINE_MINOR_VERSION < 27)
 #include "Engine/DeveloperSettings.h"

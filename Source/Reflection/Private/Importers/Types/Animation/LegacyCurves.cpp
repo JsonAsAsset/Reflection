@@ -5,6 +5,7 @@
 #include "Importers/Constructor/ImportIssues.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Metadata.h"
+#include "Engine/Log.h"
 
 /* An animation written for the newer rig, said in the names an older head drives.
  *
