@@ -107,6 +107,24 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		Name.Split("_C", &Name, nullptr, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
 	}
 
+	/* A font's faces are part of the font.
+	 *
+	 * A face kept inside a font is a subobject of it, and the font's own import builds it along with
+	 * everything else it holds: DeserializeExports runs before a single property is read. Offered
+	 * here as well it comes out a second time, beside the font, under a name the game never cooked
+	 * and so with no typeface to fill it from.
+	 *
+	 * Skipped before the package is made rather than refused afterwards, since the package is made
+	 * whether the importer wants it or not and an empty one left behind shows as a folder.
+	 *
+	 * Said of font faces rather than of subobjects at large, deliberately. Plenty is held this way
+	 * an offline font holds its texture pages exactly so and those are built here today, with
+	 * their contents fetched as they are. Nothing would rebuild them if this stopped offering them,
+	 * and what came out instead would be the empty subobject this went to the trouble of curing. */
+	if (Type == TEXT("FontFace") && Container->Find(Export->GetOuter())->IsJsonValid()) {
+		return nullptr;
+	}
+
 	const UClass* Class = FindClassByType(Type);
 
 #if REFLECTION_RIGVM
