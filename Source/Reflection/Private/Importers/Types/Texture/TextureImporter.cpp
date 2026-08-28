@@ -42,7 +42,18 @@ static bool DownloadPixels(const FString& FetchPath, const FString& Type, const 
 
 	const FReflectionHttpRequest HttpRequest = FHttpModule::Get().CreateRequest();
 
-	HttpRequest->SetURL(Cloud::URL + Cloud::ExportURL + "?path=" + FetchPath);
+	/* Which export of the package is wanted, said outright.
+	 *
+	 * The Cloud reads a path as far as the first dot and no further, so a name written on the end of
+	 * one is not a name it ever sees: it answers with whatever the package leads with. That is the
+	 * texture itself for almost every package, and for an HLOD proxy it is a body setup, which comes
+	 * back as properties rather than pixels. */
+	FString Named;
+
+	Export->TryGetStringField(TEXT("Name"), Named);
+
+	HttpRequest->SetURL(Cloud::URL + Cloud::ExportURL + "?path=" + FetchPath
+		+ (Named.IsEmpty() ? TEXT("") : TEXT("&export_name=") + Named));
 	HttpRequest->SetHeader("content-type", UseRawMipData ? "application/octet-stream" : "image/png");
 	HttpRequest->SetVerb(TEXT("GET"));
 
@@ -77,7 +88,47 @@ bool FTextureImport::FromCloud(const FString& Path, const FString& FetchPath, UT
 		return false;
 	}
 
-	const TSharedPtr<FJsonObject> Export = Exports[0]->AsObject();
+	/* Which of the package's exports is the one wanted.
+	 *
+	 * A package holding a single asset has the one export and it is the first. A package holding
+	 * several does not: an HLOD proxy keeps its mesh, the material that draws it and the texture
+	 * that material samples all in the one file, and taking the first hands back whatever happened
+	 * to be written first, which there is a body setup.
+	 *
+	 * The path says which. A reference names it by the index on the end, and a path typed in names
+	 * it outright, so both spellings are tried and the search falls back on the first export that
+	 * is a texture at all, since a texture is what was asked for. */
+	int32 Wanted = INDEX_NONE;
+
+	if (FString Leaf; Path.Split(TEXT("."), nullptr, &Leaf, ESearchCase::CaseSensitive, ESearchDir::FromEnd)) {
+		if (Leaf.IsNumeric()) {
+			if (const int32 At = FCString::Atoi(*Leaf); Exports.IsValidIndex(At)) {
+				Wanted = At;
+			}
+		} else {
+			for (int32 At = 0; At < Exports.Num() && Wanted == INDEX_NONE; ++At) {
+				const TSharedPtr<FJsonObject> One = Exports[At].IsValid() ? Exports[At]->AsObject() : nullptr;
+
+				FString Named;
+
+				if (One.IsValid() && One->TryGetStringField(TEXT("Name"), Named) && Named == Leaf) {
+					Wanted = At;
+				}
+			}
+		}
+	}
+
+	for (int32 At = 0; At < Exports.Num() && Wanted == INDEX_NONE; ++At) {
+		const TSharedPtr<FJsonObject> One = Exports[At].IsValid() ? Exports[At]->AsObject() : nullptr;
+
+		FString Named;
+
+		if (One.IsValid() && One->TryGetStringField(TEXT("Type"), Named) && FTextureTypes::IsSupported(Named)) {
+			Wanted = At;
+		}
+	}
+
+	const TSharedPtr<FJsonObject> Export = Exports[Wanted == INDEX_NONE ? 0 : Wanted]->AsObject();
 	const FString Type = Export->GetStringField(TEXT("Type"));
 
 	TArray<uint8> Data;
@@ -97,10 +148,21 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 		Path.Split(".", &PackagePath, &AssetName);
 	}
 
+	/* A reference into a package holding several assets says which one it wants by index, and an
+	 * index is no name to give a texture. The export carries the name it was cooked under. */
+	if (FString Named; AssetName.IsNumeric() && Export->TryGetStringField(TEXT("Name"), Named)) {
+		AssetName = Named;
+	}
+
+	/* And it lands beside whatever else that package held, unless they are being split up */
+	const FString PackageName = Settings->AssetSettings.SeparatePackagedAssets
+		? AssetName
+		: FPaths::GetBaseFilename(PackagePath);
+
 	/* Where an asset lands is one decision, made in one place: the redirects, the plugin whatever
 	 * root it names, and the paths that arrive relative to the export directory */
 	FString FailureReason;
-	UPackage* Package = FAssetUtilities::CreateAssetPackage(AssetName, PackagePath, FailureReason);
+	UPackage* Package = FAssetUtilities::CreateAssetPackage(PackageName, PackagePath, FailureReason);
 
 	if (Package == nullptr) {
 		UE_LOG(LogReflection, Error, TEXT("No package for \"%s\": %s"), *Path, *FailureReason);

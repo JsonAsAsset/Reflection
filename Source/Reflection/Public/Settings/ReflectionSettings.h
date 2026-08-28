@@ -37,6 +37,19 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRMeshSettings Mesh;
 
+	/* Whether a file holding several assets comes out as several files.
+	 *
+	 * Most packages hold one asset and this changes nothing for them. Some hold a set: an HLOD proxy
+	 * keeps the mesh it stands in for, the material that draws it and the texture that material
+	 * samples, all under the one name, and every reference between them is written as a step inside
+	 * that one file.
+	 *
+	 * Left off they come out the way the game keeps them, in the one package, which is what those
+	 * references describe. Turned on each becomes a file of its own beside the others, which reads
+	 * more plainly in the content browser and is not what was shipped. */
+	UPROPERTY(EditAnywhere, DisplayName = "Separate Packaged Assets", Config, Category = Settings)
+	bool SeparatePackagedAssets = false;
+
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;
 };

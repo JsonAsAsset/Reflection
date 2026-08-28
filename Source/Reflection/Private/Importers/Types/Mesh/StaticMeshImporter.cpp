@@ -93,8 +93,19 @@ bool IStaticMeshImporter::Import() {
 		return false;
 	};
 
-	/* Geometry is not in the export, so it comes off the reflected path */
-	FString FetchPath = GetPackage()->GetPathName(); {
+	/* Geometry is not in the export, so it is asked for by the path the game cooked it under.
+	 *
+	 * Taken off the export rather than off the package being written into, because the two are not
+	 * always the same name. A package holding several assets an HLOD proxy keeps its mesh, its
+	 * material and its texture together gives each of them a package of its own here, and none
+	 * of those names is one the game ever cooked. */
+	FString FetchPath = GetAssetExport()->HasField(TEXT("Package"))
+		? GetAssetExport()->GetStringField(TEXT("Package"))
+		: FString();
+
+	if (FetchPath.IsEmpty()) {
+		FetchPath = GetPackage()->GetPathName();
+
 		FRRedirects::Reverse(FetchPath);
 	}
 

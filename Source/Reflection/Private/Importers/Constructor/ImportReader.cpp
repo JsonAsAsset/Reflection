@@ -20,6 +20,125 @@
 #include "Engine/ControlRigCompatibility.h"
 #endif
 
+namespace {
+	/* Every export of this package that one export points at.
+	 *
+	 * A reference inside a package is written as the package's own path with the index of what it
+	 * names on the end, so the index is read straight off it. Anything naming a different package is
+	 * somebody else's asset and is fetched rather than ordered around. */
+	void ReadSiblings(const TSharedPtr<FJsonValue>& Value, const FString& Package, const int32 Count, TSet<int32>& Out) {
+		if (!Value.IsValid()) return;
+
+		if (Value->Type == EJson::Object) {
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+
+			FString Path;
+
+			if (Object->TryGetStringField(TEXT("ObjectPath"), Path)) {
+				FString Named, Index;
+
+				if (Path.Split(TEXT("."), &Named, &Index, ESearchCase::CaseSensitive, ESearchDir::FromEnd)
+					&& Named == Package && Index.IsNumeric()) {
+					const int32 At = FCString::Atoi(*Index);
+
+					if (At >= 0 && At < Count) Out.Add(At);
+				}
+			}
+
+			for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : Object->Values) {
+				ReadSiblings(Pair.Value, Package, Count, Out);
+			}
+
+			return;
+		}
+
+		if (Value->Type == EJson::Array) {
+			for (const TSharedPtr<FJsonValue>& One : Value->AsArray()) {
+				ReadSiblings(One, Package, Count, Out);
+			}
+		}
+	}
+
+	/* The order the exports of one package have to be built in.
+	 *
+	 * A package holding one asset needs none of this. One holding several an HLOD proxy keeps its
+	 * mesh, the material that draws it and the texture that material samples, all in the one file
+	 * has them pointing at each other, and each becomes an asset of its own here. Built in the order
+	 * they happen to be written, a material reaches for a texture that has not been made yet and
+	 * comes out without it.
+	 *
+	 * So whatever an export points at is built before it. Depth first, and a cycle is left in the
+	 * order it arrived: two things naming each other cannot both go first, and the pass that fills
+	 * references in is not this one. */
+	TArray<FUObjectExport*> InDependencyOrder(FUObjectExportContainer* Container) {
+		const int32 Count = Container->Exports.Num();
+
+		TArray<FUObjectExport*> Ordered;
+		Ordered.Reserve(Count);
+
+		if (Count < 2) {
+			Ordered = Container->Exports;
+
+			return Ordered;
+		}
+
+		/* The path they are all written under, which is what a reference between them looks like */
+		FString Package;
+
+		for (const FUObjectExport* Export : Container->Exports) {
+			if (Export->IsJsonValid() && Export->JsonObject->TryGetStringField(TEXT("Package"), Package)) break;
+		}
+
+		if (Package.IsEmpty()) {
+			Ordered = Container->Exports;
+
+			return Ordered;
+		}
+
+		TArray<TSet<int32>> Wants;
+		Wants.SetNum(Count);
+
+		for (int32 Index = 0; Index < Count; ++Index) {
+			const FUObjectExport* Export = Container->Exports[Index];
+
+			if (!Export->IsJsonValid()) continue;
+
+			ReadSiblings(MakeShared<FJsonValueObject>(Export->JsonObject), Package, Count, Wants[Index]);
+
+			/* Nothing is its own dependency, however it names itself */
+			Wants[Index].Remove(Index);
+		}
+
+		TArray<uint8> Done;
+		Done.SetNumZeroed(Count);
+
+		TArray<int32> Open;
+
+		TFunction<void(int32)> Walk = [&](const int32 Index) {
+			/* Already placed, or being placed further up this same walk, which is the cycle */
+			if (Done[Index] != 0 || Open.Contains(Index)) return;
+
+			Open.Push(Index);
+
+			for (const int32 Wanted : Wants[Index]) {
+				Walk(Wanted);
+			}
+
+			Open.Pop();
+
+			Done[Index] = 1;
+
+			Ordered.Add(Container->Exports[Index]);
+		};
+
+		for (int32 Index = 0; Index < Count; ++Index) {
+			Walk(Index);
+		}
+
+		return Ordered;
+	}
+}
+
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications, bool bUseRelativePath) {
 	/* Importers resolve references through the Cloud while they deserialize, and those requests
 	 * have nowhere to put a callback, so they get waited on. The scope is what keeps the editor
@@ -36,7 +155,7 @@ bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& E
 
 	const bool IsBlueprint = Container->FindByType(FString("BlueprintGeneratedClass"))->IsJsonValid();
 	
-	for (FUObjectExport* Export : Container->Exports) {
+	for (FUObjectExport* Export : InDependencyOrder(Container)) {
 		if (IsBlueprint) {
 			if (Export->GetType() != "BlueprintGeneratedClass") continue;
 		}
@@ -150,8 +269,14 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		if (FPaths::IsRelative(File)) File = FPaths::ConvertRelativePathToFull(File);
 	}
 
+	/* Kept together unless asked otherwise, since a reference between two assets of one package is
+	 * written as a step inside that package and only resolves where they both still are */
+	const FString PackageName = GetSettings()->AssetSettings.SeparatePackagedAssets
+		? Name
+		: FPaths::GetBaseFilename(File);
+
 	FString FailureReason;
-	UPackage* LocalPackage = FAssetUtilities::CreateAssetPackage(Name, File, FailureReason);
+	UPackage* LocalPackage = FAssetUtilities::CreateAssetPackage(PackageName, File, FailureReason);
 
 	if (LocalPackage == nullptr) {
 		/* Try fixing our Export Directory Settings using the provided File directory if local package not found */
