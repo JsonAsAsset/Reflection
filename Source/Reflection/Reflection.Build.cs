@@ -30,6 +30,24 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_CONTROL_RIG=" + (bControlRig ? "1" : "0"));
 
+		/* Drawing a graph is a smaller thing to ask than reading one back.
+		 *
+		 * The rig importer above rebuilds a cooked rig out of its bytecode, and that reads a rig the
+		 * way 5.2 and later keep one. Laying out a graph that was never cooked asks for none of
+		 * that: nodes, links, pin defaults, and the units that read and write a curve, all of which
+		 * RigVM has had since it arrived.
+		 *
+		 * So it is asked for separately. RigVM was an engine module before it was a plugin, and the
+		 * check knows both shapes. */
+		var bRigVM = bControlRig;
+
+		if (!bRigVM) {
+			bRigVM = Directory.Exists(Path.Combine(EngineDirectory, "Plugins", "Experimental", "ControlRig"))
+				&& Directory.Exists(Path.Combine(EngineDirectory, "Source", "Developer", "RigVMDeveloper"));
+		}
+
+		PublicDefinitions.Add("REFLECTION_RIGVM=" + (bRigVM ? "1" : "0"));
+
 		/* RigLogic is what reads a MetaHuman's DNA, and it ships as an engine plugin the same way
 		 * Control Rig does. An engine without it has nothing to hand the bit stream to.
 		 *
@@ -201,6 +219,15 @@ public class Reflection : ModuleRules {
 #endif
 		});
 		
+		/* Where the rig importer is not built, these are still what a graph is drawn with */
+		if (bRigVM && !bControlRig) {
+			PrivateDependencyModuleNames.AddRange(new[] {
+				"ControlRig",
+				"ControlRigDeveloper",
+				"RigVMDeveloper"
+			});
+		}
+
 		if (bControlRig) {
 			PrivateDependencyModuleNames.AddRange(new[] {
 				/* URigHierarchy and the controller every element is added through */

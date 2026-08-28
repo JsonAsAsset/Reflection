@@ -64,7 +64,9 @@ namespace {
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
 	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->SetSkeleton(Value); }
 	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->SetMinLod(Value); }
-	const TArray<TObjectPtr<UMorphTarget>>& MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->GetMorphTargets(); }
+	/* 5.0 made the array's element a TObjectPtr, so what comes back is deduced rather than named.
+	 * Every caller only counts them, and both spellings count the same. */
+	decltype(auto) MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->GetMorphTargets(); }
 
 	bool IsMeshLodImportedDataEmpty(const USkeletalMesh* Mesh, const int32 Lod) { return Mesh->IsLODImportedDataEmpty(Lod); }
 	void LoadMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& Out) { Mesh->LoadLODImportedData(Lod, Out); }

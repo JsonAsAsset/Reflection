@@ -31,6 +31,7 @@ inline const FRModdingSettings& GetModdingAssetSettings() {
 		Settings.Material.Stubs = false;
 		Settings.MetaHuman.Bake = ERDnaBake::None;
 		Settings.MetaHuman.Curves = ERDnaCurves::Controls;
+		Settings.CurveMapping = ERCurveMapping::DataAsset;
 
 		return Settings;
 	}();
@@ -38,6 +39,26 @@ inline const FRModdingSettings& GetModdingAssetSettings() {
 	const UReflectionModdingSettings* Settings = GetModdingSettings();
 
 	return Settings->Enabled ? Settings->Settings : Off;
+}
+
+/* Whether a curve mapping comes in as a rig.
+ *
+ * Asked for, or the only thing left. The asset the game keeps a mapping in belongs to a plugin that
+ * ships with Unreal Engine 5, and an engine without it has no such asset to make. What the mapping
+ * says is arithmetic either way, and a rig is somewhere arithmetic can still be put, so where there
+ * is no asset to be had the rig stands in its place rather than the import coming to nothing.
+ *
+ * Where both are possible it is the setting's call. Where neither is, nothing here can be made. */
+inline bool ImportsCurveMappingAsRig() {
+#if REFLECTION_RIGVM
+#if REFLECTION_CURVE_EXPRESSION
+	return GetModdingAssetSettings().CurveMapping == ERCurveMapping::ControlRig;
+#else
+	return true;
+#endif
+#else
+	return false;
+#endif
 }
 
 inline void SavePluginSettings(UDeveloperSettings* EditorSettings) {

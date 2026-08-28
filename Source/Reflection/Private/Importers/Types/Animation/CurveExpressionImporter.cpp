@@ -1,10 +1,24 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Animation/CurveExpressionImporter.h"
+#include "Importers/Types/Animation/CurveExpressionRig.h"
 #include "Modules/Cloud/Cloud.h"
+#include "Settings/SettingsAccess.h"
 
 #if REFLECTION_CURVE_EXPRESSION
 #include "CurveExpressionsDataAsset.h"
+#endif
+
+#if REFLECTION_RIGVM
+#include "Engine/ControlRigCompatibility.h"
+#include "ControlRig.h"
+
+#if ENGINE_UE5
+#include "ControlRigBlueprintFactory.h"
+#else
+#include "ControlRigBlueprintGeneratedClass.h"
+#include "Kismet2/KismetEditorUtilities.h"
+#endif
 #endif
 
 /* A curve expression asset drives one curve from others by arithmetic, and that arithmetic is the
@@ -13,6 +27,53 @@
  * Saving compiles them again, which is how the asset ends up with the data the runtime reads. */
 
 UObject* ICurveExpressionImporter::CreateAsset(UObject* CreatedAsset) {
+#if REFLECTION_RIGVM
+	if (ImportsCurveMappingAsRig()) {
+		/* Reflected over an earlier run, which is rebuilt in place rather than added beside */
+		if (UControlRigBlueprint* Existing = LoadObject<UControlRigBlueprint>(nullptr, *GetPackage()->GetPathName())) {
+			return IImporter::CreateAsset(Existing);
+		}
+
+#if ENGINE_UE5
+		/* The factory is what knows to give a blueprint its rig graph, which nothing else creates */
+		UControlRigBlueprintFactory* Factory = NewObject<UControlRigBlueprintFactory>();
+		Factory->ParentClass = UControlRig::StaticClass();
+
+		return IImporter::CreateAsset(Factory->FactoryCreateNew(
+			UControlRigBlueprint::StaticClass(),
+			GetPackage(),
+			FName(*GetAssetName()),
+			RF_Public | RF_Standalone,
+			nullptr,
+			GWarn
+		));
+#else
+		/* The factory that would do this lives in the rig's own editor module and is private there,
+		 * so the one call it makes is made here instead.
+		 *
+		 * Made this way rather than outright because a rig blueprint needs the generated class that
+		 * comes with it. The graph tells the blueprint every time a node is added, and what the
+		 * blueprint does about it reaches for the class's default object, so a blueprint without one
+		 * takes the first node badly. */
+		UControlRigBlueprint* Made = Cast<UControlRigBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+			UControlRig::StaticClass(),
+			GetPackage(),
+			FName(*GetAssetName()),
+			BPTYPE_Normal,
+			UControlRigBlueprint::StaticClass(),
+			UControlRigBlueprintGeneratedClass::StaticClass()
+		));
+
+		/* And the controller the graph is edited through, which the blueprint makes on request */
+		if (Made != nullptr) {
+			Made->InitializeModelIfRequired(false);
+		}
+
+		return IImporter::CreateAsset(Made);
+#endif
+	}
+#endif
+
 #if REFLECTION_CURVE_EXPRESSION
 	return IImporter::CreateAsset(NewObject<UCurveExpressionsDataAsset>(GetPackage(), GetAssetClass(), StringToName(GetAssetName()), RF_Public | RF_Standalone));
 #else
@@ -20,7 +81,55 @@ UObject* ICurveExpressionImporter::CreateAsset(UObject* CreatedAsset) {
 #endif
 }
 
+/* The mapping as the rig that performs it.
+ *
+ * Nothing of the asset comes across but its arithmetic, because the arithmetic is the whole of what
+ * it does: the rest is the plugin's own bookkeeping for compiling the expressions, and a rig has no
+ * use for it. */
+bool ICurveExpressionImporter::ImportAsControlRig(const TArray<TSharedPtr<FJsonValue>>& Expressions) {
+#if REFLECTION_RIGVM
+	UControlRigBlueprint* Blueprint = Create<UControlRigBlueprint>();
+
+	if (Blueprint == nullptr) return false;
+
+	auto _ = Blueprint->MarkPackageDirty();
+
+	FCurveExpressionRigStats Stats;
+
+	if (!FCurveExpressionRig::Build(Blueprint, Expressions, GetAssetName(), Stats)) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("Nothing in the mapping could be drawn as a rig"),
+			TEXT("A rig is built out of what each curve is worth to the ones it drives, and the Cloud found nothing here it could put a number on. The asset is created with an empty graph.")
+		);
+	}
+
+	/* The graph is only what the rig is edited as. Compiling is what turns it into something that
+	 * runs, and until it has been the rig poses nothing. */
+	Blueprint->RecompileVM();
+
+	return OnAssetCreation(Blueprint);
+#else
+	FImportIssues::Report(
+		EImportIssue::Failed,
+		TEXT("Control Rig is not in this engine"),
+		TEXT("A curve mapping can only be drawn as a rig where there is a rig to draw it in. Bring it in as a data asset instead.")
+	);
+
+	return false;
+#endif
+}
+
 bool ICurveExpressionImporter::Import() {
+	/* Asked for once, since either shape is built out of the same answer */
+	const TArray<TSharedPtr<FJsonValue>> Expressions = FetchExpressions();
+
+#if REFLECTION_RIGVM
+	if (ImportsCurveMappingAsRig()) {
+		return ImportAsControlRig(Expressions);
+	}
+#endif
+
 #if REFLECTION_CURVE_EXPRESSION
 	UCurveExpressionsDataAsset* Asset = Create<UCurveExpressionsDataAsset>();
 	auto _ = Asset->MarkPackageDirty();
@@ -30,7 +139,7 @@ bool ICurveExpressionImporter::Import() {
 
 	TArray<FName> Targets;
 
-	const FString Assignments = GetAssignments(Targets);
+	const FString Assignments = GetAssignments(Expressions, Targets);
 
 	if (Assignments.IsEmpty()) {
 		FImportIssues::Report(
@@ -87,7 +196,7 @@ bool ICurveExpressionImporter::Import() {
 #endif
 }
 
-FString ICurveExpressionImporter::GetAssignments(TArray<FName>& OutTargets) {
+TArray<TSharedPtr<FJsonValue>> ICurveExpressionImporter::FetchExpressions() {
 	/* Asked for by the path the game cooked it under, the way the rest of the Cloud tools do */
 	FString FetchPath = GetAssetExport()->HasField(TEXT("Package"))
 		? GetAssetExport()->GetStringField(TEXT("Package"))
@@ -109,13 +218,17 @@ FString ICurveExpressionImporter::GetAssignments(TArray<FName>& OutTargets) {
 	const TArray<TSharedPtr<FJsonValue>>* Expressions = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("expressions"), Expressions)) {
-		return FString();
+		return {};
 	}
 
-	TArray<FString> Lines;
-	Lines.Reserve(Expressions->Num());
+	return *Expressions;
+}
 
-	for (const TSharedPtr<FJsonValue>& Value : *Expressions) {
+FString ICurveExpressionImporter::GetAssignments(const TArray<TSharedPtr<FJsonValue>>& Expressions, TArray<FName>& OutTargets) {
+	TArray<FString> Lines;
+	Lines.Reserve(Expressions.Num());
+
+	for (const TSharedPtr<FJsonValue>& Value : Expressions) {
 		const TSharedPtr<FJsonObject> Entry = Value.IsValid() ? Value->AsObject() : nullptr;
 		if (!Entry.IsValid()) continue;
 
@@ -127,8 +240,6 @@ FString ICurveExpressionImporter::GetAssignments(TArray<FName>& OutTargets) {
 		Lines.Add(FString::Printf(TEXT("%s = %s"), *Target, *Expression));
 		OutTargets.Add(FName(*Target));
 	}
-
-	UE_LOG(LogReflection, Display, TEXT("\"%s\" read %d curve expression(s)"), *GetAssetName(), Lines.Num());
 
 	return FString::Join(Lines, TEXT("\n"));
 }

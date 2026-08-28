@@ -226,7 +226,7 @@ bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurve
 
 					Key->TryGetNumberField(TEXT("Value"), Value);
 
-					Keyed[Row].Add({ Time, Value });
+					Keyed[Row].Add(MakeTuple(Time, Value));
 					Moments.Add(Time);
 				}
 			}
@@ -312,7 +312,7 @@ bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurve
 			Most = FMath::Max(Most, Frame[Column]);
 		}
 
-		if (Most <= UE_KINDA_SMALL_NUMBER) {
+		if (FMath::IsNearlyZero(Most)) {
 			Still++;
 
 			continue;

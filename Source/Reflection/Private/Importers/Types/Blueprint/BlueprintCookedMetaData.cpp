@@ -68,7 +68,11 @@ namespace {
 			if (One.Value.IsEmpty()) continue;
 
 			if (UK2Node_CustomEvent* Custom = Cast<UK2Node_CustomEvent>(Event)) {
+				/* Taking any pair at all is 5.1 and later. Before that the metadata is the handful
+				 * of fields the struct names, and the ones this knows about are set below. */
+#if UE5_1_BEYOND
 				Custom->GetUserDefinedMetaData().SetMetaData(FName(*One.Key), One.Value);
+#endif
 
 				if (One.Key == FBlueprintMetadata::MD_CallInEditor.ToString()) {
 					Custom->bCallInEditor = One.Value == TEXT("true");
@@ -198,7 +202,9 @@ int32 FBlueprintCookedMetaData::Apply(UBlueprint* Blueprint, FUObjectExportConta
 			 * back onto the function it builds. Picking out the ones known here would drop the
 			 * rest on the floor, and what a blueprint can be told about is the engine's to decide
 			 * rather than this. */
+#if UE5_1_BEYOND
 			Entered->MetaData.SetMetaData(FName(*One.Key), One.Value);
+#endif
 
 			Said++;
 		}
@@ -227,7 +233,10 @@ int32 FBlueprintCookedMetaData::Apply(UBlueprint* Blueprint, FUObjectExportConta
 		if (Given(FBlueprintMetadata::MD_CompactNodeTitle, Held)) Entered->MetaData.CompactNodeTitle = FText::FromString(Held);
 		if (Given(FBlueprintMetadata::MD_DeprecationMessage, Held)) Entered->MetaData.DeprecationMessage = Held;
 		if (Given(FBlueprintMetadata::MD_CallInEditor, Held)) Entered->MetaData.bCallInEditor = Held == TEXT("true");
+		/* Whether a function may run off the game thread is a 5.0 idea; nothing before it asks */
+#if ENGINE_UE5
 		if (Given(FBlueprintMetadata::MD_ThreadSafe, Held)) Entered->MetaData.bThreadSafe = Held == TEXT("true");
+#endif
 	}
 
 	return Said;

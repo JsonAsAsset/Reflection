@@ -49,6 +49,22 @@
 #include "K2Node_VariableGet.h"
 #include "K2Node_VariableSet.h"
 
+namespace {
+	/* One struct by name, wherever it lives.
+	 *
+	 * 5.1 gave this search a name of its own. Before that the same thing is said as a lookup in no
+	 * package in particular, which is what the newer call does underneath. */
+	UScriptStruct* FindStructAnywhere(const FString& Named) {
+		if (Named.IsEmpty()) return nullptr;
+
+#if UE5_1_BEYOND
+		return FindFirstObject<UScriptStruct>(*Named);
+#else
+		return FindObject<UScriptStruct>(ANY_PACKAGE, *Named);
+#endif
+	}
+}
+
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionBytecode, All, All);
 
 namespace {
@@ -93,8 +109,14 @@ namespace {
 		else if (Kind == TEXT("Int64Property")) OutType.PinCategory = UEdGraphSchema_K2::PC_Int64;
 		else if (Kind == TEXT("BoolProperty")) OutType.PinCategory = UEdGraphSchema_K2::PC_Boolean;
 		else if (Kind == TEXT("FloatProperty") || Kind == TEXT("DoubleProperty")) {
+			/* 5.0 folded the two into one category and put the width in the sub category. Before
+			 * that a float is its own category and there is no double to tell it from. */
+#if ENGINE_UE5
 			OutType.PinCategory = UEdGraphSchema_K2::PC_Real;
 			OutType.PinSubCategory = Kind == TEXT("FloatProperty") ? UEdGraphSchema_K2::PC_Float : UEdGraphSchema_K2::PC_Double;
+#else
+			OutType.PinCategory = UEdGraphSchema_K2::PC_Float;
+#endif
 		}
 		else if (Kind == TEXT("ByteProperty")) OutType.PinCategory = UEdGraphSchema_K2::PC_Byte;
 		else if (Kind == TEXT("NameProperty")) OutType.PinCategory = UEdGraphSchema_K2::PC_Name;
@@ -104,7 +126,7 @@ namespace {
 			FString Owner, Member;
 			SplitReference(Property.GetObject(TEXT("Struct")), Owner, Member);
 
-			UScriptStruct* Struct = FindFirstObject<UScriptStruct>(*Owner);
+			UScriptStruct* Struct = FindStructAnywhere(Owner);
 
 			if (Struct == nullptr) return false;
 
@@ -1235,7 +1257,7 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 		/* Or said as one reference, the way an older build says it */
 		ReadPropertyReference(Property, Owner, Member);
 
-		UScriptStruct* Struct = Owner.IsEmpty() ? nullptr : FindFirstObject<UScriptStruct>(*Owner);
+		UScriptStruct* Struct = Owner.IsEmpty() ? nullptr : FindStructAnywhere(Owner);
 
 		if (Held.Pin != nullptr && Struct != nullptr && !Member.IsEmpty()) {
 			/* Taking a struct apart is one node however many of its fields are wanted: reading three
@@ -1688,7 +1710,7 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 
 				if (const int32 Resumes = Held.GetInteger(TEXT("Value"), INDEX_NONE); Resumes >= 0) {
 					if (UEdGraphPin* Then = Node->FindPin(UEdGraphSchema_K2::PN_Then, EGPD_Output)) {
-						Jumps.Add({ Then, Resumes });
+						Jumps.Add(MakeTuple(Then, Resumes));
 					}
 				}
 
@@ -2215,7 +2237,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 		 * whichever thread pushed them. */
 		Flow = Node->GetThenPinGivenIndex(0);
 
-		Jumps.Add({ Node->GetThenPinGivenIndex(1), Statement.GetInteger(TEXT("PushingAddress"), -1) });
+		Jumps.Add(MakeTuple(Node->GetThenPinGivenIndex(1), Statement.GetInteger(TEXT("PushingAddress"), -1)));
 
 		Placed++;
 
@@ -2238,7 +2260,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 		if (const FValue Asked = Read(Statement.GetObject(TEXT("BooleanExpression"))); Asked.Pin != nullptr) {
 			if (UK2Node_DynamicCast* Cast = ::Cast<UK2Node_DynamicCast>(Asked.Pin->GetOwningNode()); Cast != nullptr && !Cast->IsNodePure()) {
 				if (Token == TEXT("EX_JumpIfNot")) {
-					Jumps.Add({ Cast->GetInvalidCastPin(), Statement.GetInteger(TEXT("CodeOffset"), -1) });
+					Jumps.Add(MakeTuple(Cast->GetInvalidCastPin(), Statement.GetInteger(TEXT("CodeOffset"), -1)));
 				}
 
 				/* And the run carries on the way it worked, which it already does */
@@ -2267,7 +2289,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 		Flow = Node->GetThenPin();
 
 		if (Token == TEXT("EX_JumpIfNot")) {
-			Jumps.Add({ Node->GetElsePin(), Statement.GetInteger(TEXT("CodeOffset"), -1) });
+			Jumps.Add(MakeTuple(Node->GetElsePin(), Statement.GetInteger(TEXT("CodeOffset"), -1)));
 		}
 
 		Placed++;
@@ -2276,7 +2298,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 	}
 
 	if (Token == TEXT("EX_Jump")) {
-		Jumps.Add({ Flow, Statement.GetInteger(TEXT("CodeOffset"), -1) });
+		Jumps.Add(MakeTuple(Flow, Statement.GetInteger(TEXT("CodeOffset"), -1)));
 
 		/* The run carries on wherever it was jumped to, and not here */
 		Flow = nullptr;
@@ -2760,7 +2782,7 @@ bool FBytecodeGraph::PlaceMacro(const FMacroMatch& Match) {
 
 	/* Held open either way, since an input a macro works out after it begins is wired once the
 	 * statements that work it out have been laid down, and that is true however it runs */
-	Open.Push({ &Match, Node });
+	Open.Push(MakeTuple(&Match, Node));
 
 	/* A macro that said where each of its ways out goes is not a run of statements, so the run does
 	 * not carry on into it: each way out is linked to the address it leads to, once whatever is
@@ -2769,7 +2791,7 @@ bool FBytecodeGraph::PlaceMacro(const FMacroMatch& Match) {
 	if (Match.Leads.Num() > 0) {
 		for (const TPair<FName, int32>& Lead : Match.Leads) {
 			if (UEdGraphPin* Pin = MacroPin(Node, Lead.Key, EGPD_Output)) {
-				Jumps.Add({ Pin, Lead.Value });
+				Jumps.Add(MakeTuple(Pin, Lead.Value));
 			}
 		}
 
@@ -3292,7 +3314,7 @@ int32 FBytecodeGraph::Build() {
 				if (Flow == nullptr) {
 					Flow = Out;
 				} else {
-					Jumps.Add({ Out, Address });
+					Jumps.Add(MakeTuple(Out, Address));
 				}
 
 				UE_LOG(LogReflectionBytecode, Display, TEXT("entering at %d, through \"%s\""), Address, *One.Key->GetName());

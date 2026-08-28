@@ -8,6 +8,7 @@
 /* Settings Substructures */
 #include "Types/DNASettings.h"
 #include "Types/MaterialModdingSettings.h"
+#include "Types/CurveMappingSettings.h"
 
 #include "ModdingSettings.generated.h"
 
@@ -20,6 +21,10 @@ public:
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRDnaSettings MetaHuman;
+
+	/* What a curve mapping is brought in as. */
+	UPROPERTY(EditAnywhere, DisplayName = "Curve Mapping", Config, Category = Settings)
+	ERCurveMapping CurveMapping = ERCurveMapping::DataAsset;
 };
 
 UCLASS(Config = EditorPerProjectUserSettings, DefaultConfig)

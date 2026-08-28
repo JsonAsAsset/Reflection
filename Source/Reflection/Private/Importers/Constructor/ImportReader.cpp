@@ -14,6 +14,11 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 #include "Modules/Cloud/Remote.h"
+#include "Settings/SettingsAccess.h"
+
+#if REFLECTION_RIGVM
+#include "Engine/ControlRigCompatibility.h"
+#endif
 
 bool IImportReader::ReadExportsAndImport(const TArray<TSharedPtr<FJsonValue>>& Exports, const FString& File, IImporter*& OutImporter, const bool HideNotifications, bool bUseRelativePath) {
 	/* Importers resolve references through the Cloud while they deserialize, and those requests
@@ -103,7 +108,19 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 
 	const UClass* Class = FindClassByType(Type);
-	
+
+#if REFLECTION_RIGVM
+	/* A curve mapping drawn as a rig does not need the class the game kept it in.
+	 *
+	 * That class comes with a plugin an engine may not have, and where it is missing there is
+	 * nothing here to hold the asset. What the mapping is being turned into needs none of it: the
+	 * expressions come from the Cloud and what they are drawn into is a rig. So the rig's own class
+	 * stands in and the import goes ahead. */
+	if (Class == nullptr && Type == TEXT("CurveExpressionsDataAsset") && ImportsCurveMappingAsRig()) {
+		Class = UControlRigBlueprint::StaticClass();
+	}
+#endif
+
 	if (Class == nullptr) return nullptr;
 
 	/* Check if this export can be imported */

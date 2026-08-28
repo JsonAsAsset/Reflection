@@ -24,8 +24,12 @@
 #include "UObject/SavePackage.h"
 #include "Interfaces/ITargetPlatformManagerModule.h"
 #include "Interfaces/ITargetPlatform.h"
+/* 5.1 split what a save is told about the cook it belongs to out into these. Nothing here asks
+ * for any of it, and before 5.1 there is nothing to ask. */
+#if UE5_1_BEYOND
 #include "Serialization/ArchiveCookData.h"
 #include "UObject/ArchiveCookContext.h"
+#endif
 
 DECLARE_LOG_CATEGORY_CLASS(LogBlueprintImport, All, All);
 
@@ -135,10 +139,16 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 	for (UPackage* Package : Dirty) {
 		const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
 
+		/* 5.0 gathered what a save is told into one struct. Before that it is told the same
+		 * things one argument at a time. */
+#if ENGINE_UE5
 		FSavePackageArgs SaveArgs;
 		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 
 		if (UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs)) {
+#else
+		if (UPackage::SavePackage(Package, nullptr, RF_Public | RF_Standalone, *FileName)) {
+#endif
 			Saved++;
 
 			UE_LOG(LogBlueprintImport, Display, TEXT("saved %s"), *FileName);

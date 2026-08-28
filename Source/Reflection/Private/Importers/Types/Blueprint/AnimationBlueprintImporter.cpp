@@ -970,7 +970,10 @@ void IAnimationBlueprintImporter::ReadBindings(const TSharedPtr<FJsonObject>& No
 
 			const uint32 Entry = 0x80000000u | static_cast<uint32>(*Slot);
 
-			int32 Which = Whose.FindRef(Index, INDEX_NONE);
+			/* Asked outright rather than with a fallback, which the map only takes from 5.0 */
+			const int32* Told = Whose.Find(Index);
+
+			int32 Which = Told != nullptr ? *Told : INDEX_NONE;
 
 			Key = Keys.IsValidIndex(Which) ? Keys[Which] : NodeAt(Keys, Entry, Which);
 

@@ -149,6 +149,9 @@ bool IStaticMeshImporter::Import() {
 	 *
 	 * So the stream is left where it is and the settings behind it are read instead. The mesh comes
 	 * back Nanite and is built as Nanite here, off the geometry the cook kept beside it. */
+	/* Nanite is a 5.0 idea and a mesh before that has nowhere to be told it is one. The stream is
+	 * still in the export either way; there is simply nothing here that draws it. */
+#if ENGINE_UE5
 	if (const FUObjectJsonValueExport Nanite = FUObjectJsonValueExport(GetAssetExport()).GetObject(TEXT("RenderData")).GetObject(TEXT("NaniteResources")); Nanite.JsonObject.IsValid()) {
 		if (const int32 Clusters = Nanite.GetInteger(TEXT("NumClusters"), 0); Clusters > 0) {
 			StaticMesh->NaniteSettings.bEnabled = true;
@@ -196,6 +199,7 @@ bool IStaticMeshImporter::Import() {
 			}
 		}
 	}
+#endif
 
 	/* Stops the build recomputing over the cooked screen sizes */
 	StaticMesh->bAutoComputeLODScreenSize = false;
