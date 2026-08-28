@@ -108,7 +108,12 @@ inline void SavePackage(UPackage* Package) {
 #endif
 }
 
-inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
+/* bBrowse says whether to jump the content browser to what was made.
+ *
+ * Only ever true of the asset somebody asked for. An import reaches through whatever the asset
+ * references and builds those too, and jumping to each of them walks the asset registry over every
+ * object in memory while the ones further up this same stack are still half built. */
+inline bool HandleAssetCreation(UObject* Asset, UPackage* Package, const bool bBrowse = true) {
 	{
 		/* User Failsafe.... */
 		const UPackage* AssetOutermostPackage = Asset->GetOutermost();
@@ -136,7 +141,7 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package) {
 
 	Package->FullyLoad();
 
-	BrowseToAsset(Asset);
+	if (bBrowse) BrowseToAsset(Asset);
 
 	if (UVectorFieldStatic* VectorFieldStatic = Cast<UVectorFieldStatic>(Asset)) {
 		VectorFieldStatic->Resource = nullptr;

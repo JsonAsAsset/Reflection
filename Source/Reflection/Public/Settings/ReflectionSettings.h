@@ -16,6 +16,25 @@
 extern FName GReflectionSettingsCategoryName;
 extern FName GReflectionInternalName;
 
+/* What becomes of a file that holds more than one asset.
+ *
+ * Most hold one and this decides nothing for them. Some hold a set: an HLOD proxy keeps the mesh it
+ * stands in for, the material that draws it and the texture that material samples, all under the
+ * one name, and every reference between them is written as a step inside that one file.
+ *
+ * Kept together they come out as the game keeps them, which is what those references describe, and
+ * the content browser lists them side by side regardless. Split apart each becomes a file of its
+ * own, which is easier to move one of, and leaves the references between them pointing at a file
+ * that no longer holds what they name. */
+UENUM()
+enum class ERPackagedAssets : uint8 {
+	/* The one file, holding everything it held */
+	Together UMETA(DisplayName = "Kept Together"),
+
+	/* A file each, named for the asset rather than for what it came in */
+	Separate UMETA(DisplayName = "Split Apart")
+};
+
 USTRUCT()
 struct FRSettings
 {
@@ -37,18 +56,9 @@ public:
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	FRMeshSettings Mesh;
 
-	/* Whether a file holding several assets comes out as several files.
-	 *
-	 * Most packages hold one asset and this changes nothing for them. Some hold a set: an HLOD proxy
-	 * keeps the mesh it stands in for, the material that draws it and the texture that material
-	 * samples, all under the one name, and every reference between them is written as a step inside
-	 * that one file.
-	 *
-	 * Left off they come out the way the game keeps them, in the one package, which is what those
-	 * references describe. Turned on each becomes a file of its own beside the others, which reads
-	 * more plainly in the content browser and is not what was shipped. */
-	UPROPERTY(EditAnywhere, DisplayName = "Separate Packaged Assets", Config, Category = Settings)
-	bool SeparatePackagedAssets = false;
+	/* What becomes of a file that holds more than one asset. */
+	UPROPERTY(EditAnywhere, DisplayName = "Packaged Assets", Config, Category = Settings)
+	ERPackagedAssets PackagedAssets = ERPackagedAssets::Together;
 
 	UPROPERTY(EditAnywhere, Config, Category = Settings)
 	bool SaveAssets = false;

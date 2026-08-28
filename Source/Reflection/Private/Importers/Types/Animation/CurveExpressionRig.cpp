@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Animation/CurveExpressionRig.h"
+#include "Engine/Log.h"
 
 #if REFLECTION_RIGVM
 

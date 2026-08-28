@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Constructor/Importer.h"
+#include "Importers/Constructor/Asset.h"
 
 #include "Settings/ReflectionSettings.h"
 
@@ -39,7 +40,9 @@ void IImporter::Save() const {
 bool IImporter::OnAssetCreation(UObject* Asset) const {
 	Validate(Asset);
 
-	const bool Synced = HandleAssetCreation(Asset, GetPackage());
+	/* Jumped to only when nothing is waiting on this one. A reference met partway through another
+	 * import is built by a nested run, and the browser has no business following it. */
+	const bool Synced = HandleAssetCreation(Asset, GetPackage(), FAssetUtilities::ImportDepth <= 1);
 	if (Synced) {
 		Save();
 	}

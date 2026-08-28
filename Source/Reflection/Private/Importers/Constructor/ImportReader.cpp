@@ -14,6 +14,7 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/JsonHelpers.h"
 #include "Modules/Cloud/Remote.h"
+#include "UObject/UObjectHash.h"
 #include "Settings/SettingsAccess.h"
 
 #if REFLECTION_RIGVM
@@ -269,9 +270,8 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		if (FPaths::IsRelative(File)) File = FPaths::ConvertRelativePathToFull(File);
 	}
 
-	/* Kept together unless asked otherwise, since a reference between two assets of one package is
-	 * written as a step inside that package and only resolves where they both still are */
-	const FString PackageName = GetSettings()->AssetSettings.SeparatePackagedAssets
+	/* Named for the file it came in, or for itself where they are being split apart */
+	const FString PackageName = GetSettings()->AssetSettings.PackagedAssets == ERPackagedAssets::Separate
 		? Name
 		: FPaths::GetBaseFilename(File);
 
@@ -352,8 +352,15 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		FImportIssues::Report(EImportIssue::Failed, TEXT("The importer couldn't build this asset"));
 
 		/* The package is made before the importer runs, so an import that builds nothing leaves an
-		 * empty one behind and the Content Browser shows the folder it would have lived in */
-		if (Export->Object == nullptr) {
+		 * empty one behind and the Content Browser shows the folder it would have lived in.
+		 *
+		 * Only where it is empty. A package kept together is built by several passes through here,
+		 * and one of them failing says nothing about the ones that worked: throwing the package away
+		 * then would take everything already in it along with the failure. */
+		TArray<UObject*> Held;
+		GetObjectsWithOuter(LocalPackage, Held, false);
+
+		if (Export->Object == nullptr && Held.Num() == 0) {
 			LocalPackage->SetDirtyFlag(false);
 			LocalPackage->ClearFlags(RF_Public | RF_Standalone);
 

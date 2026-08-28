@@ -154,8 +154,8 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 		AssetName = Named;
 	}
 
-	/* And it lands beside whatever else that package held, unless they are being split up */
-	const FString PackageName = Settings->AssetSettings.SeparatePackagedAssets
+	/* And it lands beside whatever else that package held, unless they are being split apart */
+	const FString PackageName = Settings->AssetSettings.PackagedAssets == ERPackagedAssets::Separate
 		? AssetName
 		: FPaths::GetBaseFilename(PackagePath);
 
@@ -189,8 +189,9 @@ bool FTextureImport::FromExport(const TSharedPtr<FJsonObject>& Export, const FSt
 	Texture->AddToRoot();
 	Package->FullyLoad();
 
-	/* Textures don't go through HandleAssetCreation, so the jump to the asset has to happen here */
-	BrowseToAsset(Texture);
+	/* Textures don't go through HandleAssetCreation, so the jump to the asset has to happen here,
+	 * and only where nothing is waiting on it further up */
+	if (FAssetUtilities::ImportDepth <= 1) BrowseToAsset(Texture);
 
 	if (Settings->AssetSettings.SaveAssets) {
 		SavePackage(Package);

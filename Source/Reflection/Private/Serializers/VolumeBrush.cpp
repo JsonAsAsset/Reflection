@@ -16,9 +16,15 @@ DECLARE_LOG_CATEGORY_CLASS(LogReflectionVolumeBrush, All, All);
 
 namespace {
 	/* Two triangles belong to the same face when they lie on the same plane. Tighter than anything
-	 * a hull is built to, and loose enough for what rounding does to one. */
+	 * a hull is built to, and loose enough for what rounding does to one.
+	 *
+	 * A unit of slack rather than a tenth, because a cooked hull is written as the numbers the
+	 * cooker arrived at and the corners of one flat face can disagree about where that face is by
+	 * a fifth of a unit. Read at a tenth they are two faces a fifth apart, and a box comes out with
+	 * seven sides, one of them a slice with no thickness. Nothing real is anywhere near: the
+	 * shortest edge any of these volumes has is two hundred units. */
 	constexpr double FaceNormalTolerance = 0.9999;
-	constexpr double FaceOffsetTolerance = 0.1;
+	constexpr double FaceOffsetTolerance = 1.0;
 
 	/* Past this many corners, reading the faces off the corners alone stops being cheap */
 	constexpr int32 MaximumHullCorners = 64;
@@ -230,8 +236,33 @@ namespace {
 
 		Hull.Corners.Reserve(Points.Num());
 
+		/* Corners that are the same corner, kept apart by rounding.
+		 *
+		 * A cooked hull is written as the numbers the cooker arrived at, and two of them standing a
+		 * tenth of a unit apart are one corner of a box said twice rather than an edge a tenth of a
+		 * unit long. The faces below are worked out from every three corners at once, and a triple
+		 * holding both halves of such a pair spans no area: the normal it gives is nothing, and the
+		 * face it would have closed goes missing along with it.
+		 *
+		 * A unit is a wide berth either way. The pairs seen are a tenth of one apart and the
+		 * shortest edge any of these volumes actually has is two hundred, so nothing real is within
+		 * two orders of magnitude of being welded by mistake. */
+		constexpr double SameCorner = 1.0;
+
 		for (const FVector& Point : Points) {
-			Hull.Corners.Add(Transform.TransformPosition(Point));
+			const FVector Placed = Transform.TransformPosition(Point);
+
+			bool bAlready = false;
+
+			for (const FVector& Kept : Hull.Corners) {
+				if (FVector::DistSquared(Kept, Placed) <= SameCorner * SameCorner) {
+					bAlready = true;
+
+					break;
+				}
+			}
+
+			if (!bAlready) Hull.Corners.Add(Placed);
 		}
 
 		/* Cooked hulls carry no triangles, so the faces come from the corners, which costs a pass
