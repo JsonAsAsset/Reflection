@@ -26,6 +26,12 @@ TMap<FString, TArray<FString>> ImportTypes::Templated = {
 		}
 	},
 	{
+		TEXT("Niagara Assets"),
+		{
+			TEXT("NiagaraEffectType"),
+		}
+	},
+	{
 		TEXT("Landscape Assets"),
 		{
 			TEXT("LandscapeGrassType"),
