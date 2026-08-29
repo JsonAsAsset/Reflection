@@ -169,6 +169,39 @@ public:
 			}
 		}
 
+		/* What the reference calls the object it wants, asked before the number it also carries.
+		 *
+		 * The two do not always agree. An asset cooked with an editor copy beside it is served as
+		 * both packages at once, and the exports arrive in the order of one while the numbers in
+		 * the reference count through the other: a validation rule set is one cooked export
+		 * followed by fourteen rules that only the editor copy has, and every rule's number is a
+		 * position in a table it is not being served from. Counted through, each reference lands on
+		 * its neighbour. The name means the same thing in both. */
+		if (FString Named; Object->TryGetStringField(TEXT("ObjectName"), Named)) {
+			const FString Leaf = GetObjectNameFromOuter(Named);
+
+			FUObjectExport* Matched = nullptr;
+
+			for (FUObjectExport* Export : Exports) {
+				if (Leaf.IsEmpty() || !Export->IsJsonValid() || Export->GetName().ToString() != Leaf) {
+					continue;
+				}
+
+				/* Two of a name, and nothing here to tell them apart, so the number has the say */
+				if (Matched != nullptr) {
+					Matched = nullptr;
+
+					break;
+				}
+
+				Matched = Export;
+			}
+
+			if (Matched != nullptr) {
+				return Matched;
+			}
+		}
+
 		const FString ObjectPath = Object->GetStringField(TEXT("ObjectPath"));
 
 		FString IndexString;
