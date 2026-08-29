@@ -29,6 +29,7 @@ TMap<FString, TArray<FString>> ImportTypes::Templated = {
 		TEXT("Niagara Assets"),
 		{
 			TEXT("NiagaraEffectType"),
+			TEXT("NiagaraDataChannelAsset"),
 		}
 	},
 	{
