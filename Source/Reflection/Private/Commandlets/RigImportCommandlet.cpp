@@ -61,6 +61,16 @@
 
 DEFINE_LOG_CATEGORY_STATIC(LogRigImportTest, Log, All);
 
+/* 5.8 moved the execute op's function index onto a base it shares with the other calls, and
+ * renamed it for what the base is about. It is the same number into the same table. */
+static uint16 GetRigVMCallableIndex(const FRigVMExecuteOp& Op) {
+#if UE5_8_BEYOND
+	return Op.CallableIndex;
+#else
+	return Op.FunctionIndex;
+#endif
+}
+
 /* What a morph actually moves, per LOD, so a rebuild that drops the deltas is visible */
 static void ReportMorphTargets(const USkeletalMesh* Mesh, const TCHAR* Prefix) {
 	for (const TObjectPtr<UMorphTarget>& MorphTarget : Mesh->GetMorphTargets()) {
@@ -94,16 +104,16 @@ static void ReportDna(USkeletalMesh* Mesh, const TCHAR* Prefix) {
 		UDNAAsset* DNAAsset = Cast<UDNAAsset>(Entry);
 		if (DNAAsset == nullptr) continue;
 
-		const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+		const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 
 		if (!Behavior.IsValid()) {
-			UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': no behavior"), Prefix, *DNAAsset->DnaFileName);
+			UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': no behavior"), Prefix, *GetDnaFileName(DNAAsset));
 
 			continue;
 		}
 
 		UE_LOG(LogRigImportTest, Display, TEXT("%s dna '%s': name %s, db %s, %d lods, %d joints, %d blend shapes, %d raw controls, %d meshes"),
-			Prefix, *DNAAsset->DnaFileName, *Behavior->GetName(), *Behavior->GetDBName(),
+			Prefix, *GetDnaFileName(DNAAsset), *Behavior->GetName(), *Behavior->GetDBName(),
 			Behavior->GetLODCount(), Behavior->GetJointCount(), Behavior->GetBlendShapeChannelCount(),
 			Behavior->GetRawControlCount(), Behavior->GetMeshCount());
 
@@ -173,7 +183,7 @@ static void ReportDnaNeutral(USkeletalMesh* Mesh) {
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(Mesh);
 	if (DNAAsset == nullptr) return;
 
-	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 	if (!Behavior.IsValid()) return;
 
 	FRigLogic RigLogic(Behavior.Get());
@@ -322,7 +332,7 @@ static void ComparePoseAssetToRig(USkeletalMesh* Mesh, const FString& PoseAssetP
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(Mesh);
 	if (DNAAsset == nullptr) return;
 
-	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 	if (!Behavior.IsValid()) return;
 
 	static const TCHAR* Wanted[] = { TEXT("jawOpen"), TEXT("browDownL"), TEXT("browRaiseInL"), TEXT("eyeBlinkL") };
@@ -536,7 +546,7 @@ static void ReportControlDirections(USkeletalMesh* Mesh, UAnimBlueprint* AnimBlu
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(Mesh);
 	if (DNAAsset == nullptr) return;
 
-	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 	if (!Behavior.IsValid()) return;
 
 	/* A handful whose direction is obvious to anyone looking at a face */
@@ -1664,8 +1674,8 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 				const FRigVMExecuteOp& Op = Code.GetOpAt<FRigVMExecuteOp>(Instruction);
 				const TArray<const FRigVMFunction*>& Functions = VM->GetFunctions();
 
-				if (Functions.IsValidIndex(Op.FunctionIndex) && Functions[Op.FunctionIndex] != nullptr) {
-					Calls.FindOrAdd(Functions[Op.FunctionIndex]->Name)++;
+				if (Functions.IsValidIndex(GetRigVMCallableIndex(Op)) && Functions[GetRigVMCallableIndex(Op)] != nullptr) {
+					Calls.FindOrAdd(Functions[GetRigVMCallableIndex(Op)]->Name)++;
 				}
 			}
 

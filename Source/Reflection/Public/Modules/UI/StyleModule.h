@@ -14,6 +14,9 @@ public:
 	/* A toolbar style with a background distinct from the Content Browser toolbar. */
 	static FName GetEmbeddedToolbarStyleName();
 
+	/* The style the reflect button itself draws with: the engine's callout toolbar, widened. */
+	static FName GetActionButtonStyleName();
+
 	/* Registers the style GetEmbeddedToolbarStyleName() names. Safe to call more than once; only
 	 * the first call does anything. */
 	static void EnsureEmbeddedToolbarStyleRegistered();

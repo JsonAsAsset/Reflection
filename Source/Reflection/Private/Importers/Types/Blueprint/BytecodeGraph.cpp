@@ -743,7 +743,7 @@ FString FBytecodeGraph::Canonical(const FUObjectJsonValueExport& Expression) {
 	FString Spelled = TEXT("{");
 
 	for (const FString& Key : Keys) {
-		const TSharedPtr<FJsonValue> Value = Expression.JsonObject->Values[Key];
+		const TSharedPtr<FJsonValue> Value = Expression.JsonObject->Values[StringToJsonKey(Key)];
 
 		Spelled += Key + TEXT(":");
 

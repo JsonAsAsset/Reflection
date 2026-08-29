@@ -14,12 +14,33 @@
 
 #include "RigLogic.h"
 #include "RigInstance.h"
+#include "DNAAsset.h"
 #include "DNAReader.h"
 #include "DNAReaderAdapter.h"
 
 #if REFLECTION_RIG_LOGIC_UE_SPACE_READER
 #include "RigLogicDNAReader.h"
 #endif
+
+/* 5.8 folded the behavior and geometry readers into one, and moved the file name aside under
+ * its old name. Both still say what they said, spelled differently. */
+inline TSharedPtr<IDNAReader> GetDnaBehaviorReader(UDNAAsset* Asset) {
+#if UE5_8_BEYOND
+	return Asset->GetDNAReader();
+#else
+	PRAGMA_DISABLE_DEPRECATION_WARNINGS
+	return Asset->GetBehaviorReader();
+	PRAGMA_ENABLE_DEPRECATION_WARNINGS
+#endif
+}
+
+inline FString& GetDnaFileName(UDNAAsset* Asset) {
+#if UE5_8_BEYOND
+	return Asset->DnaFileName_DEPRECATED;
+#else
+	return Asset->DnaFileName;
+#endif
+}
 
 inline TArrayView<const float> GetDnaNeutralJoints(const FRigLogic& RigLogic) {
 #if UE5_5_BEYOND

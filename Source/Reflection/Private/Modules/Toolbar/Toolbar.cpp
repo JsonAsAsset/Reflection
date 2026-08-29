@@ -299,7 +299,7 @@ void UReflectionToolbar::AddReflectionButtons(FToolMenuSection& Section) {
 		EUserInterfaceActionType::Button
 	));
 
-	ActionButton.StyleNameOverride = "CalloutToolbar";
+	ActionButton.StyleNameOverride = FReflectionStyle::GetActionButtonStyleName();
 
 	/* Menu dropdown */
 	const FToolMenuEntry MenuButton = Section.AddEntry(FToolMenuEntry::InitComboButton(

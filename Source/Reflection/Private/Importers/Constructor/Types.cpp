@@ -35,6 +35,7 @@ TMap<FString, TArray<FString>> ImportTypes::Templated = {
 			TEXT("NiagaraParameterDefinitions"),
 			TEXT("NiagaraValidationRuleSet"),
 			TEXT("NiagaraSimCache"),
+			TEXT("NiagaraSystemReadinessSettings"),
 		}
 	},
 	{

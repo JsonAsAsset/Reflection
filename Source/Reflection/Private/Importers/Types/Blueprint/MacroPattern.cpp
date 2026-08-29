@@ -109,7 +109,7 @@ namespace MacroReading {
 				if (Left->Values.Num() != Right->Values.Num()) return false;
 
 				for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Left->Values) {
-					const TSharedPtr<FJsonValue>* Other = Right->Values.Find(Field.Key);
+					const TSharedPtr<FJsonValue>* Other = Right->Values.Find(StringToJsonKey(Field.Key));
 
 					if (Other == nullptr || !SameValue(Field.Value, *Other)) return false;
 				}

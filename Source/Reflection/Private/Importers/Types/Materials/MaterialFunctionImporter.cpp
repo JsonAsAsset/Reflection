@@ -62,12 +62,24 @@ bool IMaterialFunctionImporter::Import() {
 	 * matters: FMaterialCachedExpressionData reaches functions nested below this one only through
 	 * IterateDependentFunctions, which iterates nothing else. Left empty, a parent material misses
 	 * every texture one level deep, then fails to compile on Compiler->Texture(). */
-	MaterialFunction->UpdateInputOutputTypes();
-	/* Neither the candidate list nor the cached expression data it feeds exist before 4.25,
-	 * where a parent material walks the function's expressions directly instead */
+	if (HasMaterialEditorOnlyData(MaterialFunction)) {
+		MaterialFunction->UpdateInputOutputTypes();
+		/* Neither the candidate list nor the cached expression data it feeds exist before 4.25,
+		 * where a parent material walks the function's expressions directly instead */
 #if !UE4_24_BELOW
-	MaterialFunction->UpdateDependentFunctionCandidates();
+		MaterialFunction->UpdateDependentFunctionCandidates();
 #endif
+	} else {
+		/* The function came out without the half of itself the editor keeps, so there is nothing
+		 * to refresh and nothing that reaches through it can be let near it */
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("The function has no editor data"),
+			FString::Printf(
+				TEXT("'%s' came out without the object its expressions live on, so it has no inputs, no outputs, and nothing that uses it can compile against it."),
+				*GetAssetName())
+		);
+	}
 
 	MaterialFunction->PreEditChange(nullptr);
 	MaterialFunction->PostEditChange();

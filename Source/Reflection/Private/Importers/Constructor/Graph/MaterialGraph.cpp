@@ -217,6 +217,15 @@ void IMaterialGraph::ClampCustomPrimitiveDataIndex(UMaterialExpression* Expressi
 
 /* Material attributes ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
+bool HasMaterialEditorOnlyData(const UObject* Object) {
+	if (Object == nullptr) return false;
+
+	const FObjectProperty* Held = FindFProperty<FObjectProperty>(Object->GetClass(), TEXT("EditorOnlyData"));
+
+	/* Nothing to ask about before the split, where the expressions are on the material itself */
+	return Held == nullptr || Held->GetObjectPropertyValue_InContainer(Object) != nullptr;
+}
+
 namespace {
 	/* The map answers for an id it holds no definition for with MP_MAX, the entry it keeps under
 	 * the name "Missing", which is what the pin ends up reading in the material editor */
@@ -319,11 +328,11 @@ namespace {
 	 * substitute stood in for was rebuilt out of several, and only the one it returned is an export */
 	void ForEachExpression(UObject* Parent, TFunctionRef<void(UMaterialExpression*)> Visit) {
 #if UE5_1_BEYOND
-		if (UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(Parent)) {
+		if (UMaterialFunction* MaterialFunction = Cast<UMaterialFunction>(Parent); MaterialFunction != nullptr && HasMaterialEditorOnlyData(MaterialFunction)) {
 			for (UMaterialExpression* Expression : MaterialFunction->GetExpressionCollection().Expressions) Visit(Expression);
 		}
 
-		if (UMaterial* Material = Cast<UMaterial>(Parent)) {
+		if (UMaterial* Material = Cast<UMaterial>(Parent); Material != nullptr && HasMaterialEditorOnlyData(Material)) {
 			for (UMaterialExpression* Expression : Material->GetEditorOnlyData()->ExpressionCollection.Expressions) Visit(Expression);
 		}
 #else

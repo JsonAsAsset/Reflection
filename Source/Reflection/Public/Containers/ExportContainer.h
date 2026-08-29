@@ -143,6 +143,34 @@ public:
 		return nullptr;
 	}
 
+	/* The one export a reference names, by the whole way down to it and nothing less.
+	 *
+	 * A name on its own is not enough to tell exports apart. An emitter holding a copy of what it
+	 * was made from has a script source under each and both are called the same, an assignment
+	 * node's own script has a third, and a graph sits under every one of them. Anything answering
+	 * by the last part of the name hands back whichever of them it met first.
+	 *
+	 * Nothing is guessed at here: where the path does not lead to an export the reference is not
+	 * naming one of ours, and it is left to be looked for wherever else it might be. */
+	FUObjectExport* FindByFullObjectName(const FString& Named) {
+		FString Whole = StripObjectOuter(Named);
+
+		Whole.ReplaceInline(TEXT("."), TEXT(":"));
+
+		TArray<FString> Parts;
+		Whole.ParseIntoArray(Parts, TEXT(":"), true);
+
+		if (Parts.Num() < 2) return FUObjectExport::EmptyExport();
+
+		TArray<FName> Segments;
+
+		for (const FString& Part : Parts) {
+			Segments.Add(FName(*Part));
+		}
+
+		return FindByTreeSegment(Segments);
+	}
+
 	FUObjectExport* GetExportByObjectPath(const TSharedPtr<FJsonObject>& Object) {
 		if (!Object.IsValid()) {
 			return FUObjectExport::EmptyExport();
@@ -178,6 +206,30 @@ public:
 		 * position in a table it is not being served from. Counted through, each reference lands on
 		 * its neighbour. The name means the same thing in both. */
 		if (FString Named; Object->TryGetStringField(TEXT("ObjectName"), Named)) {
+			/* The whole way down to it first, since a name on its own is not always the one thing
+			 * it names: a script keeps a graph per version of itself and they are copies, so the
+			 * same node name sits in each of them. */
+			FString Whole = StripObjectOuter(Named);
+
+			Whole.ReplaceInline(TEXT("."), TEXT(":"));
+
+			TArray<FString> Parts;
+			Whole.ParseIntoArray(Parts, TEXT(":"), true);
+
+			if (Parts.Num() > 1) {
+				TArray<FName> Segments;
+
+				for (const FString& Part : Parts) {
+					Segments.Add(FName(*Part));
+				}
+
+				FUObjectExport* Walked = FindByTreeSegment(Segments);
+
+				if (Walked->IsJsonValid()) {
+					return Walked;
+				}
+			}
+
 			const FString Leaf = GetObjectNameFromOuter(Named);
 
 			FUObjectExport* Matched = nullptr;

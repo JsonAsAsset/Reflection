@@ -14,6 +14,13 @@ class FMaterialSubstituteContext;
 
 /* Material Graph Handler
  * Handles everything needed to create a material graph from JSON. */
+/* Whether the half of a material or function that only the editor has is there.
+ *
+ * UE5 moved the expressions into a companion object hanging off the asset, and asks for that
+ * companion with a cast that takes nothing for an answer. One that isn't there ends the import
+ * rather than the asset, so it is asked about before anything reaches through it. */
+REFLECTION_API bool HasMaterialEditorOnlyData(const UObject* Object);
+
 class IMaterialGraph : public IImporter {
 public:
 	/* Public for the substitute context, which builds expressions and reads connections too */

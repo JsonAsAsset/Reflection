@@ -23,6 +23,7 @@
 #include "Importers/Types/Cascade/ParticleSystemDecooking.h"
 #include "Serializers/Structs/DateTimeSerializer.h"
 #include "Serializers/Structs/FallbackStructSerializer.h"
+#include "Serializers/Structs/NiagaraVariableSerializer.h"
 #include "Serializers/Structs/TimeSpanSerializer.h"
 
 #include "Settings/Runtime.h"
@@ -172,6 +173,22 @@ namespace {
  * that resolves to the wrong class lands in the property and is only discovered when something
  * calls through it, by which point the editor is already gone. */
 static void SetObjectPropertyValueChecked(const FObjectPropertyBase* ObjectProperty, void* OutValue, UObject* Object) {
+	/* A subobject the class made for itself is part of what the object is, and plenty of the engine
+	 * reaches through one without checking: a material function asked for its expressions casts
+	 * onto whatever is in EditorOnlyData and takes nothing for an answer. A reference that came
+	 * across as nothing is not a reason to take that away, so it is left where it is.
+	 *
+	 * Anything living under another object rather than under a package is one of these, however it
+	 * was made. A material function makes its editor data in PostInitProperties rather than as a
+	 * default subobject, and it is no less part of the function for that. */
+	if (Object == nullptr) {
+		const UObject* Current = ObjectProperty->GetObjectPropertyValue(OutValue);
+
+		if (Current != nullptr && Current->GetOuter() != nullptr && !Current->GetOuter()->IsA<UPackage>()) {
+			return;
+		}
+	}
+
 	if (Object != nullptr && ObjectProperty->PropertyClass != nullptr && !Object->IsA(ObjectProperty->PropertyClass)) {
 		UE_LOG(LogReflectionPropertySerializer, Warning, TEXT("Skipped '%s': '%s' is a %s, not a %s."),
 			*ObjectProperty->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *ObjectProperty->PropertyClass->GetName());
@@ -227,6 +244,13 @@ UPropertySerializer::UPropertySerializer() {
 
 	StructSerializers.Add(DateTimeStruct, MakeShared<FDateTimeSerializer>());
 	StructSerializers.Add(TimespanStruct, MakeShared<FTimeSpanSerializer>());
+
+	/* Put down against the base every kind of Niagara variable is built on, so the one written for
+	 * it stands for all of them. Asked for rather than checked, since a build without Niagara has
+	 * no variables to read and nothing to register. */
+	if (UScriptStruct* NiagaraVariableStruct = FindObject<UScriptStruct>(nullptr, TEXT("/Script/Niagara.NiagaraVariableBase"))) {
+		StructSerializers.Add(NiagaraVariableStruct, MakeShared<FNiagaraVariableSerializer>(this));
+	}
 }
 
 void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TSharedRef<FJsonValue>& JsonValue, void* OutValue, UObject* OptionalOuter) {
@@ -323,14 +347,40 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 		} else {
 			const TArray<TSharedPtr<FJsonValue>>& SetArray = NewJsonValue->AsArray();
+
+			/* Read each element beside the array rather than into it.
+			 *
+			 * An element naming an object has that object built while it is being read, and
+			 * building one comes back through here for whatever it is made of. Where that leads
+			 * round to the same array again, which it does for an asset that keeps a copy of
+			 * itself, the array is emptied and filled from the start while this is partway
+			 * through writing into it, and the place being written to is no longer there.
+			 *
+			 * So nothing of the array's is held across a read. The elements are made here, filled
+			 * here, and the array is only touched once they are all finished, which also makes
+			 * this the one that has the last word on what it holds. */
+			uint8* TempElementStorage = SetArray.Num() > 0
+				? static_cast<uint8*>(FMemory::Malloc(static_cast<SIZE_T>(GetElementSize(ElementProperty)) * SetArray.Num(),
+					ElementProperty->GetMinAlignment()))
+				: nullptr;
+
+			for (int32 i = 0; i < SetArray.Num(); i++) {
+				uint8* ElementPtr = TempElementStorage + static_cast<SIZE_T>(GetElementSize(ElementProperty)) * i;
+
+				ElementProperty->InitializeValue(ElementPtr);
+				DeserializePropertyValue(ElementProperty, SetArray[i].ToSharedRef(), ElementPtr, OptionalOuter);
+			}
+
 			ArrayHelper.EmptyValues();
 
 			for (int32 i = 0; i < SetArray.Num(); i++) {
-				const TSharedPtr<FJsonValue>& Element = SetArray[i];
-				const uint32 AddedIndex = ArrayHelper.AddValue();
-				uint8* ValuePtr = ArrayHelper.GetRawPtr(AddedIndex);
-				DeserializePropertyValue(ElementProperty, Element.ToSharedRef(), ValuePtr, OptionalOuter);
+				uint8* ElementPtr = TempElementStorage + static_cast<SIZE_T>(GetElementSize(ElementProperty)) * i;
+
+				ElementProperty->CopyCompleteValue(ArrayHelper.GetRawPtr(ArrayHelper.AddValue()), ElementPtr);
+				ElementProperty->DestroyValue(ElementPtr);
 			}
+
+			if (TempElementStorage != nullptr) FMemory::Free(TempElementStorage);
 		}
 	}
 	else if (Property->IsA<FMulticastDelegateProperty>()) {
@@ -382,12 +432,43 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 		if (NewJsonValue->Type == EJson::Object) {
 			auto JsonValueAsObject = NewJsonValue->AsObject();
 
+			/* Something of this package's own, asked for by the whole way down to it.
+			 *
+			 * A reference into the package being read names an export of it, and that export
+			 * already has its object. Left to the loader it is asked for as Package.Leaf, which
+			 * is not where a subobject lives: it answers only where nothing else in the package
+			 * shares the name, and plenty does. An emitter holding a copy of what it was made
+			 * from has a script source under each and a graph under both, and an assignment
+			 * node's own script has a third of each again. So everything nested that deeply came
+			 * back empty, and the properties they were for were left holding nothing. */
+			FString Reference;
+
+			if (ExportsContainer != nullptr && JsonValueAsObject->TryGetStringField(TEXT("ObjectName"), Reference)) {
+				FUObjectExport* Held = ExportsContainer->FindByFullObjectName(Reference);
+
+				/* Built now where it has not been yet.
+				 *
+				 * The exports are gone through in the order the package lists them, and a
+				 * reference can name one that has not been reached. Left for later it falls to
+				 * being looked for by name, and a name is not one thing: the first export called
+				 * NiagaraGraph_0 answers for all of them, so a source ends up naming a graph
+				 * belonging to another. The export is here and says what it is, so it is made. */
+				if (Held->IsJsonValid() && Held->Object == nullptr && ObjectSerializer != nullptr) {
+					ObjectSerializer->SpawnExport(Held);
+				}
+
+				if (Held->IsJsonValid() && Held->Object != nullptr) {
+					Object = Held->Object;
+				}
+			}
+
 			if (Importer == nullptr) {
 				Importer = new IImporter();
 			}
-			
+
 			Importer->SetParent(ObjectSerializer->Parent);
-			Importer->LoadExport(&JsonValueAsObject, Object);
+
+			if (!Object) Importer->LoadExport(&JsonValueAsObject, Object);
 
 			if (UObject* CurrentObject = ObjectProperty->GetObjectPropertyValue(OutValue)) {
 				if (!Object && CurrentObject->IsA(UActorComponent::StaticClass())) {
@@ -410,6 +491,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 					}
 				}
 			}
+
 
 			if (Object != nullptr) {
 				bool bIsActorComponent = Object.Get()->IsA(UActorComponent::StaticClass());
@@ -436,6 +518,18 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 					}
 				}
 			}
+
+			/* Everything below looks for the object by name, and a name is not one thing.
+			 *
+			 * A package holds one NiagaraGraph_0 under every script source it has, and one
+			 * NiagaraScriptSource_0 under every emitter and every assignment node's own script. Asked
+			 * for by the last part of the name, or by that and its outer's last part, the first of them
+			 * answers for all of them.
+			 *
+			 * That is a last resort for a reference nothing else could place, and it was running on
+			 * every reference: one placed correctly by the whole way down to it was then looked up
+			 * again by name and quietly replaced with a namesake. */
+			if (Object != nullptr) return;
 
 			FString ObjectName = JsonValueAsObject->GetStringField(TEXT("ObjectName"));
 			FString ObjectPath = JsonValueAsObject->GetStringField(TEXT("ObjectPath"));
@@ -847,8 +941,23 @@ void UPropertySerializer::DeserializeStruct(UScriptStruct* Struct, const TShared
 
 FStructSerializer* UPropertySerializer::GetStructSerializer(const UScriptStruct* Struct) const {
 	check(Struct);
-	TSharedPtr<FStructSerializer> const* StructSerializer = StructSerializers.Find(Struct);
-	return StructSerializer && ensure(StructSerializer->IsValid()) ? StructSerializer->Get() : FallbackStructSerializer.Get();
+
+	/* One put down for a struct stands for everything built on it, so a serializer written for a
+	 * Niagara variable serves the four kinds of variable that derive from it without each having
+	 * to be named. The struct itself is asked first, so anything with one of its own still wins. */
+	for (const UStruct* Walk = Struct; Walk != nullptr; Walk = Walk->GetSuperStruct()) {
+		const UScriptStruct* AsScriptStruct = Cast<UScriptStruct>(Walk);
+
+		if (AsScriptStruct == nullptr) continue;
+
+		if (TSharedPtr<FStructSerializer> const* StructSerializer = StructSerializers.Find(const_cast<UScriptStruct*>(AsScriptStruct))) {
+			if (ensure(StructSerializer->IsValid())) {
+				return StructSerializer->Get();
+			}
+		}
+	}
+
+	return FallbackStructSerializer.Get();
 }
 
 #if UE5_2_BEYOND

@@ -77,8 +77,14 @@ public class Reflection : ModuleRules {
 		 * itself. Older engines hand the DNA straight to RigLogic and let the node do the axes. So
 		 * anything evaluating the rig outside the node has to know which of the two it is looking
 		 * at, or it reads every rotation and every sideways offset the wrong way round. */
-		var bUeSpaceReader = bRigLogic && File.Exists(Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic",
-			"Source", "RigLogicModule", "Public", "RigLogicDNAReader.h"));
+		var ueSpaceReaderHeader = Path.Combine(EngineDirectory, "Plugins", "Animation", "RigLogic",
+			"Source", "RigLogicModule", "Public", "RigLogicDNAReader.h");
+
+		/* 5.8 leaves the header where it was and marks the reader obsolete, saying the DNA goes
+		 * straight in again. It no longer answers everything a reader is asked for either, so it
+		 * cannot be built at all, and its presence alone stops meaning anything. */
+		var bUeSpaceReader = bRigLogic && File.Exists(ueSpaceReaderHeader)
+			&& !File.ReadAllText(ueSpaceReaderHeader).Contains("is obsolete");
 
 		PublicDefinitions.Add("REFLECTION_RIG_LOGIC_UE_SPACE_READER=" + (bUeSpaceReader ? "1" : "0"));
 
@@ -168,6 +174,13 @@ public class Reflection : ModuleRules {
 			"Slate",
 			"SlateCore",
 			"MaterialEditor",
+
+			/* SObjectPropertyEntryBox and the rest of the editor's asset pickers */
+			"PropertyEditor",
+
+			/* The node classes a Niagara graph is made of, which live beside the editor rather
+			 * than in Niagara itself and are not loaded unless something asks for them */
+			"NiagaraEditor",
 			"Landscape",
 			"AssetTools",
 			"EditorStyle",
@@ -256,15 +269,6 @@ public class Reflection : ModuleRules {
 
 				/* UAnimGraphNode_RigLogic, which is how the node is put in a graph to test it */
 				"RigLogicDeveloper"
-			});
-		}
-
-		/* A build may carry work of its own beside the module. What that work needs comes with it,
-		 * so nothing here is asked of a build that hasn't got it. */
-		if (Directory.Exists(Path.Combine(ModuleDirectory, "Extensions"))) {
-			PrivateDependencyModuleNames.AddRange(new[] {
-				/* SObjectPropertyEntryBox and the rest of the editor's asset pickers */
-				"PropertyEditor"
 			});
 		}
 

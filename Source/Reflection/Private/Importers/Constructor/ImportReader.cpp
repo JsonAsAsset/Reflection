@@ -241,7 +241,25 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	 * an offline font holds its texture pages exactly so and those are built here today, with
 	 * their contents fetched as they are. Nothing would rebuild them if this stopped offering them,
 	 * and what came out instead would be the empty subobject this went to the trouble of curing. */
-	if (Type == TEXT("FontFace") && Container->Find(Export->GetOuter())->IsJsonValid()) {
+	/* A Niagara script kept inside something is part of it in the same way.
+	 *
+	 * An emitter owns the five scripts it runs and a system the two it runs, and they only mean
+	 * anything as its subobjects: the emitter's own import makes them and hangs them off the
+	 * version it exposes. Offered here as well they come out again as assets of their own, in
+	 * packages beside the emitter, and the emitter is then left holding nothing where its scripts
+	 * should be. Its PostLoad reads straight through those and takes the editor with it.
+	 *
+	 * A module or function script is a package of its own and has no outer here, so it still
+	 * arrives the ordinary way.
+	 *
+	 * So is an emitter kept inside another. An emitter that was made from a second one keeps a
+	 * copy of what it was made from under itself, and that copy is the same shape as any emitter,
+	 * so offered here it is taken as an asset and everything the outer one is made of is built
+	 * under the copy instead. The outer emitter then comes out with no scripts, no renderers and
+	 * no graph source, and its PostLoad reads through the last of those. */
+	static const TArray<FString> HeldByTheirOuter = { TEXT("FontFace"), TEXT("NiagaraScript"), TEXT("NiagaraEmitter") };
+
+	if (HeldByTheirOuter.Contains(Type) && Container->Find(Export->GetOuter())->IsJsonValid()) {
 		return nullptr;
 	}
 

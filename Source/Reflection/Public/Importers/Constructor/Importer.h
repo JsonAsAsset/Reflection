@@ -155,6 +155,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 
 	ObjectPath = ToEditorPackagePath(ObjectPath);
 
+
 	/* Try to load object using the object path and the object name combined */
 	TObjectPtr<T> LoadedObject = LoadObjectByPath<T>(ObjectPath + "." + ObjectName);
 
@@ -214,6 +215,7 @@ void IImporter::LoadExport(const TSharedPtr<FJsonObject>* PackageIndex, TObjectP
 	if (!Object) {
 		Object = DownloadWrapper(LoadedObject, ObjectType, ObjectName, ObjectPath);
 	}
+
 }
 
 template <typename T>

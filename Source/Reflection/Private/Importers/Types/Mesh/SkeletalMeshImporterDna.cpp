@@ -338,7 +338,7 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 		SkeletalMesh->AddAssetUserData(DNAAsset);
 	}
 
-	DNAAsset->DnaFileName = SkeletalMesh->GetName() + TEXT(".dna");
+	GetDnaFileName(DNAAsset) = SkeletalMesh->GetName() + TEXT(".dna");
 	DNAAsset->SetBehaviorReader(Behavior);
 
 	/* The cook names the mesh's DNA user data by a class this engine does not have: newer RigLogic
@@ -486,7 +486,7 @@ bool ISkeletalMeshImporter::AlignBindPoseToDna(USkeletalMesh* SkeletalMesh) {
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(SkeletalMesh);
 	if (DNAAsset == nullptr) return false;
 
-	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 	if (!Behavior.IsValid()) return false;
 
 	USkeleton* Skeleton = SkeletalMesh->GetSkeleton();
@@ -644,7 +644,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	UDNAAsset* DNAAsset = USkelMeshDNAUtils::GetMeshDNA(SkeletalMesh);
 	if (DNAAsset == nullptr) return nullptr;
 
-	const TSharedPtr<IDNAReader> Behavior = DNAAsset->GetBehaviorReader();
+	const TSharedPtr<IDNAReader> Behavior = GetDnaBehaviorReader(DNAAsset);
 	if (!Behavior.IsValid()) return nullptr;
 
 	USkeleton* Skeleton = SkeletalMesh->GetSkeleton();

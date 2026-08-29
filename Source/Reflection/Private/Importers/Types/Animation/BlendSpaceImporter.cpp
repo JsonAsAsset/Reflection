@@ -9,6 +9,33 @@
 #include "Animation/BlendSpaceBase.h"
 #else
 #include "Animation/BlendSpace.h"
+
+/* Points the sample already sitting at a place at the animation the export named there.
+ *
+ * 5.8 dropped the one call that did both halves and left the two it was made of, so the sample is
+ * looked for here and replaced by its index. The comparison is the engine's own: a sample stands
+ * at a point, and a point is somewhere already taken or it is not. */
+static bool SetSampleAnimation(UBlendSpace* BlendSpace, UAnimSequence* Animation, const FVector& SampleValue) {
+#if UE5_8_BEYOND
+	const TArray<FBlendSample>& Samples = BlendSpace->GetBlendSamples();
+
+	for (int32 Index = 0; Index < Samples.Num(); Index++) {
+		const FVector& Standing = Samples[Index].SampleValue;
+
+		if (!FMath::IsNearlyEqual(Standing.X, SampleValue.X, static_cast<FVector::FReal>(UE_KINDA_SMALL_NUMBER))
+			|| !FMath::IsNearlyEqual(Standing.Y, SampleValue.Y, static_cast<FVector::FReal>(UE_KINDA_SMALL_NUMBER))
+			|| !FMath::IsNearlyEqual(Standing.Z, SampleValue.Z, static_cast<FVector::FReal>(UE_KINDA_SMALL_NUMBER))) {
+			continue;
+		}
+
+		return BlendSpace->ReplaceSampleAnimation(Index, Animation);
+	}
+
+	return false;
+#else
+	return BlendSpace->UpdateSampleAnimation(Animation, SampleValue);
+#endif
+}
 #endif
 
 UObject* IBlendSpaceImporter::CreateAsset(UObject* CreatedAsset) {
@@ -214,7 +241,7 @@ void IBlendSpaceImporter::ResolveEmptySamples(UReflectionBlendSpace* BlendSpace)
 			continue;
 		}
 
-		if (BlendSpace->UpdateSampleAnimation(Animation, SampleValue)) {
+		if (SetSampleAnimation(BlendSpace, Animation, SampleValue)) {
 			Resolved++;
 		}
 	}
