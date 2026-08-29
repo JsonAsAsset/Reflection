@@ -6,6 +6,7 @@
 #include "Importers/Constructor/Importer.h"
 #include "Serializers/ObjectSerializer.h"
 #include "UObject/TextProperty.h"
+#include "Misc/Base64.h"
 
 /* Struct Serializers */
 #include "Distributions.h"
@@ -309,14 +310,27 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 	} else if (ArrayProperty) {
 		FProperty* ElementProperty = ArrayProperty->Inner;
 		FScriptArrayHelper ArrayHelper(ArrayProperty, OutValue);
-		const TArray<TSharedPtr<FJsonValue>>& SetArray = NewJsonValue->AsArray();
-		ArrayHelper.EmptyValues();
 
-		for (int32 i = 0; i < SetArray.Num(); i++) {
-			const TSharedPtr<FJsonValue>& Element = SetArray[i];
-			const uint32 AddedIndex = ArrayHelper.AddValue();
-			uint8* ValuePtr = ArrayHelper.GetRawPtr(AddedIndex);
-			DeserializePropertyValue(ElementProperty, Element.ToSharedRef(), ValuePtr, OptionalOuter);
+		/* Raw bytes come across written out as base64, which is the only way an array ever arrives
+		 * as a string. Read as a list of numbers it comes out empty and the property is left
+		 * holding nothing, which is a value silently gone rather than a value read wrongly. */
+		if (TArray<uint8> Bytes; NewJsonValue->Type == EJson::String && ElementProperty->IsA<FByteProperty>()
+			&& FBase64::Decode(NewJsonValue->AsString(), Bytes)) {
+			ArrayHelper.EmptyAndAddUninitializedValues(Bytes.Num());
+
+			if (Bytes.Num() > 0) {
+				FMemory::Memcpy(ArrayHelper.GetRawPtr(0), Bytes.GetData(), Bytes.Num());
+			}
+		} else {
+			const TArray<TSharedPtr<FJsonValue>>& SetArray = NewJsonValue->AsArray();
+			ArrayHelper.EmptyValues();
+
+			for (int32 i = 0; i < SetArray.Num(); i++) {
+				const TSharedPtr<FJsonValue>& Element = SetArray[i];
+				const uint32 AddedIndex = ArrayHelper.AddValue();
+				uint8* ValuePtr = ArrayHelper.GetRawPtr(AddedIndex);
+				DeserializePropertyValue(ElementProperty, Element.ToSharedRef(), ValuePtr, OptionalOuter);
+			}
 		}
 	}
 	else if (Property->IsA<FMulticastDelegateProperty>()) {

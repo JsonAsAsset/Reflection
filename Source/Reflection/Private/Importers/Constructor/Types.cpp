@@ -30,6 +30,11 @@ TMap<FString, TArray<FString>> ImportTypes::Templated = {
 		{
 			TEXT("NiagaraEffectType"),
 			TEXT("NiagaraDataChannelAsset"),
+			TEXT("NiagaraAssetTagDefinitions"),
+			TEXT("NiagaraParameterCollectionInstance"),
+			TEXT("NiagaraParameterDefinitions"),
+			TEXT("NiagaraValidationRuleSet"),
+			TEXT("NiagaraSimCache"),
 		}
 	},
 	{

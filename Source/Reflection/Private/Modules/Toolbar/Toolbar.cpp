@@ -320,7 +320,7 @@ void UReflectionToolbar::AddReflectionButtons(FToolMenuSection& Section) {
 }
 
 void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
-#if ENGINE_UE5
+#if 0
 	/* Adds the Cloud button to the toolbar */
 	FToolMenuEntry& ActionButton = Section.AddEntry(FToolMenuEntry::InitToolBarButton(
 		"ReflectionCloud",
