@@ -9,13 +9,14 @@
 #include "Animation/BlendSpaceBase.h"
 #else
 #include "Animation/BlendSpace.h"
+#endif
 
 /* Points the sample already sitting at a place at the animation the export named there.
  *
  * 5.8 dropped the one call that did both halves and left the two it was made of, so the sample is
  * looked for here and replaced by its index. The comparison is the engine's own: a sample stands
  * at a point, and a point is somewhere already taken or it is not. */
-static bool SetSampleAnimation(UBlendSpace* BlendSpace, UAnimSequence* Animation, const FVector& SampleValue) {
+static bool SetSampleAnimation(UReflectionBlendSpace* BlendSpace, UAnimSequence* Animation, const FVector& SampleValue) {
 #if UE5_8_BEYOND
 	const TArray<FBlendSample>& Samples = BlendSpace->GetBlendSamples();
 
@@ -36,7 +37,6 @@ static bool SetSampleAnimation(UBlendSpace* BlendSpace, UAnimSequence* Animation
 	return BlendSpace->UpdateSampleAnimation(Animation, SampleValue);
 #endif
 }
-#endif
 
 UObject* IBlendSpaceImporter::CreateAsset(UObject* CreatedAsset) {
 #if ENGINE_UE5

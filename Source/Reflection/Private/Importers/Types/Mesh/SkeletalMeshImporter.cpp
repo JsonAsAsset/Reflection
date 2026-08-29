@@ -29,17 +29,30 @@
 #include "Engine/SkinnedAssetCommon.h"
 #endif
 
-/* 4.25 put the mesh's reference skeleton, its materials and its imported data behind accessors.
- * Before that they are members, and the imported data belongs to the LOD model rather than to the
- * mesh, so the same questions are asked of a different object. */
+/* The mesh's own properties and its imported data went behind accessors at different versions, so
+ * they are asked for separately rather than under one branch.
+ *
+ * 4.27 is where the reference skeleton, the materials, the skeleton and the min LOD stopped being
+ * members. 4.26 is where the imported data stopped belonging to the LOD model and became the
+ * mesh's, which is why an engine can want the members below and the accessors above at once. */
 namespace {
-#if UE4_25_BELOW
+#if UE4_27_AND_UE5
+	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->SetRefSkeleton(Value); }
+	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
+	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->SetSkeleton(Value); }
+	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->SetMinLod(Value); }
+	/* 5.0 made the array's element a TObjectPtr, so what comes back is deduced rather than named.
+	 * Every caller only counts them, and both spellings count the same. */
+	decltype(auto) MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->GetMorphTargets(); }
+#else
 	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->RefSkeleton = Value; }
 	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->Materials = Value; }
 	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->Skeleton = Value; }
 	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->MinLod = Value; }
 	const TArray<UMorphTarget*>& MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->MorphTargets; }
+#endif
 
+#if UE4_25_BELOW
 	FSkeletalMeshLODModel* MeshLodModel(const USkeletalMesh* Mesh, const int32 Lod) {
 		FSkeletalMeshModel* Model = Mesh->GetImportedModel();
 
@@ -60,14 +73,6 @@ namespace {
 		if (FSkeletalMeshLODModel* LodModel = MeshLodModel(Mesh, Lod)) LodModel->RawSkeletalMeshBulkData.SaveRawMesh(In);
 	}
 #else
-	void SetMeshRefSkeleton(USkeletalMesh* Mesh, const FReferenceSkeleton& Value) { Mesh->SetRefSkeleton(Value); }
-	void SetMeshMaterials(USkeletalMesh* Mesh, const TArray<FSkeletalMaterial>& Value) { Mesh->SetMaterials(Value); }
-	void SetMeshSkeleton(USkeletalMesh* Mesh, USkeleton* Value) { Mesh->SetSkeleton(Value); }
-	void SetMeshMinLod(USkeletalMesh* Mesh, const FPerPlatformInt& Value) { Mesh->SetMinLod(Value); }
-	/* 5.0 made the array's element a TObjectPtr, so what comes back is deduced rather than named.
-	 * Every caller only counts them, and both spellings count the same. */
-	decltype(auto) MeshMorphTargets(const USkeletalMesh* Mesh) { return Mesh->GetMorphTargets(); }
-
 	bool IsMeshLodImportedDataEmpty(const USkeletalMesh* Mesh, const int32 Lod) { return Mesh->IsLODImportedDataEmpty(Lod); }
 	void LoadMeshLodImportedData(const USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& Out) { Mesh->LoadLODImportedData(Lod, Out); }
 	void SaveMeshLodImportedData(USkeletalMesh* Mesh, const int32 Lod, FSkeletalMeshImportData& In) { Mesh->SaveLODImportedData(Lod, In); }

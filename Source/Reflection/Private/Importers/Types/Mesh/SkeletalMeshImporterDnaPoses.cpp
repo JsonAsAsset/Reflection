@@ -28,12 +28,12 @@
 #include "Utilities/JsonHelpers.h"
 
 namespace {
-	/* 4.26 is where the mesh's members went behind accessors */
+	/* 4.27 is where the mesh's members went behind accessors */
 	USkeleton* PoseMeshSkeleton(USkeletalMesh* Mesh) {
-#if UE4_25_BELOW
-		return Mesh->Skeleton;
-#else
+#if UE4_27_AND_UE5
 		return Mesh->GetSkeleton();
+#else
+		return Mesh->Skeleton;
 #endif
 	}
 

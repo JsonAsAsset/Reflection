@@ -396,7 +396,7 @@ static TArray<FColor> RepaintOverrideColors(UStaticMesh* StaticMesh, const int32
 
 	if (StaticMesh == nullptr || Painted.Num() == 0) return Repainted;
 
-	FStaticMeshRenderData* RenderData = StaticMesh->GetRenderData();
+	FStaticMeshRenderData* RenderData = GetStaticMeshRenderData(StaticMesh);
 
 	if (RenderData == nullptr || !RenderData->LODResources.IsValidIndex(LodIndex)) return Repainted;
 

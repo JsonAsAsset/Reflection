@@ -527,6 +527,14 @@ inline UBodySetup* GetBodySetup(const UStaticMesh* Mesh) {
 #endif
 }
 
+inline FStaticMeshRenderData* GetStaticMeshRenderData(UStaticMesh* Mesh) {
+#if UE4_27_AND_UE5
+	return Mesh->GetRenderData();
+#else
+	return Mesh->RenderData.Get();
+#endif
+}
+
 inline UClass* FindClassByType(const FString& Type) {
 #if UE5_1_BEYOND
 	UClass* Class = FindFirstObject<UClass>(*Type);

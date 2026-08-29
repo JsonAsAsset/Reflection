@@ -59,6 +59,25 @@ namespace {
 
 		return Export->JsonObject->TryGetArrayField(TEXT("Pins"), Listed) ? Listed : nullptr;
 	}
+
+#if WITH_EDITORONLY_DATA
+	/* The graph a function call node names.
+	 *
+	 * UE4 declares the node MinimalAPI, so the call that answers this is there to read and not
+	 * there to link against. Walked by hand instead, the same two steps the engine takes: the
+	 * script the node names, and the graph its source holds. */
+	const UNiagaraGraph* CalledGraphOf(const UNiagaraNodeFunctionCall* Call) {
+#if ENGINE_UE4
+		if (Call->FunctionScript == nullptr) return nullptr;
+
+		const UNiagaraScriptSource* Source = Cast<UNiagaraScriptSource>(Call->FunctionScript->GetSource());
+
+		return Source != nullptr ? Source->NodeGraph : nullptr;
+#else
+		return Call->GetCalledGraph();
+#endif
+	}
+#endif
 }
 
 void FNiagaraGraphs::Rebuild(FUObjectExportContainer* Container, UPackage* Package,
@@ -256,7 +275,7 @@ void FNiagaraGraphs::Rebuild(FUObjectExportContainer* Container, UPackage* Packa
 
 		if (Call == nullptr) continue;
 
-		const UNiagaraGraph* Called = Call->GetCalledGraph();
+		const UNiagaraGraph* Called = CalledGraphOf(Call);
 
 		/* A call naming nothing is one the engine leaves alone */
 		if (Called == nullptr) continue;

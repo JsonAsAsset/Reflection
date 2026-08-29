@@ -23,14 +23,14 @@
 #include "MeshUtilities.h"
 #endif
 
-/* 4.25 put the reference skeleton and the colour flag behind accessors */
+/* 4.27 put the materials and the colour flag behind accessors */
 namespace {
-#if UE4_25_BELOW
-	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->bHasVertexColors = Value; }
-	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->Materials; }
-#else
+#if UE4_27_AND_UE5
 	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->SetHasVertexColors(Value); }
 	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->GetMaterials(); }
+#else
+	void SetMeshHasVertexColors(USkeletalMesh* Mesh, const bool Value) { Mesh->bHasVertexColors = Value; }
+	const TArray<FSkeletalMaterial>& MeshMaterials(const USkeletalMesh* Mesh) { return Mesh->Materials; }
 #endif
 
 	/* UE5 named the axis constants. The same vectors are spelled out here so both engines read the
@@ -310,7 +310,13 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		 * here the way an importer of that era does it: the same points, wedges, faces and
 		 * influences, handed straight to the mesh builder. The imported data is kept alongside so
 		 * anything that later asks the LOD what it was made from still has an answer. */
+		/* 4.26 moved the imported data off the LOD model and onto the mesh, one version before the
+		 * mesh learned to build a LOD out of it. */
+#if UE4_25_BELOW
 		ImportedModel->LODModels[LodIndex].RawSkeletalMeshBulkData.SaveRawMesh(ImportData);
+#else
+		SkeletalMesh->SaveLODImportedData(LodIndex, ImportData);
+#endif
 
 		TArray<FVector> LodPoints;
 		TArray<SkeletalMeshImportData::FMeshWedge> LodWedges;
@@ -330,7 +336,13 @@ int32 TMeshGeometry::RebuildLodModels(USkeletalMesh* SkeletalMesh, const TShared
 		BuildOptions.bComputeTangents = false;
 		BuildOptions.bRemoveDegenerateTriangles = false;
 
-		if (!MeshUtilities.BuildSkeletalMesh(ImportedModel->LODModels[LodIndex], RefSkeleton, LodInfluences, LodWedges, LodFaces, LodPoints, LodPointToRawMap, BuildOptions)) {
+		/* 4.26 asks for the mesh's name as well, which it puts in front of anything it warns about */
+		if (!MeshUtilities.BuildSkeletalMesh(
+			ImportedModel->LODModels[LodIndex],
+#if !UE4_25_BELOW
+			SkeletalMesh->GetName(),
+#endif
+			RefSkeleton, LodInfluences, LodWedges, LodFaces, LodPoints, LodPointToRawMap, BuildOptions)) {
 			continue;
 		}
 
