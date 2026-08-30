@@ -85,6 +85,11 @@ static bool CanOpenCloudMenu() {
 static FSlateIcon GetValidationIcon() {
 	return FSlateIcon(FAppStyle::GetAppStyleSetName(), "Icons.Validate");
 }
+
+/* The same one the tools menu carried while it was a submenu */
+static FSlateIcon GetAssetToolsIcon() {
+	return FSlateIcon(FAppStyle::GetAppStyleSetName(), "DeveloperTools.MenuIcon");
+}
 #endif
 
 void UReflectionToolbar::Register() {
@@ -267,10 +272,26 @@ void UReflectionToolbar::RegisterMainMenu() {
 		false,
 		GetValidationIcon()
 	);
+
+	/* Next to Validation, and for the same reason: it acts on what is already in the project
+	 * rather than on anything being reflected, so the reflect button's own dropdown was never
+	 * where anyone would look for it */
+	Section.AddSubMenu(
+		"AssetTools",
+		FText::FromString("Asset Tools"),
+		FText::FromString("Tools that work over the assets already in this project"),
+		FNewToolMenuChoice(FNewMenuDelegate::CreateStatic(&UReflectionToolbar::PopulateAssetToolsMenu)),
+		false,
+		GetAssetToolsIcon()
+	);
 }
 
 void UReflectionToolbar::PopulateValidationMenu(FMenuBuilder& MenuBuilder) {
 	IValidationDropdownBuilder().Build(MenuBuilder);
+}
+
+void UReflectionToolbar::PopulateAssetToolsMenu(FMenuBuilder& MenuBuilder) {
+	IToolsDropdownBuilder().Build(MenuBuilder);
 }
 #endif
 
@@ -621,7 +642,13 @@ TSharedRef<SWidget> UReflectionToolbar::CreateMenuDropdown() {
 
 	TArray<TSharedRef<IParentDropdownBuilder>> Dropdowns = {
 		MakeShared<IVersioningDropdownBuilder>(),
+
+		/* UE5 carries these on the menu bar, alongside Validation. UE4 has no Reflection menu up
+		 * there to hang them off, so the dropdown stays the way to them. */
+#if ENGINE_UE4
 		MakeShared<IToolsDropdownBuilder>(),
+#endif
+
 		MakeShared<IGeneralDropdownBuilder>(),
 		MakeShared<IDonateDropdownBuilder>()
 	};

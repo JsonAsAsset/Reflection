@@ -11,51 +11,26 @@
 #include "Engine/EngineUtilities.h"
 
 #include "Modules/Toolbar/Tools/ClearImportData.h"
-#include "Modules/Toolbar/Tools/FixUpAssetData.h"
 #include "Utilities/Dialog.h"
 
+/* The entries themselves, with nothing wrapped around them: on UE5 this menu is the Asset Tools
+ * item on the editor's own menu bar, and a submenu of the same name inside it would only be a
+ * second door onto the same room. */
 void IToolsDropdownBuilder::Build(FMenuBuilder& MenuBuilder) const {
 	MenuBuilder.BeginSection("ReflectionAssetToolsSection", FText::FromString("Tools"));
 
-	MenuBuilder.AddSubMenu(
-		FText::FromString("Asset Tools"),
-		FText::FromString("Tools bundled"),
-		FNewMenuDelegate::CreateLambda([this](FMenuBuilder& InnerMenuBuilder) {
-			InnerMenuBuilder.BeginSection("ReflectionToolsSection", FText::FromString("Tools"));
-			{
-				InnerMenuBuilder.AddMenuEntry(
-					FText::FromString("Clear Import Data"),
-					FText::FromString(""),
-					FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
+	MenuBuilder.AddMenuEntry(
+		FText::FromString("Clear Import Data"),
+		FText::FromString("Strips the record of the file an asset was imported from, across the folder selected in the Content Browser"),
+		FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
 
-					FUIAction(
-						FExecuteAction::CreateLambda([] {
-							TToolClearImportData* Tool = new TToolClearImportData();
-							Tool->Execute();
-						})
-					),
-					NAME_None
-				);
-
-				InnerMenuBuilder.AddMenuEntry(
-					FText::FromString("Fixup Asset Data"),
-					FText::FromString(""),
-					FSlateIcon(FAppStyle::GetAppStyleSetName(), "LevelEditor.BspMode"),
-
-					FUIAction(
-						FExecuteAction::CreateLambda([] {
-							TToolFixUpAssetData* Tool = new TToolFixUpAssetData();
-							Tool->Execute();
-						})
-					),
-					NAME_None
-				);
-
-				InnerMenuBuilder.EndSection();
-			}
-		}),
-		false,
-		FSlateIcon(FAppStyle::GetAppStyleSetName(), "DeveloperTools.MenuIcon")
+		FUIAction(
+			FExecuteAction::CreateLambda([] {
+				TToolClearImportData Tool;
+				Tool.Execute();
+			})
+		),
+		NAME_None
 	);
 
 	MenuBuilder.EndSection();

@@ -39,6 +39,9 @@ public:
 
 	/* Fills the Validation menu with everything in the validator registry */
 	static void PopulateValidationMenu(FMenuBuilder& MenuBuilder);
+
+	/* Fills the Asset Tools menu with the tools that work over what is already in the project */
+	static void PopulateAssetToolsMenu(FMenuBuilder& MenuBuilder);
 #endif
 
 	/* Adds Reflect to the Content Browser's right click menu, so an asset already in the project
