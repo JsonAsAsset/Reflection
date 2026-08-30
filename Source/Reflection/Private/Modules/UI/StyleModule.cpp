@@ -24,7 +24,7 @@
 #if ENGINE_UE5
 /* Kept either side of the reflect button's 20px icon, in place of the 8px the callout button style
  * comes with */
-static constexpr float ActionButtonSidePadding = 23.0f;
+static constexpr float ActionButtonSidePadding = 28.0f;
 
 /* Sides replaced, top and bottom left where the style had them: the button is only meant to grow
  * across, and its height is what lines it up with everything else on the toolbar */
