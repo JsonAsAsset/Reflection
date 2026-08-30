@@ -704,23 +704,36 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 	/* One frame per control, and a first frame with the rig standing still for the rest of them to
 	 * be measured against */
 	/* What to bake: the older head's poses where the mapping could be had and that was asked for,
-	 * otherwise one pose per control the rig names */
+	 * the rig's own controls where they were, and both where both were */
 	TArray<FDnaPosePlan> Plan;
 
-	const bool bBackported =
-		GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy &&
-		BuildBackportedPosePlan(Behavior, Plan);
+	const ERDnaCurves Curves = GetModdingAssetSettings().MetaHuman.Curves;
 
-	if (!bBackported) {
-		Plan.Reserve(ControlCount);
+	const bool bBackported = WantsLegacyCurves(Curves) && BuildBackportedPosePlan(Behavior, Plan);
+
+	/* The rig's own controls, one pose each. Wanted whenever the older head's poses were not had,
+	 * and beside them where both were asked for: an idle names a control rather than one of the
+	 * older head's curves, so a head baked with only those has nothing for it to drive. */
+	if (!bBackported || KeepsRigControls(Curves)) {
+		Plan.Reserve(Plan.Num() + ControlCount);
+
+		/* A pose the backport already named, which happens where a curve of the older head is
+		 * spelled the same as a control of this one. One pose to a name, or the asset has two
+		 * entries answering to it and whichever is asked for is whichever was reached first. */
+		TSet<FName> Standing;
+
+		for (const FDnaPosePlan& Pose : Plan) {
+			Standing.Add(Pose.Name);
+		}
 
 		for (int32 Control = 0; Control < ControlCount; ++Control) {
 			/* A control is named with a dot between its group and itself, which reads as a path
 			 * everywhere a curve name is typed */
-			Plan.Add({
-				FName(*Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_"))),
-				{ { static_cast<uint16>(Control), 1.0f } }
-			});
+			const FName Named = FName(*Behavior->GetRawControlName(static_cast<uint16>(Control)).Replace(TEXT("."), TEXT("_")));
+
+			if (Standing.Contains(Named)) continue;
+
+			Plan.Add({ Named, { { static_cast<uint16>(Control), 1.0f } } });
 		}
 	}
 

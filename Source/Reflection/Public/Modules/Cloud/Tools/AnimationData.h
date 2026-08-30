@@ -54,9 +54,10 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 		FloatCurves = Container->GetAssetExport()->GetObjectField(TEXT("CompressedCurveData"))->GetArrayField(TEXT("FloatCurves"));
 	}
 
-	/* Said in the names an older head drives, where that was asked for */
-	if (GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy) {
-		FReflectionLegacyCurves::Rewrite(FloatCurves, Container->GetAssetName());
+	/* Said in the names an older head drives, where that was asked for, beside the rig's own
+	 * controls where both were */
+	if (const ERDnaCurves Curves = GetModdingAssetSettings().MetaHuman.Curves; WantsLegacyCurves(Curves)) {
+		FReflectionLegacyCurves::Rewrite(FloatCurves, Container->GetAssetName(), KeepsRigControls(Curves));
 	}
 
 	int32 UnnamedCurves = 0;

@@ -27,6 +27,9 @@ struct REFLECTION_API FReflectionLegacyCurves {
 
 	/* Rewrites the curves in place, and says whether it did. Left alone where there is no mapping to
 	 * read, or nothing in the animation the mapping knows a control by. Curves that are not controls
-	 * at all are carried through untouched. */
-	static bool Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurves, const FString& Named);
+	 * at all are carried through untouched.
+	 *
+	 * Keeping the controls leaves both sets on the animation, for a head that answers to one of
+	 * them and a set of idles written against the other. */
+	static bool Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurves, const FString& Named, bool bKeepControls = false);
 };

@@ -136,7 +136,7 @@ bool FReflectionLegacyCurves::Read(TMap<FName, TArray<FLegacyCurveDrive>>& OutBy
 	return OutByCurve.Num() > 0;
 }
 
-bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurves, const FString& Named) {
+bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurves, const FString& Named, const bool bKeepControls) {
 	if (FloatCurves.Num() == 0) return false;
 
 	TMap<FName, TArray<FLegacyCurveDrive>> ByCurve;
@@ -351,14 +351,22 @@ bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurve
 		Kept.Add(MakeShared<FJsonValueObject>(Curve));
 	}
 
-	/* The rig's own controls go, since what is wanted is an animation an older head can play and
-	 * leaving both would drive the face twice over */
+	/* The rig's own controls go where the animation is meant for the older head alone, since a head
+	 * that answers to both would be driven twice over. Kept where both were asked for: they are
+	 * what anything already written against this rig names, and a head without them ignores them. */
+	if (bKeepControls) {
+		for (const TSharedPtr<FJsonObject>& Row : Rows) {
+			Kept.Add(MakeShared<FJsonValueObject>(Row));
+		}
+	}
+
 	FloatCurves = MoveTemp(Kept);
 
 	UE_LOG(LogReflection, Display,
-		TEXT("\"%s\" read %d of this rig's control(s) back into %d of an older head's curve(s) over %d frame(s)%s"),
+		TEXT("\"%s\" read %d of this rig's control(s) back into %d of an older head's curve(s) over %d frame(s)%s, and %s"),
 		*Named, Height, Width - Still, Times.Num(),
-		Still > 0 ? *FString::Printf(TEXT(", %d the animation never moved"), Still) : TEXT(""));
+		Still > 0 ? *FString::Printf(TEXT(", %d the animation never moved"), Still) : TEXT(""),
+		bKeepControls ? TEXT("kept the controls beside them") : TEXT("wrote them in place of the controls"));
 
 	return true;
 }

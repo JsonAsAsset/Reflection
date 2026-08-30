@@ -563,8 +563,59 @@ bool ISkeletalMeshImporter::Import() {
 
 		/* The faces as morph targets, which is the one shape that stacks the way the rig does */
 		if (GetModdingAssetSettings().MetaHuman.Bake == ERDnaBake::MorphTargets) {
-			const int32 Built = BuildMorphTargets(SkeletalMesh,
-				Cloud::Export::GetDnaMorphsBlocking(FetchPath, GetModdingAssetSettings().MetaHuman.Curves == ERDnaCurves::Legacy));
+			const ERDnaCurves Curves = GetModdingAssetSettings().MetaHuman.Curves;
+
+			/* Both sets of names in the one payload.
+			 *
+			 * The Cloud answers one set per request, so where both were asked for they arrive as
+			 * two. They cannot be built one after the other: a build is what makes the morph
+			 * targets and it makes them out of what the imported data names, which every build
+			 * empties first. A second set written that way takes the first one's place instead of
+			 * standing beside it, and the mesh comes out holding only whichever was written last. */
+			TArray<TSharedPtr<FJsonValue>> Faces;
+
+			TSet<FString> Named;
+
+			const auto Gather = [&Faces, &Named](const TSharedPtr<FJsonObject>& Answer) {
+				const TArray<TSharedPtr<FJsonValue>>* Morphs = nullptr;
+
+				if (!Answer.IsValid() || !Answer->TryGetArrayField(TEXT("morphs"), Morphs)) return false;
+
+				for (const TSharedPtr<FJsonValue>& One : *Morphs) {
+					const TSharedPtr<FJsonObject> Morph = One.IsValid() ? One->AsObject() : nullptr;
+
+					FString Name;
+
+					if (!Morph.IsValid() || !Morph->TryGetStringField(TEXT("Name"), Name) || Name.IsEmpty()) continue;
+
+					/* One shape to a name. The two sets can spell a face the same, and the mesh
+					 * would then hold it twice with whichever was reached first answering for it. */
+					if (Named.Contains(Name)) continue;
+
+					Named.Add(Name);
+					Faces.Add(One);
+				}
+
+				return true;
+			};
+
+			const bool bHadLegacy = !WantsLegacyCurves(Curves) || Gather(Cloud::Export::GetDnaMorphsBlocking(FetchPath, true));
+			const bool bHadControls = !KeepsRigControls(Curves) || Gather(Cloud::Export::GetDnaMorphsBlocking(FetchPath, false));
+
+			if (!bHadLegacy || !bHadControls) {
+				FImportIssues::Report(
+					EImportIssue::Data,
+					TEXT("Only one set of the face's names came back"),
+					FString::Printf(
+						TEXT("Both were asked for and the %s didn't arrive, so the face is on the mesh under one set of names and anything driving it by the other finds nothing."),
+						bHadLegacy ? TEXT("rig's own controls") : TEXT("older head's curves"))
+				);
+			}
+
+			const TSharedPtr<FJsonObject> Payload = MakeShared<FJsonObject>();
+			Payload->SetArrayField(TEXT("morphs"), Faces);
+
+			const int32 Built = BuildMorphTargets(SkeletalMesh, Payload);
 
 			bBakedPoses = Built > 0;
 

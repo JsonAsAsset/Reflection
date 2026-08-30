@@ -109,7 +109,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	 * poses have to be evaluated there rather than added up from single control ones here. */
 	const FRDnaSettings& DnaSettings = GetModdingAssetSettings().MetaHuman;
 
-	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, DnaSettings.Curves == ERDnaCurves::Legacy);
+	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetDnaPosesBlocking(FetchPath, WantsLegacyCurves(DnaSettings.Curves));
 
 	if (!Response.IsValid()) {
 		FImportIssues::Report(
@@ -137,6 +137,29 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 	const TArray<TSharedPtr<FJsonValue>>* ParentsJson = nullptr;
 	Response->TryGetArrayField(TEXT("parents"), ParentsJson);
 
+	/* Both sets of names, where both were asked for.
+	 *
+	 * The Cloud answers one set per request, so the rig's own controls are asked for separately and
+	 * their poses added to the ones already here. It is the same head either way, so the joints and
+	 * the tree above them are the same answer and only the poses differ. */
+	TArray<TSharedPtr<FJsonValue>> Poses = *PosesJson;
+
+	if (KeepsRigControls(DnaSettings.Curves) && WantsLegacyCurves(DnaSettings.Curves)) {
+		const TSharedPtr<FJsonObject> Controls = Cloud::Export::GetDnaPosesBlocking(FetchPath, false);
+
+		const TArray<TSharedPtr<FJsonValue>>* ControlPoses = nullptr;
+
+		if (Controls.IsValid() && Controls->TryGetArrayField(TEXT("poses"), ControlPoses)) {
+			Poses.Append(*ControlPoses);
+		} else {
+			FImportIssues::Report(
+				EImportIssue::Data,
+				TEXT("The rig's own poses didn't come back"),
+				TEXT("Both sets of names were asked for and only the older head's arrived, so the face plays for that head and anything written against this rig's controls finds nothing to drive.")
+			);
+		}
+	}
+
 	/* Every pose, read before any track is made, because which joints the face actually drives is
 	 * what decides which bones get one */
 	TArray<FString> PoseLabels;
@@ -144,7 +167,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 
 	TSet<int32> DrivenJoints;
 
-	for (const TSharedPtr<FJsonValue>& Entry : *PosesJson) {
+	for (const TSharedPtr<FJsonValue>& Entry : Poses) {
 		const TSharedPtr<FJsonObject> Pose = Entry->AsObject();
 		if (!Pose.IsValid()) continue;
 
@@ -170,7 +193,15 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 
 		/* A control is named with a dot between its group and itself, which reads as a path
 		 * everywhere a curve name is typed */
-		PoseLabels.Add(Pose->GetStringField(TEXT("name")).Replace(TEXT("."), TEXT("_")));
+		const FString Label = Pose->GetStringField(TEXT("name")).Replace(TEXT("."), TEXT("_"));
+
+		/* Where both sets were asked for they can name the same pose, which happens for a curve of
+		 * the older head spelled the same as a control of this one. One pose to a name, or the
+		 * asset holds two answering to it and whichever is asked for is whichever was reached
+		 * first. The set asked for first is the one kept. */
+		if (PoseLabels.Contains(Label)) continue;
+
+		PoseLabels.Add(Label);
 		PoseDeltas.Add(MoveTemp(Deltas));
 	}
 
@@ -212,7 +243,7 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAssetFromCloud(USkeletalMesh* Skel
 
 	/* Asked for and not got, which is the mapping not covering this head rather than the head
 	 * being wrong */
-	if (DnaSettings.Curves == ERDnaCurves::Legacy && !Response->GetBoolField(TEXT("backported"))) {
+	if (WantsLegacyCurves(DnaSettings.Curves) && !Response->GetBoolField(TEXT("backported"))) {
 		FImportIssues::Report(
 			EImportIssue::Data,
 			TEXT("The legacy curve mapping didn't resolve"),

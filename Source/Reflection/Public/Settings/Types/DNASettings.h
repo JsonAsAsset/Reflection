@@ -27,8 +27,21 @@ enum class ERDnaCurves : uint8 {
 	Controls UMETA(DisplayName = "Rig Controls"),
 
 	/* The names an older head already drives, so a face built for the newer rig can be played by the older one */
-	Legacy UMETA(DisplayName = "Legacy Head")
+	Legacy UMETA(DisplayName = "Legacy Head"),
+
+	/* Both sets side by side. */
+	Both UMETA(DisplayName = "Rig Controls and Legacy Head")
 };
+
+/* Whether the older head's names are wanted at all */
+inline bool WantsLegacyCurves(const ERDnaCurves Curves) {
+	return Curves != ERDnaCurves::Controls;
+}
+
+/* Whether the rig's own controls are kept beside them */
+inline bool KeepsRigControls(const ERDnaCurves Curves) {
+	return Curves != ERDnaCurves::Legacy;
+}
 
 /* Settings for the face rig a MetaHuman head carries. */
 USTRUCT()
