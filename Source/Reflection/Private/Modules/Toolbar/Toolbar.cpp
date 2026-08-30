@@ -27,6 +27,7 @@
 #include "Modules/Toolbar/Dropdowns/ToolsDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/VersioningDropdownBuilder.h"
 #include "Settings/Static.h"
+#include "Utilities/ContentBrowser.h"
 #include "Utilities/Dialog.h"
 #include "Widgets/Layout/SBox.h"
 
@@ -226,8 +227,9 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 		TEXT("PathViewFolderOptions"),
 		FText::FromString("Opens Reflect Folder listing what the Cloud has under this folder."),
 		[] {
-			/* The dialog fills itself in from the Content Browser selection */
-			TToolImportFolder().Execute();
+			/* Named here rather than left to the dialog to work out: this way in is the folder that
+			 * was clicked, so nothing else - the clipboard included - gets a say in it */
+			TToolImportFolder().Execute(GetSelectedContentBrowserFolder());
 		}
 	);
 }
@@ -619,7 +621,6 @@ TSharedRef<SWidget> UReflectionToolbar::CreateMenuDropdown() {
 
 	TArray<TSharedRef<IParentDropdownBuilder>> Dropdowns = {
 		MakeShared<IVersioningDropdownBuilder>(),
-		MakeShared<IParentDropdownBuilder>(),
 		MakeShared<IToolsDropdownBuilder>(),
 		MakeShared<IGeneralDropdownBuilder>(),
 		MakeShared<IDonateDropdownBuilder>()

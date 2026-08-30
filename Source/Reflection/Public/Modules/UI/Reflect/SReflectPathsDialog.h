@@ -9,6 +9,19 @@
 class SEditableTextBox;
 class SWindow;
 
+/* What the dialog was shut with */
+enum class EReflectPathsChoice : uint8 {
+	/* Nothing to run: the window was closed, or the queue was empty */
+	Cancelled,
+
+	/* Run what is queued */
+	Reflect,
+
+	/* Reflect a folder instead. The queue goes with the window, which is what makes this a
+	 * different answer rather than a second one. */
+	Folder
+};
+
 /* Builds up a list of asset paths to reflect, one Cloud knows about rather than one in this
  * project.
  *
@@ -23,12 +36,14 @@ public:
 
 	void Construct(const FArguments& InArgs);
 
-	/* Runs the dialog modally. True when the user chose to reflect, with OutPaths holding
-	 * everything queued. */
-	static bool Open(TArray<FString>& OutPaths);
+	/* Runs the dialog modally. Reflect is the answer that fills OutPaths with everything queued,
+	 * Folder the one that fills OutFolder with whatever the box was left holding; the rest leave
+	 * both alone. */
+	static EReflectPathsChoice Open(TArray<FString>& OutPaths, FString& OutFolder);
 
 private:
 	FReply OnAddClicked();
+	FReply OnFolderClicked();
 	FReply OnReflectClicked();
 
 	void OnPathCommitted(const FText& NewText, ETextCommit::Type CommitType);
@@ -56,5 +71,8 @@ private:
 
 	TArray<TSharedPtr<FString>> Rows;
 
+	/* Which of the two buttons that close the window was pressed. Neither, and the window was shut
+	 * some other way, which is neither answer. */
 	bool Accepted = false;
+	bool FolderRequested = false;
 };

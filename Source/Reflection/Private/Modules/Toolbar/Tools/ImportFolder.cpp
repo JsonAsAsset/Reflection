@@ -10,18 +10,18 @@
 #include "Engine/EngineUtilities.h"
 #include "Utilities/Dialog.h"
 
-void TToolImportFolder::Execute() {
+bool TToolImportFolder::Execute(const FString& InitialFolder, const bool bUseClipboard, const bool bCanGoBack) {
 	if (!Cloud::Status::IsOpened()) {
 		SpawnPrompt("Reflect Folder", "Cloud isn't running, so there is nowhere to fetch from.");
 
-		return;
+		return false;
 	}
 
 	/* Nothing here goes through the reflect button, so this is where the project name gets fetched */
 	if (!Cloud::EnsureMetadataBlocking()) {
 		SpawnPrompt("Reflect Folder", "Cloud didn't say which project it has loaded, so paths can't be resolved.");
 
-		return;
+		return false;
 	}
 
 	/* The dialog does the listing itself: a folder is however big it is, and every asset in it is
@@ -29,8 +29,14 @@ void TToolImportFolder::Execute() {
 	TArray<FString> Paths;
 	TSet<FString> AllowedTypes;
 
-	if (!SReflectFolderDialog::Open(Paths, AllowedTypes)) {
-		return;
+	const EReflectFolderChoice Choice = SReflectFolderDialog::Open(Paths, AllowedTypes, InitialFolder, bUseClipboard, bCanGoBack);
+
+	if (Choice == EReflectFolderChoice::Back) {
+		return true;
+	}
+
+	if (Choice != EReflectFolderChoice::Reflect) {
+		return false;
 	}
 
 	int32 Reflected = 0;
@@ -82,4 +88,6 @@ void TToolImportFolder::Execute() {
 	);
 
 	FImportIssues::Finish();
+
+	return false;
 }

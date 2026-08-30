@@ -39,7 +39,7 @@ static FString ToFolderPath(FString Path) {
 	return Path;
 }
 
-bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder) {
+EReflectFolderChoice SReflectFolderDialog::Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder, const bool bUseClipboard, const bool bCanGoBack) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("Title", "Reflect Folder"))
 		.ClientSize(FVector2D(720.0f, 480.0f))
@@ -52,19 +52,27 @@ bool SReflectFolderDialog::Open(TArray<FString>& OutPaths, TSet<FString>& OutAll
 		SAssignNew(Dialog, SReflectFolderDialog)
 		.ParentWindow(Window)
 		.InitialFolder(InitialFolder)
+		.UseClipboard(bUseClipboard)
+		.CanGoBack(bCanGoBack)
 	);
 
 	const IMainFrameModule& MainFrameModule = IMainFrameModule::Get();
 	FSlateApplication::Get().AddModalWindow(Window, MainFrameModule.GetParentWindow());
 
+	/* Asked for before the listing is looked at: what was found is not what the caller does next
+	 * when the answer is to go back */
+	if (Dialog->BackRequested) {
+		return EReflectFolderChoice::Back;
+	}
+
 	if (!Dialog->Accepted) {
-		return false;
+		return EReflectFolderChoice::Cancelled;
 	}
 
 	OutPaths = Dialog->Paths;
 	OutAllowedTypes = Dialog->AllowedTypes;
 
-	return OutPaths.Num() > 0;
+	return OutPaths.Num() > 0 ? EReflectFolderChoice::Reflect : EReflectFolderChoice::Cancelled;
 }
 
 void SReflectFolderDialog::Construct(const FArguments& InArgs) {
@@ -145,6 +153,20 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		[
 			SNew(SHorizontalBox)
 
+			/* The way out that is not a way back to nothing, so it sits at the far end from the
+			 * button that runs and ahead of what only qualifies it */
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(0.0f, 0.0f, 6.0f, 0.0f))
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("Back", "Back"))
+				.ToolTipText(LOCTEXT("BackTooltip", "Back to the reflect window. Nothing listed here comes with it."))
+				.Visibility(this, &SReflectFolderDialog::GetBackVisibility)
+				.OnClicked(this, &SReflectFolderDialog::OnBackClicked)
+			]
+
 			+ SHorizontalBox::Slot()
 			.AutoWidth()
 			.VAlign(VAlign_Center)
@@ -178,14 +200,16 @@ void SReflectFolderDialog::Construct(const FArguments& InArgs) {
 		]
 	];
 
+	CanGoBack = InArgs._CanGoBack;
+
 	FString SelectedFolder = InArgs._InitialFolder;
 
-	/* A folder that was picked out beats whatever happens to be on the clipboard. */
-	if (SelectedFolder.IsEmpty()) {
-		SelectedFolder = GetSelectedContentBrowserFolder();
-	}
-
-	if (SelectedFolder.IsEmpty()) {
+	/* Nothing was handed in, so what was copied is the best guess at what was meant. Right-clicking
+	 * a folder names one and lands in the branch above, which is what keeps the clipboard out of
+	 * the one way in that already knows the answer. The Content Browser's selection is not read
+	 * here either: it belongs to the button that offers it, where it can be seen before it is
+	 * taken. */
+	if (SelectedFolder.IsEmpty() && InArgs._UseClipboard) {
 		const FString Clipboard = GetClipboard().TrimStartAndEnd();
 
 		if (IsAssetPathLike(Clipboard)) {
@@ -212,6 +236,16 @@ void SReflectFolderDialog::OnFolderCommitted(const FText& NewText, const ETextCo
 	if (CommitType == ETextCommit::OnEnter) {
 		Find();
 	}
+}
+
+FReply SReflectFolderDialog::OnBackClicked() {
+	BackRequested = true;
+
+	if (ParentWindow.IsValid()) {
+		ParentWindow->RequestDestroyWindow();
+	}
+
+	return FReply::Handled();
 }
 
 FReply SReflectFolderDialog::OnFindClicked() {
@@ -287,6 +321,10 @@ bool SReflectFolderDialog::CanFind() const {
 
 bool SReflectFolderDialog::CanReflect() const {
 	return Paths.Num() > 0;
+}
+
+EVisibility SReflectFolderDialog::GetBackVisibility() const {
+	return CanGoBack ? EVisibility::Visible : EVisibility::Collapsed;
 }
 
 bool SReflectFolderDialog::HasSelectedFolder() const {

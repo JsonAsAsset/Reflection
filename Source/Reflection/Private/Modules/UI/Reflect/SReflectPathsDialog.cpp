@@ -44,6 +44,18 @@ static bool IsPath(const FString& Line) {
 	return IsAssetPathLike(Line);
 }
 
+/* Whether a line names a folder rather than an asset in one.
+ *
+ * Only the trailing slash counts. A path is otherwise no help: /Game/Foo/Bar is a package as
+ * readily as it is the folder one sits in, and guessing wrong queues something that cannot come
+ * down, or skips something that could. */
+static bool IsFolderPath(const FString& Line) {
+	FString Path = StripObjectOuter(Line.TrimStartAndEnd());
+	Path.ReplaceInline(TEXT("\\"), TEXT("/"));
+
+	return Path.EndsWith(TEXT("/"));
+}
+
 static bool IsPathList(const FString& Text) {
 	TArray<FString> Lines;
 	Text.ParseIntoArrayLines(Lines);
@@ -63,7 +75,7 @@ static bool IsPathList(const FString& Text) {
 	return Paths > 0;
 }
 
-bool SReflectPathsDialog::Open(TArray<FString>& OutPaths) {
+EReflectPathsChoice SReflectPathsDialog::Open(TArray<FString>& OutPaths, FString& OutFolder) {
 	const TSharedRef<SWindow> Window = SNew(SWindow)
 		.Title(LOCTEXT("Title", "Reflection"))
 		.ClientSize(FVector2D(720.0f, 480.0f))
@@ -80,8 +92,18 @@ bool SReflectPathsDialog::Open(TArray<FString>& OutPaths) {
 	const IMainFrameModule& MainFrameModule = IMainFrameModule::Get();
 	FSlateApplication::Get().AddModalWindow(Window, MainFrameModule.GetParentWindow());
 
+	/* Asked for before anything queued here is looked at: the queue is not what the caller does
+	 * next when the answer is a folder */
+	if (Dialog->FolderRequested) {
+		/* Whatever was in the box goes with it, so the folder window opens on what was on screen
+		 * rather than working out a folder of its own all over again */
+		OutFolder = Dialog->PathBox->GetText().ToString().TrimStartAndEnd();
+
+		return EReflectPathsChoice::Folder;
+	}
+
 	if (!Dialog->Accepted) {
-		return false;
+		return EReflectPathsChoice::Cancelled;
 	}
 
 	OutPaths.Reset();
@@ -92,7 +114,7 @@ bool SReflectPathsDialog::Open(TArray<FString>& OutPaths) {
 		}
 	}
 
-	return OutPaths.Num() > 0;
+	return OutPaths.Num() > 0 ? EReflectPathsChoice::Reflect : EReflectPathsChoice::Cancelled;
 }
 
 void SReflectPathsDialog::Construct(const FArguments& InArgs) {
@@ -163,13 +185,33 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 		/* Footer ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 		+ SVerticalBox::Slot()
 		.AutoHeight()
-		.HAlign(HAlign_Right)
 		.Padding(FMargin(8.0f, 0.0f, 8.0f, 8.0f))
 		[
-			SNew(SButton)
-			.Text(this, &SReflectPathsDialog::GetReflectText)
-			.IsEnabled(this, &SReflectPathsDialog::CanReflect)
-			.OnClicked(this, &SReflectPathsDialog::OnReflectClicked)
+			SNew(SHorizontalBox)
+
+			/* Away from the run, at the other end of the footer: it leaves for another window
+			 * rather than doing anything to this one */
+			+ SHorizontalBox::Slot()
+			.AutoWidth()
+			.VAlign(VAlign_Center)
+			[
+				SNew(SButton)
+				.Text(LOCTEXT("Folder", "Folder"))
+				.ToolTipText(LOCTEXT("FolderTooltip", "Reflect a folder of the game files instead. This closes, and the folder window takes over."))
+				.OnClicked(this, &SReflectPathsDialog::OnFolderClicked)
+			]
+
+			+ SHorizontalBox::Slot()
+			.FillWidth(1.0f)
+			.HAlign(HAlign_Right)
+			.VAlign(VAlign_Center)
+			.Padding(FMargin(6.0f, 0.0f, 0.0f, 0.0f))
+			[
+				SNew(SButton)
+				.Text(this, &SReflectPathsDialog::GetReflectText)
+				.IsEnabled(this, &SReflectPathsDialog::CanReflect)
+				.OnClicked(this, &SReflectPathsDialog::OnReflectClicked)
+			]
 		]
 	];
 
@@ -177,7 +219,12 @@ void SReflectPathsDialog::Construct(const FArguments& InArgs) {
 	 * Whatever else was copied since is not, so nothing goes in unless all of it is paths. */
 	const FString Clipboard = GetClipboard();
 
-	if (IsPathList(Clipboard)) {
+	/* A folder is as likely to be what was copied, and it is not something the queue can hold: it
+	 * names a listing to ask Cloud for, not an asset to fetch. It goes in the box, where Folder can
+	 * take it on and Add is still there for anyone who meant it as a path after all. */
+	if (IsAssetPathLike(Clipboard) && IsFolderPath(Clipboard)) {
+		PathBox->SetText(FText::FromString(Clipboard.TrimStartAndEnd()));
+	} else if (IsPathList(Clipboard)) {
 		AddPaths(Clipboard);
 	}
 
@@ -194,6 +241,18 @@ void SReflectPathsDialog::OnPathCommitted(const FText& NewText, const ETextCommi
 
 FReply SReflectPathsDialog::OnAddClicked() {
 	AddFromBox();
+
+	return FReply::Handled();
+}
+
+FReply SReflectPathsDialog::OnFolderClicked() {
+	/* Shut rather than left open behind the folder window: a queue that cannot be run is worse
+	 * than no queue, and the folder window carries its own */
+	FolderRequested = true;
+
+	if (ParentWindow.IsValid()) {
+		ParentWindow->RequestDestroyWindow();
+	}
 
 	return FReply::Handled();
 }

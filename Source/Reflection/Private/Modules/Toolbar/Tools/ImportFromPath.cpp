@@ -9,6 +9,7 @@
 #include "Importers/Types/Texture/TextureTypes.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
+#include "Modules/Toolbar/Tools/ImportFolder.h"
 #include "Modules/UI/Reflect/SReflectPathsDialog.h"
 #include "Engine/EngineUtilities.h"
 #include "Utilities/Dialog.h"
@@ -29,8 +30,31 @@ void TToolImportFromPath::Execute() {
 
 	TArray<FString> Paths;
 
-	if (!SReflectPathsDialog::Open(Paths)) {
-		return;
+	/* The two windows hand back and forth, so this goes round rather than opening one inside the
+	 * other: however many times they are bounced between, only one of each is ever up */
+	for (;;) {
+		FString Folder;
+
+		const EReflectPathsChoice Choice = SReflectPathsDialog::Open(Paths, Folder);
+
+		/* The dialog has already shut itself by this point, so the folder one opens into the space
+		 * it left rather than on top of it */
+		if (Choice == EReflectPathsChoice::Folder) {
+			TToolImportFolder Tool;
+
+			/* Back out of that one comes round to this one again */
+			if (Tool.Execute(Folder, /* bUseClipboard */ true, /* bCanGoBack */ true)) {
+				continue;
+			}
+
+			return;
+		}
+
+		if (Choice != EReflectPathsChoice::Reflect) {
+			return;
+		}
+
+		break;
 	}
 
 	int32 Reflected = 0;

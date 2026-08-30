@@ -12,5 +12,12 @@
  * tool runs. */
 class TToolImportFolder : public TToolBase {
 public:
-	void Execute();
+	/* InitialFolder is what the dialog opens on. bUseClipboard lets an empty one fall back to
+	 * whatever was copied, which is what the reflect dialog hands over with and what right-clicking
+	 * a folder does not: that names its own folder. bCanGoBack offers the way back to the window
+	 * this was opened from, so only the reflect dialog passes it.
+	 *
+	 * True when that way back was the one taken, which is the reflect dialog's cue to open again.
+	 * Nothing was reflected in that case. */
+	bool Execute(const FString& InitialFolder = FString(), bool bUseClipboard = false, bool bCanGoBack = false);
 };
