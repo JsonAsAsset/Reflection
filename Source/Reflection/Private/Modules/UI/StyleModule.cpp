@@ -24,12 +24,21 @@
 #if ENGINE_UE5
 /* Kept either side of the reflect button's 20px icon, in place of the 8px the callout button style
  * comes with */
-static constexpr float ActionButtonSidePadding = 18.0f;
+static constexpr float ActionButtonSidePadding = 23.0f;
 
 /* Sides replaced, top and bottom left where the style had them: the button is only meant to grow
  * across, and its height is what lines it up with everything else on the toolbar */
 static FMargin WithSidePadding(const FMargin& Padding, const float Sides) {
 	return FMargin(Sides, Padding.Top, Sides, Padding.Bottom);
+}
+
+static FButtonStyle WithWiderSides(const FButtonStyle& Button, const float Sides) {
+	FButtonStyle Widened = Button;
+
+	Widened.SetNormalPadding(WithSidePadding(Button.NormalPadding, Sides));
+	Widened.SetPressedPadding(WithSidePadding(Button.PressedPadding, Sides));
+
+	return Widened;
 }
 #endif
 
@@ -103,13 +112,14 @@ void FReflectionStyle::EnsureEmbeddedToolbarStyleRegistered() {
 	FToolBarStyle ActionButtonStyle = CalloutToolbarStyle;
 
 	/* Widened through the button's own padding rather than the toolbar's ButtonPadding, which only
-	 * spaces the button off its neighbours and leaves the button itself the size it was */
-	FButtonStyle WidenedButton = ActionButtonStyle.ButtonStyle;
-
-	WidenedButton.SetNormalPadding(WithSidePadding(WidenedButton.NormalPadding, ActionButtonSidePadding));
-	WidenedButton.SetPressedPadding(WithSidePadding(WidenedButton.PressedPadding, ActionButtonSidePadding));
-
-	ActionButtonStyle.SetButtonStyle(WidenedButton);
+	 * spaces the button off its neighbours and leaves the button itself the size it was.
+	 *
+	 * Both button styles get it. The dropdown that follows the button is a simple combo box, which
+	 * MultiBox reads as that button's options rather than as an entry standing on its own: the two
+	 * draw as one joined pill, and the button half is handed SettingsButtonStyle in place of
+	 * ButtonStyle. Widening only the latter is worth nothing while the dropdown is there. */
+	ActionButtonStyle.SetButtonStyle(WithWiderSides(ActionButtonStyle.ButtonStyle, ActionButtonSidePadding));
+	ActionButtonStyle.SetSettingsButtonStyle(WithWiderSides(ActionButtonStyle.SettingsButtonStyle, ActionButtonSidePadding));
 
 	StyleInstance->Set(GetActionButtonStyleName(), ActionButtonStyle);
 

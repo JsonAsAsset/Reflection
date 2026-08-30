@@ -103,7 +103,6 @@ void UReflectionToolbar::Register() {
 		FToolMenuSection& Section = Menu->FindOrAddSection(GReflectionName);
 
 		AddReflectionButtons(Section);
-		Section.AddSeparator(NAME_None);
 		AddCloudButtons(Section);
 	} else {
 		static const FName EmbeddedToolbarName("Reflection.EmbeddedToolbar");
@@ -125,7 +124,6 @@ void UReflectionToolbar::Register() {
 		FToolMenuSection& EmbeddedSection = EmbeddedToolbar->FindOrAddSection("ReflectionEmbeddedSection");
 
 		AddReflectionButtons(EmbeddedSection);
-		EmbeddedSection.AddSeparator(NAME_None);
 		AddCloudButtons(EmbeddedSection);
 
 		FToolMenuSection& Section = Menu->FindOrAddSection("New");
@@ -321,6 +319,12 @@ void UReflectionToolbar::AddReflectionButtons(FToolMenuSection& Section) {
 
 void UReflectionToolbar::AddCloudButtons(FToolMenuSection& Section) {
 #if 0
+	/* Divides these from the reflect button. It belongs to them rather than sitting in the caller:
+	 * a slim horizontal toolbar lays its blocks out in a plain box that keeps a separator even when
+	 * it is the last one, and this one's brush is the same recessed colour as the toolbar behind
+	 * it, so with nothing after it, it reads as empty space off the right edge. */
+	Section.AddSeparator(NAME_None);
+
 	/* Adds the Cloud button to the toolbar */
 	FToolMenuEntry& ActionButton = Section.AddEntry(FToolMenuEntry::InitToolBarButton(
 		"ReflectionCloud",
