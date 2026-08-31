@@ -775,10 +775,20 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			RemapBreakMaterialAttributesOutput(static_cast<FExpressionInput*>(OutValue));
 		}
 		
-		/* If there's a missing distribution, create it from the lookup table */
 		if (IsStructPropertyADistribution(StructProperty)) {
 			if (FRawDistribution* RawDistribution = static_cast<FRawDistribution*>(OutValue)) {
 				const bool IsFloat = IsFloatDistribution(StructProperty);
+
+				const TSharedPtr<FJsonObject> Written = NewJsonValue->Type == EJson::Object ? NewJsonValue->AsObject() : nullptr;
+
+				const TSharedPtr<FJsonValue> Named = Written.IsValid() ? Written->TryGetField(TEXT("Distribution")) : nullptr;
+
+				const bool bPackageNamedOne = Named.IsValid() && !Named->IsNull();
+
+				/* Cleared first where the package named none */
+				if (!bPackageNamedOne) {
+					SetDistribution(RawDistribution, nullptr, IsFloat);
+				}
 
 				if (!GetDistribution(RawDistribution, IsFloat)) {
 					if (UDistribution* NewDistribution = DecookDistribution(OptionalOuter, *RawDistribution, IsFloat)) {
