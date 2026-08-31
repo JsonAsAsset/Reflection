@@ -23,6 +23,7 @@
 #include "Importers/Types/Cascade/ParticleSystemDecooking.h"
 #include "Serializers/Structs/DateTimeSerializer.h"
 #include "Serializers/Structs/FallbackStructSerializer.h"
+#include "Serializers/Structs/ConnectivityCubeSerializer.h"
 #include "Serializers/Structs/NiagaraVariableSerializer.h"
 #include "Serializers/Structs/TimeSpanSerializer.h"
 
@@ -250,6 +251,13 @@ UPropertySerializer::UPropertySerializer() {
 	 * no variables to read and nothing to register. */
 	if (UScriptStruct* NiagaraVariableStruct = FindObject<UScriptStruct>(nullptr, TEXT("/Script/Niagara.NiagaraVariableBase"))) {
 		StructSerializers.Add(NiagaraVariableStruct, MakeShared<FNiagaraVariableSerializer>(this));
+	}
+
+	/* Put down against the connectivity cube on building edit mode patterns, whose faces are bit arrays with
+	 * no reflection data to write through. Asked for rather than checked, since a build without the game
+	 * module has no cubes to read. */
+	if (UScriptStruct* ConnectivityCubeStruct = FindObject<UScriptStruct>(nullptr, TEXT("/Script/FortniteGame.ConnectivityCube"))) {
+		StructSerializers.Add(ConnectivityCubeStruct, MakeShared<FConnectivityCubeSerializer>());
 	}
 }
 
