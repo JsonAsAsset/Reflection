@@ -51,6 +51,20 @@ UClass* FUObjectExport::GetClass() {
 		OutClass = FindClassByType(GetType().ToString());
 	}
 
+	/* A class written as a path is one made in the editor rather than in C++.
+	 *
+	 * Looking for it by name only finds it where something has already asked for it, and for these
+	 * nothing has: a level names the blueprints its actors are, and each of those is an asset of
+	 * its own that no part of reading the level has any reason to have loaded. Asked for by the
+	 * path it is written as, the blueprint comes in and the class it generated is the one the
+	 * export is. Left unasked, every one of them reads as no class at all. */
+	if (!OutClass && ClassName.Contains(TEXT("/"))) {
+		FString Asset = ClassName;
+		Asset.Split(TEXT("."), &Asset, nullptr, ESearchCase::CaseSensitive, ESearchDir::FromEnd);
+
+		OutClass = LoadBlueprintClass(Asset);
+	}
+
 	/* Where it says it comes from, which is written beside the export as often as it is written
 	 * among its properties */
 	TSharedPtr<FJsonObject> Comes = GetSuperStructJsonObject(GetProperties());

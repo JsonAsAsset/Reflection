@@ -6,6 +6,7 @@
 #include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
+#include "Modules/Toolbar/Tools/ImportFromPath.h"
 
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
  * which is where the blueprint function library type used to come in from */
@@ -113,6 +114,24 @@ inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
 		FullPath = FullPath.LeftChop(2);
 	}
 
+	/* Named, since a package on its own answers with the package.
+	 *
+	 * What arrives here is the path to the asset with nothing after it, and asked for that way the
+	 * loader hands back whatever lives at it. Where the asset is not in memory that is nothing and
+	 * the load reads the file, which is the blueprint. Where it already is, it is the package the
+	 * blueprint sits in, and a package is not a blueprint, so the answer is no class at all.
+	 *
+	 * It only ever is in memory when something has just brought it in, which is the parent an
+	 * import fetched a moment ago. So the asset inside is named here, as anything else asking for
+	 * one already does. */
+	if (!FullPath.Contains(TEXT("."))) {
+		FString Named = FullPath;
+
+		if (Named.Split(TEXT("/"), nullptr, &Named, ESearchCase::CaseSensitive, ESearchDir::FromEnd) && !Named.IsEmpty()) {
+			FullPath += TEXT(".") + Named;
+		}
+	}
+
 	if (UObject* LoadedObject = LoadObjectByPath<UObject>(FullPath)) {
 		const UBlueprint* LoadedBlueprint = Cast<UBlueprint>(LoadedObject);
 		
@@ -135,7 +154,25 @@ inline UClass* LoadClass(const TSharedPtr<FJsonObject>& SuperStruct) {
 	
 	ObjectPath.Split(".", &ObjectPath, nullptr);
 
-	return LoadBlueprintClass(ObjectPath);
+	if (UClass* Made = LoadBlueprintClass(ObjectPath)) {
+		return Made;
+	}
+
+	/* The blueprint a class says it comes from, which the project has not got yet.
+	 *
+	 * A class read without finding its parent is left parented to nothing, and a blueprint in that
+	 * state is one the editor can make nothing of: everything it inherited resolves to nothing and
+	 * the asset opens broken. The parent is an asset like any other, so it is asked for, and the
+	 * class it generates is the one this one comes from.
+	 *
+	 * It reaches back as far as it needs to. A parent that is itself a blueprint asks for its own
+	 * parent as it is read, and the chain ends where it meets a class written in C++, which is
+	 * already here and never asked for. */
+	if (TToolImportFromPath::Import(ObjectPath)) {
+		return LoadBlueprintClass(ObjectPath);
+	}
+
+	return nullptr;
 }
 
 /* What a class or a struct says it comes from, under whichever name it is written as.

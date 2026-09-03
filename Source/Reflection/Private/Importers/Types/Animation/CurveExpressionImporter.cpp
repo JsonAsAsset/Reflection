@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Animation/CurveExpressionImporter.h"
+#include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "Importers/Types/Animation/CurveExpressionRig.h"
 #include "Modules/Cloud/Cloud.h"
 #include "Settings/SettingsAccess.h"
@@ -55,7 +56,7 @@ UObject* ICurveExpressionImporter::CreateAsset(UObject* CreatedAsset) {
 		 * comes with it. The graph tells the blueprint every time a node is added, and what the
 		 * blueprint does about it reaches for the class's default object, so a blueprint without one
 		 * takes the first node badly. */
-		UControlRigBlueprint* Made = Cast<UControlRigBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+		UControlRigBlueprint* Made = Cast<UControlRigBlueprint>(CreateBlueprintGuarded(
 			UControlRig::StaticClass(),
 			GetPackage(),
 			FName(*GetAssetName()),

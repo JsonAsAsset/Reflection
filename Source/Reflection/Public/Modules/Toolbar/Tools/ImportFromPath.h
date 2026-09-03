@@ -20,5 +20,5 @@ public:
 	 * AllowedTypes empty means every type. A type outside it is left alone and reported through
 	 * bOutFiltered, which is not the same as failing: the type is only known once the export is
 	 * down, so the request happens either way. */
-	static bool Import(const FString& InPath, const TSet<FString>& AllowedTypes = TSet<FString>(), bool* bOutFiltered = nullptr);
+	static REFLECTION_API bool Import(const FString& InPath, const TSet<FString>& AllowedTypes = TSet<FString>(), bool* bOutFiltered = nullptr);
 };

@@ -26,6 +26,17 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 		return 1;
 	}
 
+	/* Who the exports belong to, which every path read out of them is said in terms of.
+	 *
+	 * The editor asks for this when it connects, so anything importing there already knows it. A
+	 * commandlet connects to nothing and asks for one asset, and without the name none of the
+	 * paths inside can be turned into the ones the editor uses. */
+	if (!Cloud::EnsureMetadataBlocking()) {
+		UE_LOG(LogReflectImport, Error, TEXT("the cloud would not say what project it is serving"));
+
+		return 1;
+	}
+
 	const TSharedPtr<FJsonObject> Response = Cloud::Export::GetRawBlocking(Path);
 
 	if (!Response.IsValid() || !Response->HasField(TEXT("exports"))) {

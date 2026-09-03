@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "RigImportCommandlet.h"
+#include "Importers/Types/Blueprint/BlueprintCompile.h"
 
 #if REFLECTION_CONTROL_RIG
 
@@ -389,7 +390,7 @@ static void ComparePoseAssetToRig(USkeletalMesh* Mesh, const FString& PoseAssetP
 
 				UPackage* Package = CreatePackage(*(TEXT("/Game/ReflectedRigs/") + BlueprintName));
 
-				UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+				UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(CreateBlueprintGuarded(
 					UAnimInstance::StaticClass(), Package, FName(*BlueprintName),
 					BPTYPE_Normal, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass()));
 
@@ -473,7 +474,7 @@ static void ComparePoseAssetToRig(USkeletalMesh* Mesh, const FString& PoseAssetP
 				if (PlayerOut != nullptr && ConsumerIn != nullptr) PlayerOut->MakeLinkTo(ConsumerIn);
 				if (ConsumerOut != nullptr && ResultIn != nullptr) ConsumerOut->MakeLinkTo(ResultIn);
 
-				FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+				CompileBlueprintGuarded(AnimBlueprint);
 
 				UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
 				if (World == nullptr) return;
@@ -612,7 +613,7 @@ static void ReportControlDirections(USkeletalMesh* Mesh, UAnimBlueprint* AnimBlu
 
 			Player->Node.SetSequence(Driver);
 
-			FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+			CompileBlueprintGuarded(AnimBlueprint);
 
 			UWorld* World = UWorld::CreateWorld(EWorldType::Editor, false);
 			if (World == nullptr) return;
@@ -674,7 +675,7 @@ static void ReportRigLogicResult(USkeletalMesh* Mesh) {
 
 	UPackage* Package = CreatePackage(TEXT("/Game/ReflectedRigs/RigLogicProbe_AnimBP"));
 
-	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(FKismetEditorUtilities::CreateBlueprint(
+	UAnimBlueprint* AnimBlueprint = Cast<UAnimBlueprint>(CreateBlueprintGuarded(
 		UAnimInstance::StaticClass(), Package, TEXT("RigLogicProbe_AnimBP"),
 		BPTYPE_Normal, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass()));
 
@@ -779,7 +780,7 @@ static void ReportRigLogicResult(USkeletalMesh* Mesh) {
 		}
 	}
 
-	FKismetEditorUtilities::CompileBlueprint(AnimBlueprint);
+	CompileBlueprintGuarded(AnimBlueprint);
 
 	if (AnimBlueprint->GeneratedClass == nullptr) {
 		UE_LOG(LogRigImportTest, Error, TEXT("rig logic probe: the blueprint did not compile"));

@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Rig/ControlRigImporter.h"
+#include "Importers/Types/Blueprint/BlueprintCompile.h"
 
 #if REFLECTION_CONTROL_RIG
 
@@ -183,7 +184,7 @@ bool IControlRigImporter::Import() {
 	 * properties on the generated class once the blueprint has been compiled again. The graph
 	 * below reads and writes them, so they also have to be there before it is built. */
 	if (ConstructVariables(Blueprint) > 0) {
-		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 
 		ApplyVariableDefaults(Blueprint);
 	}

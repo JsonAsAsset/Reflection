@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "AnimationGraphSchema.h"
 #include "AnimGraphNode_Root.h"
 #include "EdGraphSchema_K2.h"
@@ -58,7 +59,7 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 		return IImporter::CreateAsset(BlueprintGeneratedClass);
 	}
 
-	const UBlueprint* CreatedBlueprint = FKismetEditorUtilities::CreateBlueprint(
+	const UBlueprint* CreatedBlueprint = CreateBlueprintGuarded(
 		Class,
 		GetPackage(),
 		FName(*GetAssetName()),
@@ -97,8 +98,11 @@ bool IBlueprintImporter::Import() {
 	 * floor without complaining. */
 	if (ConstructVariables() > 0) {
 		/* Adding a variable only touches the blueprint, the generated class grows the property
-		 * when it recompiles, and the default object below is the one that comes out of that */
-		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		 * when it recompiles, and the default object below is the one that comes out of that.
+		 *
+		 * Everything past here reads the class that comes out of it, so a compile that did not
+		 * happen leaves nothing worth carrying on with. */
+		if (!CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection)) return false;
 
 		GeneratedClass = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
 		if (!GeneratedClass) return false;
@@ -112,9 +116,9 @@ bool IBlueprintImporter::Import() {
 	GetObjectSerializer()->bUseExperimentalSpawning = true;
 
 	ConstructScript();
-	ConstructWidgetTree();
+	/*ConstructWidgetTree();
 
-	ConstructBody();
+	ConstructBody();*/
 
 	return OnAssetCreation(Blueprint);
 }
@@ -248,7 +252,7 @@ int32 IBlueprintImporter::ConstructBody() {
 
 	/* A graph is only worth compiling once there is something in it */
 	if (Laid > 0) {
- 		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+ 		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 
 		/* What the compile made of it, which is the thing a rebuilt graph is judged by */
 		if (const UBlueprintGeneratedClass* Compiled = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass)) {
@@ -279,7 +283,7 @@ int32 IBlueprintImporter::ConstructBody() {
 	 * Compiling is what makes the class, so anything still without one is compiled here. One that
 	 * cannot be made at all is said out loud, since the asset is going to be trouble either way. */
 	if (Blueprint->GeneratedClass == nullptr) {
-		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 
 		if (Blueprint->GeneratedClass == nullptr) {
 			FImportIssues::Report(
@@ -1195,7 +1199,7 @@ int32 IBlueprintImporter::ConstructGraphs() {
 	 * nothing, and lays every node out against a class that has not caught up: the same asset comes
 	 * back differently depending on what the run before it left behind. */
 	{
-		FKismetEditorUtilities::CompileBlueprint(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 	}
 
 	for (const TSharedPtr<FBytecodeGraph>& Builder : Builders) {

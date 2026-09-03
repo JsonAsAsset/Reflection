@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
+#include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "AnimGraphNode_BlendListByInt.h"
 #include "AnimGraphNode_CustomProperty.h"
 #include "Kismet/KismetMathLibrary.h"
@@ -136,7 +137,7 @@ bool IAnimationBlueprintImporter::Import() {
 	 * FBlueprintVariables filters out. */
 	if (FBlueprintVariables::Construct(AnimBlueprint, FBlueprintVariables::GetDeclared(GetAssetExport(), GetContainer())) > 0) {
 		/* The properties only appear on the generated class once it recompiles */
-		FKismetEditorUtilities::CompileBlueprint(AnimBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		CompileBlueprintGuarded(AnimBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 	}
 
 	/* UClass::GetDefaultObject only became const later on */
@@ -601,7 +602,7 @@ bool IAnimationBlueprintImporter::Import() {
 UAnimBlueprint* IAnimationBlueprintImporter::CreateAnimBlueprint(UClass* ParentClass) {
 	const EBlueprintType BlueprintType = GetBlueprintTypeSaid(GetAssetData(), ParentClass);
 
-	if (UBlueprint* Made = FKismetEditorUtilities::CreateBlueprint(ParentClass, GetPackage(), FName(*GetAssetName()), BlueprintType, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass())) {
+	if (UBlueprint* Made = CreateBlueprintGuarded(ParentClass, GetPackage(), FName(*GetAssetName()), BlueprintType, UAnimBlueprint::StaticClass(), UAnimBlueprintGeneratedClass::StaticClass())) {
 		/* Said of the base, which only takes what was made. An animation blueprint is made here,
 		 * where the blueprint importer's own makes one from nothing, and asking for that would put
 		 * a second blueprint over the one just created. */
