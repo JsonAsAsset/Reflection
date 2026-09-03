@@ -116,9 +116,9 @@ bool IBlueprintImporter::Import() {
 	GetObjectSerializer()->bUseExperimentalSpawning = true;
 
 	ConstructScript();
-	/*ConstructWidgetTree();
+	ConstructWidgetTree();
 
-	ConstructBody();*/
+	ConstructBody();
 
 	return OnAssetCreation(Blueprint);
 }
