@@ -8,6 +8,10 @@
 
 #include "Serializers/PropertySerializer.h"
 #include "Serializers/VolumeBrush.h"
+#include "Serializers/FoliageActor.h"
+#include "Importers/Constructor/ImportIssues.h"
+#include "Engine/Log.h"
+#include "InstancedFoliageActor.h"
 #include "UObject/Package.h"
 #include "Utilities/JsonHelpers.h"
 #include "Utilities/Containers.h"
@@ -47,6 +51,38 @@ UObjectSerializer::UObjectSerializer(): Parent(nullptr), PropertySerializer(null
 
 void UObjectSerializer::SetupExports(const TArray<TSharedPtr<FJsonValue>>& InObjects) {
 	Exports = InObjects;
+}
+
+/* Whether an export can be made at all, and what is already there under that name.
+ *
+ * Two ways a class read out of an export cannot be built. One is abstract, which the engine
+ * refuses and then ensures over; the other is a name the outer already has something at, which
+ * the engine takes as two objects claiming one path and calls fatal. An actor spawned from its
+ * class arrives with its default subobjects already built, so every export naming one of those is
+ * the second case: RootComponent0 on a foliage actor is made by the actor's own constructor, and
+ * the export naming it is naming the thing that is there rather than asking for another. */
+namespace {
+	UObject* AlreadyThere(UObject* Outer, const FName Named) {
+		if (Outer == nullptr || Named.IsNone()) return nullptr;
+
+		return StaticFindObjectFast(UObject::StaticClass(), Outer, Named);
+	}
+
+	bool CanBeMade(const UClass* Class, const FString& Named, const FString& Type) {
+		if (Class == nullptr) return false;
+
+		if (!Class->HasAnyClassFlags(CLASS_Abstract)) return true;
+
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" is written as a %s and that read back as %s, which cannot be made"), *Named, *Type, *Class->GetName());
+
+		FImportIssues::Report(
+			EImportIssue::Data,
+			FString::Printf(TEXT("\"%s\" could not be made"), *Named),
+			FString::Printf(TEXT("The export says it is a %s. The class of that name in this engine is %s, which is abstract and so is not something that can be made. Nothing was put in the object's place and the rest of the import carried on."), *Type, *Class->GetName())
+		);
+
+		return false;
+	}
 }
 
 UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnlySerialize) {
@@ -116,8 +152,16 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 		if (Class->IsChildOf(UWidgetAnimation::StaticClass())) {
 			ObjectName.Split("_INST", &ObjectName, nullptr, ESearchCase::CaseSensitive);
 		}
-		
-		Export->Object = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), StringToName(ObjectName), Flags);
+
+		const FName Named = StringToName(ObjectName);
+
+		if (UObject* Standing = AlreadyThere(ObjectOuter, Named)) {
+			Export->Object = Standing;
+		} else if (CanBeMade(Class, ObjectName, Export->GetType().ToString())) {
+			Export->Object = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), Named, Flags);
+		} else {
+			return nullptr;
+		}
 	}
 	
 	if (UParticleSystem* ParticleSystem = Cast<UParticleSystem>(Export->Object)) {
@@ -288,7 +332,13 @@ void UObjectSerializer::DeserializeExport(FUObjectExport* Export, TMap<TSharedPt
 		ObjectOuter = Parent;
 	}
 
-	UObject* NewUObject = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), FName(*Name), RF_Public | RF_Transactional);
+	UObject* NewUObject = AlreadyThere(ObjectOuter, FName(*Name));
+
+	if (NewUObject == nullptr) {
+		if (!CanBeMade(Class, Name, Type)) return;
+
+		NewUObject = NewObject<UObject>(ObjectOuter, ToNewObjectClass(Class), FName(*Name), RF_Public | RF_Transactional);
+	}
 
 	if (ExportObject->HasField(TEXT("Properties"))) {
 		const TSharedPtr<FJsonObject> Properties = ExportObject->GetObjectField(TEXT("Properties"));
@@ -510,6 +560,11 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 
 	if (ABrush* BrushActor = Cast<ABrush>(Object)) {
 		FVolumeBrush::Rebuild(BrushActor);
+	}
+
+	/* What a foliage actor grows is not among its properties either */
+	if (AInstancedFoliageActor* FoliageActor = Cast<AInstancedFoliageActor>(Object)) {
+		FFoliageActor::Rebuild(FoliageActor, PropertySerializer);
 	}
 
 	/* This is a use case for importing maps and parsing static mesh components

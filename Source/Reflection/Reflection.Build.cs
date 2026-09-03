@@ -201,6 +201,9 @@ public class Reflection : ModuleRules {
 			/* UEdGraphSchema_K2, whose PC_* pin categories name the type of a blueprint variable */
 			"BlueprintGraph",
 
+			/* AInstancedFoliageActor and what it plants */
+			"Foliage",
+
 			/* FMeshDescription and FStaticMeshAttributes, which the static mesh importer describes
 			 * its geometry into */
 			"MeshDescription",

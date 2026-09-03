@@ -57,7 +57,24 @@ inline UObject* ResolveRedirector(UObject* Object) {
  * asset exists yet, and most of the time it does not. Asking the loader that question costs a
  * failed package load and two warnings apiece, so the cheap answers are given first. */
 template <typename T>
-T* LoadObjectByPath(const FString& Path) {
+T* LoadObjectByPath(const FString& InPath) {
+	/* Named, since a path with nothing after the package names the package.
+	 *
+	 * An asset's path and the asset's own path are two different strings: the package is
+	 * /Game/Some/Thing and the asset in it is /Game/Some/Thing.Thing. Handed the first, the loader
+	 * resolves no further than the package, so what comes back is a UPackage where it is in memory
+	 * and nothing at all where it is not, and neither is ever the asset. Callers with the asset's
+	 * name already say it; the ones reading a reference out of an export have only the package. */
+	FString Path = InPath;
+
+	if (!Path.Contains(TEXT("."))) {
+		FString Named = Path;
+
+		if (Named.Split(TEXT("/"), nullptr, &Named, ESearchCase::CaseSensitive, ESearchDir::FromEnd) && !Named.IsEmpty()) {
+			Path += TEXT(".") + Named;
+		}
+	}
+
 	/* Already in memory, including a package this session created and never saved */
 	if (UObject* Found = FindObject<UObject>(nullptr, *Path)) {
 		return Cast<T>(ResolveRedirector(Found));

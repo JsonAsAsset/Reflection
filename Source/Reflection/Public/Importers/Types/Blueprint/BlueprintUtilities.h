@@ -114,24 +114,6 @@ inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
 		FullPath = FullPath.LeftChop(2);
 	}
 
-	/* Named, since a package on its own answers with the package.
-	 *
-	 * What arrives here is the path to the asset with nothing after it, and asked for that way the
-	 * loader hands back whatever lives at it. Where the asset is not in memory that is nothing and
-	 * the load reads the file, which is the blueprint. Where it already is, it is the package the
-	 * blueprint sits in, and a package is not a blueprint, so the answer is no class at all.
-	 *
-	 * It only ever is in memory when something has just brought it in, which is the parent an
-	 * import fetched a moment ago. So the asset inside is named here, as anything else asking for
-	 * one already does. */
-	if (!FullPath.Contains(TEXT("."))) {
-		FString Named = FullPath;
-
-		if (Named.Split(TEXT("/"), nullptr, &Named, ESearchCase::CaseSensitive, ESearchDir::FromEnd) && !Named.IsEmpty()) {
-			FullPath += TEXT(".") + Named;
-		}
-	}
-
 	if (UObject* LoadedObject = LoadObjectByPath<UObject>(FullPath)) {
 		const UBlueprint* LoadedBlueprint = Cast<UBlueprint>(LoadedObject);
 		
