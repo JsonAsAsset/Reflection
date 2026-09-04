@@ -35,6 +35,14 @@ struct REFLECTION_API FBlueprintVariables {
 	 * the blueprint ends up with two things of one name, and the component is the one that loses. */
 	static TSet<FString> GetComponentVariables(FUObjectExportContainer* Container);
 
+	/* The names the widget tree gives the class.
+	 *
+	 * The same thing a widget over: a widget placed in the tree has a property made for it when the
+	 * blueprint compiles, and declaring it as a variable as well leaves two of one name on the
+	 * class. The widget editor walks every object property the class has by name and says so on the
+	 * second one, before the designer has drawn anything. */
+	static TSet<FString> GetWidgetVariables(FUObjectExportContainer* Container);
+
 	/* Adds a member variable for every user facing ChildProperty, returns how many were added */
 	static int32 Construct(UBlueprint* Blueprint, const TArray<TSharedPtr<FJsonValue>>& ChildProperties);
 

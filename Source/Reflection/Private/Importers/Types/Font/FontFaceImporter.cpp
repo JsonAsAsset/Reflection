@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Font/FontFaceImporter.h"
+#include "Framework/Application/SlateApplication.h"
 
 #include "Engine/FontFace.h"
 #include "Engine/EngineUtilities.h"
@@ -53,7 +54,14 @@ bool IFontFaceImporter::Import() {
 
 	UE_LOG(LogReflection, Display, TEXT("\"%s\" carries %d byte(s) of typeface"), *GetAssetName(), Typeface.Num());
 
-	FontFace->PostEditChange();
+	/* Only where there is an editor to tell.
+	 *
+	 * What a font face does about the change is ask Slate to drop the font it had cached, and
+	 * asking for Slate where it was never started is an assert rather than an answer. A commandlet
+	 * has none, and nothing has the old font cached there either. */
+	if (FSlateApplication::IsInitialized()) {
+		FontFace->PostEditChange();
+	}
 
 	return OnAssetCreation(FontFace);
 }

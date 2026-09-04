@@ -4,6 +4,8 @@
 
 
 #include "Engine/Compatibility.h"
+#include "Framework/Application/SlateApplication.h"
+#include "Engine/FontFace.h"
 
 #include "Engine/StaticMesh.h"
 
@@ -153,7 +155,13 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package, const bool bB
 		VectorFieldStatic->InitResource();
 	}
 
-	Asset->PostEditChange();
+	/* A font face tells Slate to drop the font it had cached, and asking for Slate where it was
+	 * never started is an assert rather than an answer. A commandlet has none, and nothing has the
+	 * old font cached there either. */
+	if (!Asset->IsA<UFontFace>() || FSlateApplication::IsInitialized()) {
+		Asset->PostEditChange();
+	}
+
 	Asset->AddToRoot();
 
 	Package->FullyLoad();

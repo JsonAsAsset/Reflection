@@ -196,6 +196,27 @@ TSet<FString> FBlueprintVariables::GetComponentVariables(FUObjectExportContainer
 	return Named;
 }
 
+TSet<FString> FBlueprintVariables::GetWidgetVariables(FUObjectExportContainer* Container) {
+	TSet<FString> Named;
+
+	if (Container == nullptr) return Named;
+
+	for (const FUObjectExport* Export : Container->Exports) {
+		if (Export == nullptr || !Export->IsJsonValid()) continue;
+
+		const TSharedPtr<FJsonObject>* Outer;
+
+		if (!Export->JsonObject->TryGetObjectField(TEXT("Outer"), Outer) || !Outer->IsValid()) continue;
+
+		/* What it is under, which for anything in the tree is the tree */
+		if (FString Held; (*Outer)->TryGetStringField(TEXT("ObjectName"), Held) && Held.StartsWith(TEXT("WidgetTree'"))) {
+			Named.Add(Export->GetName().ToString());
+		}
+	}
+
+	return Named;
+}
+
 bool FBlueprintVariables::IsUserVariable(const TSharedPtr<FJsonObject>& Property) {
 	if (!Property.IsValid()) {
 		return false;

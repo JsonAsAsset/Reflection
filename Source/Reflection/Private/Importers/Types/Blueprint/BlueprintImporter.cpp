@@ -298,9 +298,15 @@ int32 IBlueprintImporter::ConstructBody() {
 }
 
 int32 IBlueprintImporter::ConstructVariables() {
-	/* What the construction script gives the blueprint is a component, not a variable, even though
-	 * the class declares a property for it the same way it declares any other */
-	const TSet<FString> Components = FBlueprintVariables::GetComponentVariables(GetContainer());
+	/* What the blueprint makes a property for on its own, which is not the same as what it declares.
+	 *
+	 * The construction script's components and the widget tree's widgets both get one when the
+	 * blueprint compiles, even though the class writes them down the same way it writes down
+	 * anything else. Declared as variables on top of that, the class carries two properties of one
+	 * name and whatever reads them by name gets the wrong one or stops on it. */
+	TSet<FString> Components = FBlueprintVariables::GetComponentVariables(GetContainer());
+
+	Components.Append(FBlueprintVariables::GetWidgetVariables(GetContainer()));
 
 	TArray<TSharedPtr<FJsonValue>> Declared;
 
