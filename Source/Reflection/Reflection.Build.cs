@@ -9,6 +9,9 @@ public class Reflection : ModuleRules {
 	public Reflection(ReadOnlyTargetRules Target) : base(Target)  {
 		PCHUsage = PCHUsageMode.UseExplicitOrSharedPCHs;
 
+		/* [linux]	We want to change the build configuration slightly under Linux.
+		 *			For example, at the time of writing, we use this variable to
+		 *			disable Detex/NVTT, as it does not currently work properly. */
 		var bIsLinux = Target.Platform == UnrealTargetPlatform.Linux;
 
 		/* Nothing reads this any more: the way in is the Direct Asset Data setting */
@@ -290,6 +293,9 @@ public class Reflection : ModuleRules {
 			});
 		}
 
+		/* [linux]		Detex/NVTT currently do not work properly under a Linux environment.
+		 *				For the meantime, I'm just disabling it until either I (or someone else)
+		 *				cares enough to get Detex/NVTT working properly. */
 		if (!bIsLinux) {
 			PrivateDependencyModuleNames.AddRange(new[] {
 				"Detex",

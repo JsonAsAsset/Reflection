@@ -42,8 +42,13 @@ public:
     virtual UObject* GetAsset();
     virtual void SetAsset(UObject* InAsset);
 
+    /* [linux] Clang doesn't see inline functions as defined properly, can't be inline. */
+    #if !PLATFORM_LINUX
     FORCEINLINE FUObjectExportContainer* GetContainer() const;
-    
+    #else
+    FUObjectExportContainer* GetContainer() const;
+    #endif
+
     /* AssetExport <~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 
     template <class T>
@@ -53,8 +58,14 @@ public:
 
     /* Serializer ~~~~~~~~~~~~~~~> */
 public:
+    /* [linux] Clang doesn't see inline functions as defined properly, can't be inline. */
+    #if !PLATFORM_LINUX
     FORCEINLINE UObjectSerializer* GetObjectSerializer() const;
     FORCEINLINE UPropertySerializer* GetPropertySerializer() const;
+    #else
+    UObjectSerializer* GetObjectSerializer() const;
+    UPropertySerializer* GetPropertySerializer() const;
+    #endif
 
     void DeserializeExports(UObject* Parent, bool CreateObjects = true);
 

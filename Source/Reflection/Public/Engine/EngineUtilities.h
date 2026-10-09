@@ -24,6 +24,10 @@
 #include "Serializers/ObjectSerializer.h"
 #include "Serializers/PropertySerializer.h"
 
-#ifndef __linux__
+/* [linux]  I would hope it's obvious that we don't have access to
+ *          Windows libraries/code on a Linux environment. If anyone
+ *          in the future cares enough, a proper guard for other
+ *          platforms should probably be added here. (ie #if PLATFORM_WINDOWS) */
+#if  !PLATFORM_LINUX
 #include "Windows/WindowsHWrapper.h"
 #endif

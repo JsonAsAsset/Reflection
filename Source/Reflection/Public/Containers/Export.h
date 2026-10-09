@@ -67,7 +67,12 @@ inline FString GetOuterFromObjectOuter(const TSharedPtr<FJsonValue>& Outer) {
 	return Outer->AsString();
 }
 
+/* [linux] Clang doesn't see inline functions as defined properly, can't be inline. */
+#if !PLATFORM_LINUX
 inline FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex);
+#else
+FString ReadPathFromObject(const FUObjectJsonValueExport& PackageIndex);
+#endif
 
 /* A structure to hold data for a UObject export. */
 struct REFLECTION_API FUObjectExport : FUObjectJsonValueExport {

@@ -4194,9 +4194,17 @@ void FBytecodeGraph::Arrange() {
 	 * of title the node carries. */
 	auto HeaderOf = [Row](UEdGraphNode* Node) {
 		/* Drawn as an operator rather than as a node, so there is no title above the pins */
+
+		/* [linux]	We can't shadow variable members under linux. */
+		#if !PLATFORM_LINUX
 		if (const UK2Node* Written = Cast<UK2Node>(Node); Written != nullptr && Written->ShouldDrawCompact()) {
 			return 0;
 		}
+		#else
+		if (const UK2Node* _Written = Cast<UK2Node>(Node); _Written != nullptr && _Written->ShouldDrawCompact()) {
+			return 0;
+		}
+		#endif
 
 		const FString Title = Node->GetNodeTitle(ENodeTitleType::FullTitle).ToString();
 

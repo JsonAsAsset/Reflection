@@ -2,9 +2,13 @@
 
 #pragma once
 
-#ifndef __linux__
+/* [linux]  I would hope it's obvious that we don't have access to
+ *          Windows libraries/code on a Linux environment. If anyone
+ *          in the future cares enough, a proper guard for other
+ *          platforms should probably be added here. (ie #if PLATFORM_WINDOWS) */
+#if  !PLATFORM_LINUX
 #include "Windows/WindowsPlatformApplicationMisc.h"
-#endif // __linux__
+#endif
 
 #include "Interfaces/IMainFrameModule.h"
 #include "DesktopPlatformModule.h"
@@ -131,7 +135,11 @@ inline bool SpawnTextEntryPrompt(const FString& Title, const FString& Hint, FStr
 /* Clipboard and file pickers ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 inline FString GetClipboard() {
 	FString ClipboardContent;
-#ifndef __linux__
+
+
+/* [linux]  ClipboardPaste() doesn't seem to work properly at the engine-level
+ *			under a Linux environment. Don't even compile this function under Linux. */
+#if  !PLATFORM_LINUX
 	/* @LINUX.CLIPBOARD */
 	FPlatformApplicationMisc::ClipboardPaste(ClipboardContent);
 #endif

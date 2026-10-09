@@ -7,7 +7,13 @@
 /* TlHelp32 brings the platform's own types in, which the engine keeps behind its own names. Taken
  * in raw it collides with whatever includes WindowsPlatformProcess.h afterwards, and which file
  * that is depends on how the unity blob was put together. */
-#ifndef __linux__
+
+ 
+/* [linux]  I would hope it's obvious that we don't have access to
+ *          Windows libraries/code on a Linux environment. If anyone
+ *          in the future cares enough, a proper guard for other
+ *          platforms should probably be added here. (ie #if PLATFORM_WINDOWS) */
+#if  !PLATFORM_LINUX
 #include "Windows/WindowsHWrapper.h"
 #include "Windows/AllowWindowsPlatformTypes.h"
 #include <TlHelp32.h>
@@ -15,7 +21,13 @@
 #endif
 
 inline void CloseApplicationByProcessName(const FString& ProcessName) {
-#ifndef __linux__
+
+
+/* [linux]  I would hope it's obvious that we don't have access to
+ *          Windows libraries/code on a Linux environment. If anyone
+ *          in the future cares enough, a proper guard for other
+ *          platforms should probably be added here. (ie #if PLATFORM_WINDOWS) */
+#if  !PLATFORM_LINUX
 	DWORD ProcessID = 0;
 
 	const HANDLE Snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
@@ -50,7 +62,13 @@ inline void CloseApplicationByProcessName(const FString& ProcessName) {
 }
 
 inline bool IsProcessRunning(const FString& ProcessName) {
-#ifndef __linux__
+
+
+/* [linux]  I would hope it's obvious that we don't have access to
+ *          Windows libraries/code on a Linux environment. If anyone
+ *          in the future cares enough, a proper guard for other
+ *          platforms should probably be added here. (ie #if PLATFORM_WINDOWS) */
+#if  !PLATFORM_LINUX
 	bool IsRunning = false;
 
 	/* Convert FString to WCHAR */
