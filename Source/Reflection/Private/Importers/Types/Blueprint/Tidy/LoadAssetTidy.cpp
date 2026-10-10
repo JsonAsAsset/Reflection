@@ -9,10 +9,85 @@
 #include "K2Node_CustomEvent.h"
 #include "K2Node_LoadAsset.h"
 #include "Kismet/KismetSystemLibrary.h"
+#include "Misc/Crc.h"
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionTidyLoadAsset, All, All);
 
 namespace {
+	/* The node a callback was named after: OnLoaded_ and its guid, with the last quarter swapped for a checksum of the whole */
+	bool NamedAfter(const FName Called, FGuid& Out) {
+		FString Spelled = Called.ToString();
+
+		if (!Spelled.RemoveFromStart(TEXT("OnLoaded_"))) return false;
+
+		FGuid Said;
+
+		if (!FGuid::ParseExact(Spelled, EGuidFormats::Digits, Said)) return false;
+
+		uint32 Table[256];
+
+		for (uint32 Index = 0; Index < 256; ++Index) {
+			uint32 Value = Index;
+
+			for (int32 Bit = 0; Bit < 8; ++Bit) {
+				Value = (Value & 1) != 0 ? (Value >> 1) ^ 0xEDB88320u : Value >> 1;
+			}
+
+			Table[Index] = Value;
+		}
+
+		/* As far as the checksum gets through the part that was kept */
+		const uint32 Kept[3] = { Said.A, Said.B, Said.C };
+		const uint8* Read = reinterpret_cast<const uint8*>(Kept);
+
+		uint32 State = 0xFFFFFFFFu;
+
+		for (int32 Index = 0; Index < 12; ++Index) {
+			State = Table[(State ^ Read[Index]) & 0xFF] ^ (State >> 8);
+		}
+
+		/* Which row each of the last four bytes picked, read from the end, since every row starts differently */
+		uint8 Rows[4];
+		uint32 Left = ~Said.D;
+
+		for (int32 Step = 3; Step >= 0; --Step) {
+			int32 Row = INDEX_NONE;
+
+			for (int32 Index = 0; Index < 256; ++Index) {
+				if ((Table[Index] >> 24) == (Left >> 24)) {
+					Row = Index;
+
+					break;
+				}
+			}
+
+			if (Row == INDEX_NONE) return false;
+
+			Rows[Step] = static_cast<uint8>(Row);
+			Left = (Left ^ Table[Row]) << 8;
+		}
+
+		/* And the bytes that pick them, from the start */
+		uint8 Last[4];
+
+		for (int32 Step = 0; Step < 4; ++Step) {
+			Last[Step] = static_cast<uint8>((State ^ Rows[Step]) & 0xFF);
+			State = Table[Rows[Step]] ^ (State >> 8);
+		}
+
+		uint32 D = 0;
+		FMemory::Memcpy(&D, Last, sizeof(D));
+
+		const FGuid Was(Said.A, Said.B, Said.C, D);
+
+		/* Asked of the engine's own checksum, which is the one the name was made with */
+		if (FCrc::MemCrc32(&Was, sizeof(Was)) != Said.D) return false;
+
+		Out = Was;
+
+		return true;
+	}
+
 	/* Everything reaching one pin, reaching another instead */
 	void TakeOverLoaded(UEdGraphPin* From, UEdGraphPin* To) {
 		if (From == nullptr || To == nullptr) return;
@@ -141,6 +216,15 @@ struct FLoadAssetTidy final : FGraphTidy {
 			Graph->AddNode(Loads, false, false);
 
 			Loads->CreateNewGuid();
+
+			/* Given back the guid the game's one had, so what it calls back is named what it was */
+			if (FGuid Was; NamedAfter(Laid->GetFunctionName(), Was)) {
+				Loads->NodeGuid = Was;
+			} else {
+				UE_LOG(LogReflectionTidyLoadAsset, Warning, TEXT("\"%s\" loads something whose callback \"%s\" says no node it was named after, so it calls back one of its own"),
+					*Graph->GetName(), *Laid->GetFunctionName().ToString());
+			}
+
 			Loads->PostPlacedNewNode();
 			Loads->AllocateDefaultPins();
 

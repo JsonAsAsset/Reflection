@@ -131,7 +131,8 @@ bool IBlueprintImporter::Import() {
 	 * and writing to what the lookup handed back would land on the shared empty export */
 	if (ClassDefaultObjectExport->IsJsonInvalid()) return false;
 
-	ClassDefaultObjectExport->Object = GeneratedClass;
+	/* The default object, not the class holding it: what is outered to the defaults is looked for there */
+	ClassDefaultObjectExport->Object = GeneratedClass != nullptr ? GeneratedClass->GetDefaultObject() : nullptr;
 
 	/* The variables have to exist before their defaults can land anywhere. A recreated blueprint
 	 * only has what its parent class gave it, so any property the blueprint declared itself is
@@ -148,10 +149,34 @@ bool IBlueprintImporter::Import() {
 		GeneratedClass = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
 		if (!GeneratedClass) return false;
 
-		ClassDefaultObjectExport->Object = GeneratedClass;
+		ClassDefaultObjectExport->Object = GeneratedClass->GetDefaultObject();
 	}
 
 	GetObjectSerializer()->DeserializeObjectProperties(ClassDefaultObjectExport->GetProperties(), GeneratedClass->GetDefaultObject());
+
+	/* A subobject the parent made and the blueprint changed, outered to the defaults and named by nothing in them */
+	{
+		UObject* Defaults = GeneratedClass->GetDefaultObject();
+		const FName DefaultsName = ClassDefaultObjectExport->GetName();
+
+		for (FUObjectExport* Export : GetContainer()->Exports) {
+			if (Export == nullptr || Export == ClassDefaultObjectExport || !Export->IsJsonValid()) continue;
+			if (Export->GetOuter() != DefaultsName) continue;
+			if (!Export->JsonObject->HasTypedField<EJson::Object>(TEXT("Properties"))) continue;
+
+			FString Flags;
+
+			if (!Export->JsonObject->TryGetStringField(TEXT("Flags"), Flags) || !Flags.Contains(TEXT("RF_DefaultSubObject"))) continue;
+
+			UObject* Made = Defaults->GetDefaultSubobjectByName(Export->GetName());
+
+			if (Made == nullptr) continue;
+
+			Export->Object = Made;
+
+			GetObjectSerializer()->DeserializeObjectProperties(Export->GetProperties(), Made);
+		}
+	}
 
 	/* Experimental (for now) spawning */
 	GetObjectSerializer()->bUseExperimentalSpawning = true;
@@ -1236,6 +1261,8 @@ int32 IBlueprintImporter::ConstructGraphs() {
 			GetContainer()
 		);
 
+		Made->SetObjectSerializer(GetObjectSerializer());
+
 		/* Whatever the timelines hand out, said to every graph that might read it */
 		for (const TPair<FString, TPair<TWeakObjectPtr<UK2Node>, FName>>& Handout : Handouts) {
 			if (Handout.Value.Key.IsValid()) {
@@ -1348,6 +1375,8 @@ int32 IBlueprintImporter::ConstructGraphs() {
 				TArray<FUObjectJsonValueExport>(),
 				GetContainer()
 			);
+
+			Made->SetObjectSerializer(GetObjectSerializer());
 
 			Made->Only(From, To);
 			Made->HandsInto(Into->Owner, Into->Member, Into->Pin);

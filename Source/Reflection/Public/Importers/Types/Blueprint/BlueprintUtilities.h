@@ -7,6 +7,7 @@
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
 #include "Modules/Toolbar/Tools/ImportFromPath.h"
+#include "UObject/CoreRedirects.h"
 
 /* 4.25 and below build this module without the engine's shared PCH (see Reflection.Build.cs),
  * which is where the blueprint function library type used to come in from */
@@ -99,6 +100,16 @@ inline TSubclassOf<UObject> LoadClassFromPath(const FString& ObjectName, const F
 		}
 	}
 
+	/* A class this engine has renamed, which the class redirects say and an object load never looks at */
+	const FCoreRedirectObjectName Named(*FullPath);
+	const FCoreRedirectObjectName Now = FCoreRedirects::GetRedirectedName(ECoreRedirectFlags::Type_Class, Named);
+
+	if (Now != Named) {
+		if (UClass* Renamed = LoadObjectByPath<UClass>(Now.ToString())) {
+			return Renamed;
+		}
+	}
+
 	return nullptr;
 }
 
@@ -158,7 +169,6 @@ inline UClass* LoadClass(const TSharedPtr<FJsonObject>& SuperStruct) {
 	 * parent as it is read, and the chain ends where it meets a class written in C++, which is
 	 * already here and never asked for. */
 	/* Only where the project has not got it: one that is here and did not answer is written over every time anything names it */
-	FString Held;
 
 	if (!PackageHoldsAsset(ObjectPath) && TToolImportFromPath::Import(ObjectPath)) {
 		return LoadBlueprintClass(ObjectPath);

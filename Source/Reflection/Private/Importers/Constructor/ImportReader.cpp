@@ -378,7 +378,14 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		TArray<UObject*> Held;
 		GetObjectsWithOuter(LocalPackage, Held, false);
 
-		if (Export->Object == nullptr && Held.Num() == 0) {
+		/* Every package carries one of these built or not, so counting them keeps the empty one */
+		int32 Built = 0;
+
+		for (const UObject* One : Held) {
+			if (One != nullptr && !One->IsA<UMetaData>()) Built++;
+		}
+
+		if (Export->Object == nullptr && Built == 0) {
 			LocalPackage->SetDirtyFlag(false);
 			LocalPackage->ClearFlags(RF_Public | RF_Standalone);
 

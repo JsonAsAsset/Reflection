@@ -25,6 +25,7 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Components/ActorComponent.h"
 #include "Containers/ExportContainer.h"
+#include "Serializers/ObjectSerializer.h"
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportIssues.h"
 #include "Utilities/AssetPaths.h"
@@ -43,6 +44,10 @@
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_BaseMCDelegate.h"
 #include "K2Node_MakeArray.h"
+#include "K2Node_GetArrayItem.h"
+#include "K2Node_TemporaryVariable.h"
+#include "K2Node_AssignmentStatement.h"
+#include "K2Node_MathExpression.h"
 #include "K2Node_MakeStruct.h"
 #include "Kismet/KismetTextLibrary.h"
 #include "K2Node_Select.h"
@@ -193,7 +198,10 @@ namespace {
 
 			UClass* Class = const_cast<UClass*>(FindClassByType(Owner));
 
-			if (Class == nullptr) return false;
+			/* A blueprint's class is not here until something loads it, and the variable typer knows where to get it */
+			if (Class == nullptr) {
+				return Property.JsonObject.IsValid() && FBlueprintVariables::GetPinType(Property.JsonObject, OutType, Container);
+			}
 
 			OutType.PinCategory = UEdGraphSchema_K2::PC_Object;
 			OutType.PinSubCategoryObject = Class;
@@ -662,6 +670,120 @@ FString FBytecodeGraph::ReadStructConst(const FUObjectJsonValueExport& Expressio
 	return TEXT("(") + FString::Join(Spelled, TEXT(",")) + TEXT(")");
 }
 
+/* A Math Expression read back as what somebody typed, since it compiles to one nested statement rather than one per call */
+FBytecodeGraph::FValue FBytecodeGraph::ReadMathExpression(const FUObjectJsonValueExport& Expression) {
+	FValue Value;
+
+	FString Spelled;
+	TArray<TPair<FString, FUObjectJsonValueExport>> Inputs;
+
+	if (!SpellMath(Expression, Spelled, Inputs)) return Value;
+
+	UK2Node_MathExpression* Node = AddNode<UK2Node_MathExpression>();
+
+	/* Typed in the way somebody types one: renaming the node is what sets its expression */
+	Node->OnRenameNode(Spelled);
+
+	UEdGraphPin* Out = nullptr;
+
+	for (UEdGraphPin* Pin : Node->Pins) {
+		if (Pin != nullptr && Pin->Direction == EGPD_Output && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec) {
+			Out = Pin;
+
+			break;
+		}
+	}
+
+	/* An expression the node would not take is read the ordinary way instead */
+	if (Out == nullptr) {
+		Graph->RemoveNode(Node);
+
+		return Value;
+	}
+
+	for (const TPair<FString, FUObjectJsonValueExport>& Input : Inputs) {
+		if (UEdGraphPin* Pin = Node->FindPin(*Input.Key, EGPD_Input)) {
+			Give(Read(Input.Value), Pin);
+		}
+	}
+
+	Placed++;
+
+	Value.Pin = Out;
+
+	return Value;
+}
+
+bool FBytecodeGraph::SpellMath(const FUObjectJsonValueExport& Expression, FString& Out, TArray<TPair<FString, FUObjectJsonValueExport>>& Inputs) {
+	const FString Token = MacroReading::TokenOf(Expression);
+
+	/* A number said outright */
+	if (Token == TEXT("EX_DoubleConst") || Token == TEXT("EX_FloatConst") || Token == TEXT("EX_IntConst")) {
+		/* Written out as a number or as the text of one, depending on who wrote the export */
+		if (double Number = 0.0; Expression.JsonObject.IsValid() && Expression.JsonObject->TryGetNumberField(TEXT("Value"), Number)) {
+			Out = FString::SanitizeFloat(Number);
+		} else {
+			Out = Expression.Has(TEXT("Value")) ? Expression.GetString(TEXT("Value")) : FString();
+		}
+
+		return !Out.IsEmpty();
+	}
+
+	/* A name the blueprint declares, which the node reads itself. One with a space cannot have been typed. */
+	if (Token == TEXT("EX_InstanceVariable")) {
+		Out = MacroReading::NamedProperty(Expression.GetObject(TEXT("Variable")));
+
+		return !Out.IsEmpty() && !Out.Contains(TEXT(" "));
+	}
+
+	/* Anything worked out elsewhere comes in through a pin of its own */
+	if (Token == TEXT("EX_LocalVariable")) {
+		FString Name = MacroReading::NamedProperty(Expression.GetObject(TEXT("Variable")));
+
+		Name.RemoveFromStart(TEXT("CallFunc_"));
+		Name.RemoveFromEnd(TEXT("_ReturnValue"));
+
+		if (Name.IsEmpty() || Name.Contains(TEXT(" "))) return false;
+
+		/* Read twice, it is still the one pin */
+		if (!Inputs.ContainsByPredicate([&Name](const TPair<FString, FUObjectJsonValueExport>& One) { return One.Key == Name; })) {
+			Inputs.Add(MakeTuple(Name, Expression));
+		}
+
+		Out = Name;
+
+		return true;
+	}
+
+	/* An operator, which is a call drawn as the symbol it is given */
+	if (Token == TEXT("EX_CallMath") || Token == TEXT("EX_FinalFunction")) {
+		const UFunction* Function = ResolveFunction(Expression.GetObject(TEXT("Function")));
+
+		if (Function == nullptr || !Function->HasMetaData(FBlueprintMetadata::MD_CompactNodeTitle)) return false;
+
+		const FString Symbol = Function->GetMetaData(FBlueprintMetadata::MD_CompactNodeTitle);
+
+		/* Only what is spelled as a symbol. A name would be read as a call to that name. */
+		if (Symbol.IsEmpty() || FChar::IsAlnum(Symbol[0])) return false;
+
+		const TArray<FUObjectJsonValueExport> Arguments = Expression.Has(TEXT("Parameters"))
+			? Expression.GetArray(TEXT("Parameters"))
+			: TArray<FUObjectJsonValueExport>();
+
+		if (Arguments.Num() != 2) return false;
+
+		FString Left, Right;
+
+		if (!SpellMath(Arguments[0], Left, Inputs) || !SpellMath(Arguments[1], Right, Inputs)) return false;
+
+		Out = FString::Printf(TEXT("(%s %s %s)"), *Left, *Symbol, *Right);
+
+		return true;
+	}
+
+	return false;
+}
+
 UFunction* FBytecodeGraph::ResolveFunction(const FUObjectJsonValueExport& Reference) {
 	FString Owner, Member;
 	SplitReference(Reference, Owner, Member);
@@ -927,11 +1049,17 @@ bool FBytecodeGraph::HoldsLocals() const {
 }
 
 bool FBytecodeGraph::IsMade(const FString& Name) const {
+	/* A macro that was read back holds whatever it works with, a counter that runs among them */
+	if (Owned.Contains(Name)) return true;
+
 	/* A total that runs is none of these, so the writes that keep it running stay in the graph */
 	if (Running.Contains(Name)) return false;
 
 	/* Named after the node and the pin it was made for, so it is that pin and nothing else */
 	if (IsCompilerLocal(Name)) return true;
+
+	/* Kept as the Local node it was made of, which is the graph's to hold rather than the compiler's */
+	if (KeepsTemporary(Name)) return false;
 
 	/* Made to carry what was typed into a pin, which belongs on that pin */
 	if (Constants.Contains(Name)) return true;
@@ -952,6 +1080,46 @@ bool FBytecodeGraph::HasLocal(const FString& Name) const {
 	UBlueprint* Blueprint = Graph != nullptr ? Graph->GetTypedOuter<UBlueprint>() : nullptr;
 
 	return Blueprint != nullptr && FBlueprintEditorUtils::FindLocalVariableGuidByName(Blueprint, Graph, *Name).IsValid();
+}
+
+bool FBytecodeGraph::KeepsTemporary(const FString& Name) const {
+	if (HoldsLocals() || !Name.StartsWith(TEXT("Temp_"))) return false;
+
+	/* A macro that was read back holds its own */
+	if (Owned.Contains(Name)) return false;
+
+	return Running.Contains(Name) || TestedScratch.Contains(Name);
+}
+
+UEdGraphPin* FBytecodeGraph::Temporary(const FString& Name, const FUObjectJsonValueExport& Property) {
+	if (const TWeakObjectPtr<UK2Node_TemporaryVariable>* Made = Temporaries.Find(Name); Made != nullptr && Made->IsValid()) {
+		return (*Made)->GetVariablePin();
+	}
+
+	FEdGraphPinType Type;
+
+	if (!TypeOfProperty(Property, Type, Container)) return nullptr;
+
+	UK2Node_TemporaryVariable* Node = AddNode<UK2Node_TemporaryVariable>();
+
+	Node->VariableType = Type;
+
+	/* Named the way it was: the compiler writes Temp_, what it holds, the comment, and Variable */
+	const FString Holding = FString(TEXT("Temp_")) + Type.PinCategory.ToString() + TEXT("_");
+
+	if (Name.StartsWith(Holding)) {
+		const FString Rest = Name.RightChop(Holding.Len());
+
+		if (const int32 Ends = Rest.Find(TEXT("_Variable"), ESearchCase::CaseSensitive, ESearchDir::FromEnd); Ends > 0) {
+			Node->NodeComment = Rest.Left(Ends);
+		}
+	}
+
+	Node->AllocateDefaultPins();
+
+	Temporaries.Add(Name, Node);
+
+	return Node->GetVariablePin();
 }
 
 bool FBytecodeGraph::EnsureLocal(const FString& Name, const FUObjectJsonValueExport& Property) {
@@ -1001,6 +1169,13 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadVariable(const FUObjectJsonValueExpor
 
 		/* Nothing came of it, so it stays the pin it was handed on */
 		Graph->RemoveNode(Reading);
+	}
+
+	/* A macro's scratch nobody claimed, read off the Local node it was made of */
+	if (KeepsTemporary(Name)) {
+		Value.Pin = Temporary(Name, Variable.Has(TEXT("Property")) ? Variable.GetObject(TEXT("Property")) : Variable);
+
+		return Value;
 	}
 
 	/* A local the compiler made is the pin it was made for, so it reads back as that pin rather
@@ -1419,9 +1594,8 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 		 * running carries straight on past it */
 		if (!bPure) EnterNode(Node);
 
-		const FValue From = Read(Expression.GetObject(TEXT("Target")));
-
-		if (From.Pin != nullptr) Connect(From.Pin, Node->GetCastSourcePin());
+		/* Given rather than connected, since what is cast can be written below the cast that reads it */
+		Give(Read(Expression.GetObject(TEXT("Target"))), Node->GetCastSourcePin());
 
 		/* The run carries on the way it worked. Where it did not is the node's other way out, and
 		 * what leads there is whatever tests it below. */
@@ -1676,6 +1850,23 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 		return Value;
 	}
 
+	/* One element read where it is kept rather than copied, which has no statement and only appears inside another */
+	if (Token == TEXT("EX_ArrayGetByRef")) {
+		UK2Node_GetArrayItem* Node = AddNode<UK2Node_GetArrayItem>();
+
+		Node->AllocateDefaultPins();
+
+		/* The array first, since what it holds is what the other two pins learn to carry */
+		Give(Read(Expression.GetObject(TEXT("ArrayVariable"))), Node->GetTargetArrayPin());
+		Give(Read(Expression.GetObject(TEXT("ArrayIndex"))), Node->GetIndexPin());
+
+		Placed++;
+
+		Value.Pin = Node->GetResultPin();
+
+		return Value;
+	}
+
 	/* One value picked out of several, which is a Select.
 	 *
 	 * The script spells it as a switch: something to look at, a case for each thing it might be,
@@ -1845,6 +2036,27 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 				/* Nothing of that name among the defaults, so it stays whatever it read as before */
 				Graph->RemoveNode(Defaults);
 			}
+
+			/* The class is held in a variable rather than named, so it is wired in and the pins follow it */
+			if (!Named.IsEmpty() && Of == nullptr && Target.Pin != nullptr && Target.Pin->PinType.PinCategory == UEdGraphSchema_K2::PC_Class) {
+				UK2Node_GetClassDefaults* Defaults = AddNode<UK2Node_GetClassDefaults>();
+
+				Defaults->AllocateDefaultPins();
+
+				if (UEdGraphPin* ClassPin = Defaults->FindClassPin()) {
+					Target.Pin->MakeLinkTo(ClassPin);
+
+					Defaults->PinConnectionListChanged(ClassPin);
+				}
+
+				if (UEdGraphPin* Reads = Defaults->FindPin(*Named, EGPD_Output)) {
+					Value.Pin = Reads;
+
+					return Value;
+				}
+
+				Graph->RemoveNode(Defaults);
+			}
 		}
 
 		if (Inner.Has(TEXT("Token")) && Inner.GetString(TEXT("Token")).Contains(TEXT("Function"))) {
@@ -1875,9 +2087,20 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 				 * and a reference carries its owner: Class'Owner:Name' */
 				FString Member;
 				SplitReference(Held, Owner, Member);
+			} else if (Held.Has(TEXT("Owner"))) {
+				/* A member a blueprint declared names the class that holds it beside it */
+				FString Member;
+				SplitReference(Held.GetObject(TEXT("Owner")), Owner, Member);
 			}
 
 			UClass* On = Owner.IsEmpty() ? nullptr : const_cast<UClass*>(FindClassByType(Owner));
+
+			/* A blueprint's class is only here once something has asked for it */
+			if (On == nullptr && !Owner.IsEmpty() && Held.Has(TEXT("Owner"))) {
+				BringInClass(Held.GetObject(TEXT("Owner")));
+
+				On = const_cast<UClass*>(FindClassByType(Owner));
+			}
 
 			if (!Name.IsEmpty() && On != nullptr && Target.Pin != nullptr) {
 				UK2Node_VariableGet* Node = AddNode<UK2Node_VariableGet>();
@@ -2092,15 +2315,19 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 
 		Node->TargetType = To;
 
-		/* Worked out where it is read rather than run through: nothing here says the run passed
-		 * through it, and a cast made while working a value out is a pure one. */
-		Node->SetPurity(true);
+		/* Worked out where it is read unless the run went one way out of it, or every reader works it out again */
+		const bool bPure = Writing.IsEmpty() || !ImpureCasts.Contains(Writing);
+
+		Node->SetPurity(bPure);
 
 		Node->AllocateDefaultPins();
 
-		const FValue From = Read(Inner(Expression));
+		if (!bPure) EnterNode(Node);
 
-		if (From.Pin != nullptr) Connect(From.Pin, Node->GetCastSourcePin());
+		/* Given for the same reason as the cast the run passes through */
+		Give(Read(Inner(Expression)), Node->GetCastSourcePin());
+
+		if (!bPure) Flow = Node->GetValidCastPin();
 
 		Value.Pin = Node->GetCastResultPin();
 
@@ -2126,13 +2353,6 @@ UClass* FBytecodeGraph::EnsureComponentTemplate(const FString& Name) {
 
 	if (Blueprint == nullptr || Name.IsEmpty() || Container == nullptr) return nullptr;
 
-	/* One the blueprint already keeps */
-	for (UActorComponent* Existing : Blueprint->ComponentTemplates) {
-		if (Existing != nullptr && Existing->GetName() == Name) {
-			return Existing->GetClass();
-		}
-	}
-
 	/* The component a call names is an export of its own, kept beside the class rather than in the
 	 * construction script: it is the thing the node is a copy of every time it runs. */
 	FUObjectExport* Export = nullptr;
@@ -2142,6 +2362,19 @@ UClass* FBytecodeGraph::EnsureComponentTemplate(const FString& Name) {
 			Export = Candidate;
 
 			break;
+		}
+	}
+
+	/* One the blueprint already keeps, told again what the asset says: made and never read, it holds nothing */
+	for (UActorComponent* Existing : Blueprint->ComponentTemplates) {
+		if (Existing != nullptr && Existing->GetName() == Name) {
+			if (Export != nullptr && ObjectSerializer != nullptr) {
+				Export->Object = Existing;
+
+				ObjectSerializer->DeserializeObjectProperties(Export->GetProperties(), Existing);
+			}
+
+			return Existing->GetClass();
 		}
 	}
 
@@ -2165,6 +2398,11 @@ UClass* FBytecodeGraph::EnsureComponentTemplate(const FString& Name) {
 	if (Template == nullptr) return nullptr;
 
 	Export->Object = Template;
+
+	/* And told what it is, or every copy the node makes comes out a bare component */
+	if (ObjectSerializer != nullptr) {
+		ObjectSerializer->DeserializeObjectProperties(Export->GetProperties(), Template);
+	}
 
 	Blueprint->ComponentTemplates.Add(Template);
 
@@ -2332,7 +2570,12 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 				Ours = Own->SkeletonGeneratedClass->FindFunctionByName(Function->GetFName());
 			}
 
-			if (Ours != nullptr && Ours != Function) {
+			/* The blueprint's own copy of an overridden event is only made on compile, so until then the lookup finds the parent's */
+			const FString CallToken = Expression.Has(TEXT("Token")) ? Expression.GetString(TEXT("Token")) : FString();
+			const bool bFinalCallToEvent = Function->HasAnyFunctionFlags(FUNC_BlueprintEvent)
+				&& (CallToken == TEXT("EX_FinalFunction") || CallToken == TEXT("EX_LocalFinalFunction"));
+
+			if ((Ours != nullptr && Ours != Function) || bFinalCallToEvent) {
 				Node = AddNode<UK2Node_CallParentFunction>();
 			}
 
@@ -2882,9 +3125,18 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 		 * node where the game had two, and whatever the second one fed is left with nothing. */
 		const bool bAgain = !Writing.IsEmpty() && Writes.FindRef(Writing) > 1;
 
-		const FValue Expression = bAgain
-			? ReadExpression(Statement.GetObject(TEXT("Expression")))
-			: Read(Statement.GetObject(TEXT("Expression")));
+		/* What a Math Expression worked out, which is one node however many calls it was written as */
+		FValue Expression;
+
+		if (Writing.StartsWith(TEXT("K2Node_MathExpression"))) {
+			Expression = ReadMathExpression(Statement.GetObject(TEXT("Expression")));
+		}
+
+		if (!Expression.IsSet()) {
+			Expression = bAgain
+				? ReadExpression(Statement.GetObject(TEXT("Expression")))
+				: Read(Statement.GetObject(TEXT("Expression")));
+		}
 
 		const FString Into = Writing;
 
@@ -2940,9 +3192,20 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 				} else if (Held.Has(TEXT("ObjectName"))) {
 					FString Unused;
 					SplitReference(Held, Owner, Unused);
+				} else if (Held.Has(TEXT("Owner"))) {
+					/* A member a blueprint declared names the class that holds it beside it */
+					FString Unused;
+					SplitReference(Held.GetObject(TEXT("Owner")), Owner, Unused);
 				}
 
 				UClass* On = Owner.IsEmpty() ? nullptr : const_cast<UClass*>(FindClassByType(Owner));
+
+				/* A blueprint's class is only here once something has asked for it */
+				if (On == nullptr && !Owner.IsEmpty() && Held.Has(TEXT("Owner"))) {
+					BringInClass(Held.GetObject(TEXT("Owner")));
+
+					On = const_cast<UClass*>(FindClassByType(Owner));
+				}
 
 				/* Read after the name, since reading it lays down whatever works the target out */
 				const FValue Target = On != nullptr && !Member.IsEmpty()
@@ -3002,6 +3265,9 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 				Carried.Add(Name, Expression.Literal);
 			}
 
+			/* Nothing is run by writing a local, so a Return answered just before is still the one to go through */
+			if (AnsweredAt == Placing - 1) AnsweredAt = Placing;
+
 			return true;
 		}
 
@@ -3013,6 +3279,26 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 			} else if (!Expression.Literal.IsEmpty()) {
 				ApplyLiteral(Answer, Expression.Literal);
 			}
+
+			return true;
+		}
+
+		/* A macro's scratch nobody claimed, written as the macro wrote it: an Assign onto its Local node */
+		if (KeepsTemporary(Name)) {
+			const FUObjectJsonValueExport Held = Variable.GetObject(TEXT("Variable"));
+
+			UK2Node_AssignmentStatement* Node = AddNode<UK2Node_AssignmentStatement>();
+
+			Node->AllocateDefaultPins();
+
+			/* The Local first, since what it holds is what the value pin learns to take */
+			Connect(Temporary(Name, Held.Has(TEXT("Property")) ? Held.GetObject(TEXT("Property")) : Held), Node->GetVariablePin());
+
+			Give(Expression, Node->GetValuePin());
+
+			ChainExecution(Node);
+
+			Placed++;
 
 			return true;
 		}
@@ -3141,6 +3427,34 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 	}
 
 	if (Token == TEXT("EX_Jump")) {
+		/* A Return with nothing to answer, told from a way out left open by being jumped to rather than from */
+		const int32 Address = MacroReading::AddressOf(Statement);
+		const int32 Ends = MacroReading::IndexOfAddress(Statements, Statement.GetInteger(TEXT("CodeOffset"), -1));
+
+		if (HoldsLocals() && AnsweredAt != Placing - 1 && Statements.IsValidIndex(Ends) && MacroReading::TokenOf(Statements[Ends]) == TEXT("EX_Return")) {
+			bool bGoneTo = false;
+
+			for (const FUObjectJsonValueExport& Other : Statements) {
+				const FString Going = MacroReading::TokenOf(Other);
+
+				if (Going == TEXT("EX_Jump") || Going == TEXT("EX_JumpIfNot")) {
+					bGoneTo = Other.GetInteger(TEXT("CodeOffset"), -1) == Address;
+				} else if (Going == TEXT("EX_PushExecutionFlow")) {
+					bGoneTo = Other.GetInteger(TEXT("PushingAddress"), -1) == Address;
+				}
+
+				if (bGoneTo) break;
+			}
+
+			if (bGoneTo) {
+				ChainExecution(NewReturn());
+
+				Placed++;
+
+				return true;
+			}
+		}
+
 		Jumps.Add(MakeTuple(Flow, Statement.GetInteger(TEXT("CodeOffset"), -1)));
 
 		/* The run carries on wherever it was jumped to, and not here */
@@ -3152,6 +3466,48 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 	/* The end of the run. Where the function answers with something, the node it answers through
 	 * is the last thing the run reaches; where it answers with nothing, there is no node at all. */
 	if (Token == TEXT("EX_Return")) {
+		/* A Return with nothing to answer at the very end, which only a function keeping a flow stack can be told from an open way out */
+		const bool bAnswers = Graph->Nodes.ContainsByPredicate([](const UEdGraphNode* Node) {
+			if (Node == nullptr || !Node->IsA<UK2Node_FunctionResult>()) return false;
+
+			return Node->Pins.ContainsByPredicate([](const UEdGraphPin* Pin) {
+				return Pin != nullptr && Pin->Direction == EGPD_Input && Pin->PinType.PinCategory != UEdGraphSchema_K2::PC_Exec;
+			});
+		});
+
+		if (HoldsLocals() && !bAnswers) {
+			const int32 Address = MacroReading::AddressOf(Statement);
+
+			bool bStacks = false;
+			bool bGoneTo = false;
+
+			for (const FUObjectJsonValueExport& Other : Statements) {
+				const FString Going = MacroReading::TokenOf(Other);
+
+				if (Going == TEXT("EX_PushExecutionFlow")) bStacks = true;
+
+				if ((Going == TEXT("EX_Jump") || Going == TEXT("EX_JumpIfNot")) && Other.GetInteger(TEXT("CodeOffset"), -1) == Address) bGoneTo = true;
+			}
+
+			if (bStacks && (Flow != nullptr || bGoneTo)) {
+				UK2Node_FunctionResult* Node = NewReturn();
+
+				if (UEdGraphPin* In = WayIn(Node); In != nullptr && Address >= 0) {
+					Entries.Add(Address, In);
+				}
+
+				/* Only jumped to, which the jumps tie up once everything is laid down */
+				if (Flow != nullptr) ChainExecution(Node);
+
+				Placed++;
+
+				return true;
+			}
+
+			/* Anything else here is a way out left open, and a Return laid down above has an address of its own */
+			return true;
+		}
+
 		for (UEdGraphNode* Node : Graph->Nodes) {
 			if (UK2Node_FunctionResult* Answering = Cast<UK2Node_FunctionResult>(Node)) {
 				/* Where the end of the run begins, said outright.
@@ -3411,6 +3767,9 @@ int32 FBytecodeGraph::DeclareLocals() {
 		/* Nowhere to keep it, which is only ever a macro's scratch left over from a macro that was
 		 * not recognised. Said once here rather than as a broken node further along. */
 		if (!HoldsLocals()) {
+			/* Unless it is kept where it is, as the Local node it was */
+			if (KeepsTemporary(Name)) continue;
+
 			Unhandled.AddUnique(FString::Printf(TEXT("\"%s\" belongs to a macro that was not read back, and %s cannot keep one"), *Name, *Graph->GetName()));
 
 			continue;
@@ -3496,6 +3855,9 @@ void FBytecodeGraph::FindPureCasts() {
 
 	if (Asking.Num() == 0) return;
 
+	/* Which of them the run tested */
+	TSet<FString> Tested;
+
 	for (const FUObjectJsonValueExport& Statement : Statements) {
 		if (!Statement.JsonObject.IsValid()) continue;
 
@@ -3506,7 +3868,16 @@ void FBytecodeGraph::FindPureCasts() {
 
 		for (const TPair<FString, TSharedPtr<FJsonValue>>& Field : Statement.JsonObject->Values) {
 			/* The test is the cast answering, and the local it is written into is not a read of it */
-			if (bTests && Field.Key == TEXT("BooleanExpression")) continue;
+			if (bTests && Field.Key == TEXT("BooleanExpression")) {
+				TArray<FString> Asked;
+
+				NamesRead(Field.Value, Asked);
+
+				Tested.Append(Asked);
+
+				continue;
+			}
+
 			if (Field.Key == TEXT("Variable")) continue;
 
 			NamesRead(Field.Value, Names);
@@ -3515,6 +3886,15 @@ void FBytecodeGraph::FindPureCasts() {
 		for (const FString& Name : Names) {
 			if (const FString* Reached = Asking.Find(Name)) PureCasts.Add(*Reached);
 		}
+	}
+
+	/* And one nobody asked at all: an impure cast always tests whether it worked, so one never tested is pure */
+	for (const TPair<FString, FString>& One : Asking) {
+		if (!Tested.Contains(One.Key)) PureCasts.Add(One.Value);
+	}
+
+	for (const TPair<FString, FString>& One : Asking) {
+		if (Tested.Contains(One.Key) && !PureCasts.Contains(One.Value)) ImpureCasts.Add(One.Value);
 	}
 }
 
@@ -3561,31 +3941,7 @@ bool FBytecodeGraph::AnswerHere(const FString& Out, const FValue& Expression) {
 
 	const bool bCarryingOn = Node != nullptr;
 
-	if (Node == nullptr) Node = AddNode<UK2Node_FunctionResult>();
-
-	/* A second Return answers through the same pins as the one the graph already has, and a Return
-	 * placed into a graph that has one takes them for itself as it is placed.
-	 *
-	 * So this is only for a build where it does not, and only where it has not: asking a node that
-	 * already grew its pins to grow them again lays a second set on top of the first, and a Return
-	 * with two of everything answers through neither. */
-	if (!bCarryingOn && Node->Pins.Num() == 0) {
-		for (UEdGraphNode* Held : Graph->Nodes) {
-			UK2Node_FunctionResult* Already = Cast<UK2Node_FunctionResult>(Held);
-
-			if (Already == nullptr || Already == Node || Already->UserDefinedPins.Num() == 0) continue;
-
-			Node->FunctionReference = Already->FunctionReference;
-
-			for (const TSharedPtr<FUserPinInfo>& Described : Already->UserDefinedPins) {
-				Node->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Described));
-			}
-
-			break;
-		}
-
-		Node->AllocateDefaultPins();
-	}
+	if (Node == nullptr) Node = NewReturn();
 
 	UEdGraphPin* Answer = Node->FindPin(*Out, EGPD_Input);
 
@@ -3614,6 +3970,31 @@ bool FBytecodeGraph::AnswerHere(const FString& Out, const FValue& Expression) {
 	AnsweredWith = Node;
 
 	return true;
+}
+
+UK2Node_FunctionResult* FBytecodeGraph::NewReturn() {
+	UK2Node_FunctionResult* Node = AddNode<UK2Node_FunctionResult>();
+
+	/* A second Return answers through the same pins, so these are grown only for a build that does not do it itself */
+	if (Node->Pins.Num() == 0) {
+		for (UEdGraphNode* Held : Graph->Nodes) {
+			UK2Node_FunctionResult* Already = Cast<UK2Node_FunctionResult>(Held);
+
+			if (Already == nullptr || Already == Node || Already->UserDefinedPins.Num() == 0) continue;
+
+			Node->FunctionReference = Already->FunctionReference;
+
+			for (const TSharedPtr<FUserPinInfo>& Described : Already->UserDefinedPins) {
+				Node->UserDefinedPins.Add(MakeShared<FUserPinInfo>(*Described));
+			}
+
+			break;
+		}
+
+		Node->AllocateDefaultPins();
+	}
+
+	return Node;
 }
 
 void FBytecodeGraph::FindConstants() {
@@ -3700,6 +4081,17 @@ void FBytecodeGraph::FindConstants() {
 		bool& Holds = Plain.FindOrAdd(Name, true);
 
 		Holds = Holds && (bSaidOutright || bCopied);
+	}
+
+	/* Which of them the run tests, which makes them something kept rather than a value passed on */
+	for (const FUObjectJsonValueExport& Statement : Statements) {
+		const FString Token = MacroReading::TokenOf(Statement);
+
+		if (Token != TEXT("EX_JumpIfNot") && Token != TEXT("EX_PopExecutionFlowIfNot")) continue;
+
+		if (const FString Asked = MacroReading::ReadFrom(Statement.GetObject(TEXT("BooleanExpression"))); Asked.StartsWith(TEXT("Temp_"))) {
+			TestedScratch.Add(Asked);
+		}
 	}
 
 	for (const TPair<FString, bool>& Wrote : Plain) {
@@ -4638,7 +5030,16 @@ int32 FBytecodeGraph::Build() {
 	/* Put back whatever was written as one node before anything is laid out, so what is laid out is
 	 * what the reader will see */
 	if (bTidy) {
+		/* Any of them can be left out by name, since one or two trade a little of the script for how it reads */
+		FString Skipping;
+		FParse::Value(FCommandLine::Get(), TEXT("skiptidy="), Skipping);
+
+		TArray<FString> LeftOut;
+		Skipping.ParseIntoArray(LeftOut, TEXT(","));
+
 		for (const TSharedRef<FGraphTidy>& Tidy : GetGraphTidies()) {
+			if (LeftOut.Contains(Tidy->GetName())) continue;
+
 			Tidy->Apply(Graph);
 		}
 	}

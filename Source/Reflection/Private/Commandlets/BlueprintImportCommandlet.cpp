@@ -15,6 +15,7 @@
 #endif
 #include "EdGraph/EdGraph.h"
 #include "EdGraph/EdGraphNode.h"
+#include "Engine/Blueprint.h"
 #include "Importers/Types/Blueprint/MacroPattern.h"
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportReader.h"
@@ -139,8 +140,17 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 
 	int32 Saved = 0;
 
+	const UPackage* Imported = Importer->GetPackage();
+
 	for (UPackage* Package : Dirty) {
 		const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
+
+		/* Loading dirties packages nobody asked to change, so only what this run made is written */
+		if (Package != Imported && FPaths::FileExists(FileName)) {
+			UE_LOG(LogBlueprintImport, Display, TEXT("left alone %s, it was already on disk"), *FileName);
+
+			continue;
+		}
 
 		/* 5.0 gathered what a save is told into one struct. Before that it is told the same
 		 * things one argument at a time. */
@@ -196,6 +206,54 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 
 				UE_LOG(LogBlueprintImport, Display, TEXT("[disasm %s] %d byte(s)") LINE_TERMINATOR TEXT("%s"), *It->GetName(), It->Script.Num(), *Written);
 			}
+		}
+	}
+
+	/* Every graph as it was saved, since what the importer says is said before the jumps are tied up */
+	if (FString GraphsFile; FParse::Value(*Params, TEXT("graphs="), GraphsFile) && !GraphsFile.IsEmpty()) {
+		FString Written;
+
+		UPackage* Package = Importer->GetPackage();
+		UBlueprint* Blueprint = Package != nullptr ? FindObject<UBlueprint>(Package, *FPackageName::GetShortName(Package)) : nullptr;
+
+		if (Blueprint != nullptr) {
+			TArray<UEdGraph*> Graphs;
+			Blueprint->GetAllGraphs(Graphs);
+
+			for (const UEdGraph* Graph : Graphs) {
+				if (Graph == nullptr) continue;
+
+				Written += FString::Printf(TEXT("== %s (%d node(s))") LINE_TERMINATOR, *Graph->GetName(), Graph->Nodes.Num());
+
+				for (const UEdGraphNode* Node : Graph->Nodes) {
+					if (Node == nullptr) continue;
+
+					Written += FString::Printf(TEXT("  %s [%s]") LINE_TERMINATOR, *Node->GetName(), *Node->GetNodeTitle(ENodeTitleType::ListView).ToString().Replace(TEXT("\n"), TEXT(" ")).Replace(TEXT("\r"), TEXT("")));
+
+					for (const UEdGraphPin* Pin : Node->Pins) {
+						if (Pin == nullptr || Pin->bHidden) continue;
+
+						FString Leads;
+
+						for (const UEdGraphPin* To : Pin->LinkedTo) {
+							if (To != nullptr) Leads += FString::Printf(TEXT("%s.%s "), *To->GetOwningNode()->GetName(), *To->PinName.ToString());
+						}
+
+						Written += FString::Printf(TEXT("      %s %s (%s)%s -> %s") LINE_TERMINATOR,
+							Pin->Direction == EGPD_Input ? TEXT("in ") : TEXT("out"),
+							*Pin->PinName.ToString(),
+							*Pin->PinType.PinCategory.ToString(),
+							Pin->DefaultValue.IsEmpty() && Pin->DefaultObject == nullptr ? TEXT("") : *FString::Printf(TEXT(" = %s"), Pin->DefaultObject != nullptr ? *Pin->DefaultObject->GetName() : *Pin->DefaultValue),
+							Leads.IsEmpty() ? TEXT("-") : *Leads);
+					}
+				}
+			}
+		}
+
+		if (FFileHelper::SaveStringToFile(Written, *GraphsFile)) {
+			UE_LOG(LogBlueprintImport, Display, TEXT("the graphs as saved were written to \"%s\""), *GraphsFile);
+		} else {
+			UE_LOG(LogBlueprintImport, Error, TEXT("could not write the graphs to \"%s\""), *GraphsFile);
 		}
 	}
 

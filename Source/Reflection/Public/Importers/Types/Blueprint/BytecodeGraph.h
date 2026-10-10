@@ -13,6 +13,7 @@ class UK2Node;
 class UK2Node_Variable;
 class UK2Node_CallFunction;
 struct FUObjectExportContainer;
+class UObjectSerializer;
 
 /* Builds a graph back out of the bytecode a function was cooked as.
  *
@@ -40,6 +41,9 @@ public:
 	 * one after another, entered once per event at the address that event's body begins, and which
 	 * address that is is what the event's own function passes to the ubergraph. */
 	void EnterAt(int32 Address, UK2Node* Node, FName Through = NAME_None);
+
+	/* What reads the templates a call names, which are exports of their own with properties to read */
+	void SetObjectSerializer(UObjectSerializer* InObjectSerializer) { ObjectSerializer = InObjectSerializer; }
 
 	/* Says that what the graph reads under one name is what an event was handed under another */
 	void HandOver(const FString& Frame, const FString& Parameter, UK2Node* Node);
@@ -158,6 +162,9 @@ private:
 	/* Lays down the Return a branch was drawn with, and hands it what that branch decided */
 	bool AnswerHere(const FString& Out, const FValue& Expression);
 
+	/* A Return of its own, with the pins every other Return in the graph answers through */
+	class UK2Node_FunctionResult* NewReturn();
+
 	/* Makes the node every matched macro was written as, before anything is laid out */
 	void MakeMacros();
 
@@ -175,6 +182,12 @@ private:
 
 	/* The reading itself, of whatever kind of expression it turns out to be */
 	FValue ReadExpression(const FUObjectJsonValueExport& Expression);
+
+	/* Reads a Math Expression back as that node where it can be spelled as one, and nothing where it cannot */
+	FValue ReadMathExpression(const FUObjectJsonValueExport& Expression);
+
+	/* Spells one piece of a Math Expression, gathering what has to come in through a pin */
+	bool SpellMath(const FUObjectJsonValueExport& Expression, FString& Out, TArray<TPair<FString, FUObjectJsonValueExport>>& Inputs);
 
 	/* A call, of any of the four spellings the bytecode has for one */
 	UK2Node* PlaceCall(const FUObjectJsonValueExport& Expression, UEdGraphPin* Target, const UClass* Against = nullptr);
@@ -202,6 +215,12 @@ private:
 
 	/* Whether a name is the compiler's rather than the graph's, and so not the graph's to keep */
 	bool IsMade(const FString& Name) const;
+
+	/* Whether a macro's unclaimed scratch is kept as its Local node: only in the event graph, and only if it persists */
+	bool KeepsTemporary(const FString& Name) const;
+
+	/* The Local node standing for a kept scratch, made the first time it is wanted */
+	UEdGraphPin* Temporary(const FString& Name, const FUObjectJsonValueExport& Property);
 
 	/* Declares a local the function keeps, where it does not have one already */
 	bool EnsureLocal(const FString& Name, const FUObjectJsonValueExport& Property);
@@ -252,6 +271,9 @@ private:
 
 	/* Everything the asset was read as, for reaching what a call names */
 	FUObjectExportContainer* Container = nullptr;
+
+	/* What reads an export's properties into the object made for it, for the templates a call names */
+	UObjectSerializer* ObjectSerializer = nullptr;
 
 	/* The pin every compiler made local stands for, by the name it was given */
 	TMap<FString, UEdGraphPin*> Locals;
@@ -379,6 +401,12 @@ private:
 	/* The ones worked out from themselves: a counter, a total, anything that runs */
 	TSet<FString> Running;
 
+	/* The compiler's scratch the run tests to decide where to go, which is anything kept from one time to the next */
+	TSet<FString> TestedScratch;
+
+	/* The Local node each kept scratch was made as */
+	TMap<FString, TWeakObjectPtr<class UK2Node_TemporaryVariable>> Temporaries;
+
 	/* What each of those carries, once the statement that writes it has been read */
 	TMap<FString, FString> Carried;
 
@@ -394,6 +422,9 @@ private:
 
 	/* The local each pure cast was put in, by which its node is known when it is built */
 	TSet<FString> PureCasts;
+
+	/* And each cast the run went one way or the other out of, which is an impure one whatever kind of cast it is */
+	TSet<FString> ImpureCasts;
 
 	bool bLookedForPureCasts = false;
 
