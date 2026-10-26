@@ -8,6 +8,7 @@
 #include "K2Node_EnumInequality.h"
 #include "K2Node_IfThenElse.h"
 #include "K2Node_SwitchEnum.h"
+#include "K2Node_VariableGet.h"
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionTidySwitchEnum, All, All);
 
@@ -45,6 +46,28 @@ namespace {
 	/* Whatever feeds a pin, where exactly one thing does */
 	UEdGraphPin* FedBy(const UEdGraphPin* Pin) {
 		return Pin != nullptr && Pin->LinkedTo.Num() == 1 ? Pin->LinkedTo[0] : nullptr;
+	}
+
+	/* Whether two pins hand over the same value. Read a read at a time, every rung gets a getter of
+	 * its own, and two getters of one variable are never equal as pins, so a switch of five cases
+	 * ends at the third with the rest becoming a second switch. */
+	bool SameValue(const UEdGraphPin* One, const UEdGraphPin* Other) {
+		if (One == Other) return true;
+		if (One == nullptr || Other == nullptr || One->PinName != Other->PinName) return false;
+
+		const UK2Node_VariableGet* OneGet = Cast<UK2Node_VariableGet>(One->GetOwningNode());
+		const UK2Node_VariableGet* OtherGet = Cast<UK2Node_VariableGet>(Other->GetOwningNode());
+
+		if (OneGet == nullptr || OtherGet == nullptr) return false;
+		if (OneGet->VariableReference.GetMemberName() != OtherGet->VariableReference.GetMemberName()) return false;
+
+		const UEdGraphPin* OneSelf = OneGet->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input);
+		const UEdGraphPin* OtherSelf = OtherGet->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input);
+
+		const UEdGraphPin* OneOn = OneSelf != nullptr ? FedBy(OneSelf) : nullptr;
+		const UEdGraphPin* OtherOn = OtherSelf != nullptr ? FedBy(OtherSelf) : nullptr;
+
+		return (OneOn == nullptr && OtherOn == nullptr) || (OneOn != nullptr && OtherOn != nullptr && SameValue(OneOn, OtherOn));
 	}
 
 	/* Which entry of the enum a side was picked as, said either way round */
@@ -118,7 +141,7 @@ struct FSwitchEnumTidy final : FGraphTidy {
 				UEdGraphPin* Over = FedBy(First);
 
 				if (Over == nullptr) break;
-				if (Asked != nullptr && Over != Asked) break;
+				if (Asked != nullptr && !SameValue(Over, Asked)) break;
 
 				UEnum* Held = Cast<UEnum>(Over->PinType.PinSubCategoryObject.Get());
 
@@ -166,7 +189,7 @@ struct FSwitchEnumTidy final : FGraphTidy {
 			 * is lost unless the node is told to grow the pin before it grows any. */
 			UEdGraphPin* Falls = Ladder.Last().Asks->GetThenPin();
 
-			UK2Node_SwitchEnum* Switch = NewObject<UK2Node_SwitchEnum>(Graph);
+			UK2Node_SwitchEnum* Switch = NewObject<UK2Node_SwitchEnum>(Graph, UK2Node_SwitchEnum::StaticClass(), NAME_None, RF_Transactional);
 
 			Switch->bHasDefaultPin = Falls != nullptr && Falls->LinkedTo.Num() > 0;
 
@@ -217,7 +240,9 @@ struct FSwitchEnumTidy final : FGraphTidy {
 			int32 Wired = 0;
 
 			for (const FRung& Rung : Ladder) {
-				UEdGraphPin* Way = Switch->FindPin(*Enum->GetNameStringByIndex(Rung.Index), EGPD_Output);
+				/* Asked for by name rather than by text: the text lookup turns away any name that reads
+				 * as None, and an enum with an entry called None then loses that way out */
+				UEdGraphPin* Way = Switch->FindPin(FName(*Enum->GetNameStringByIndex(Rung.Index)), EGPD_Output);
 
 				/* One way out leads one place. Wiring a second onto it is the error the editor puts
 				 * on the node rather than a second route. */

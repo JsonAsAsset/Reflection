@@ -124,7 +124,7 @@ struct FAccessorTidy final : FGraphTidy {
 
 			if (Gives == nullptr) continue;
 
-			UK2Node_CallFunction* Call = NewObject<UK2Node_CallFunction>(Graph);
+			UK2Node_CallFunction* Call = NewObject<UK2Node_CallFunction>(Graph, UK2Node_CallFunction::StaticClass(), NAME_None, RF_Transactional);
 
 			Graph->AddNode(Call, false, false);
 

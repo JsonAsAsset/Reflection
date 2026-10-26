@@ -419,7 +419,7 @@ static void ApplyMetadata(const TSharedPtr<FJsonObject>& MetadataResponse) {
  * a local server, once per press. */
 bool Cloud::EnsureMetadataBlocking() {
 	/* Waited for rather than given up on at the first miss */
-	const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "AskingCloudMetadata", "Waiting for Cloud to say which project it has loaded"));
+	const FBlockingRequestScope BlockingScope(NSLOCTEXT("Reflection", "AskingCloudMetadata", "Connecting to Cloud"));
 
 	/* Long enough not to hammer a server that is still starting, short enough to feel immediate */
 	constexpr double BetweenTriesSeconds = 0.25;

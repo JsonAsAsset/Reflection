@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Settings/ReflectionSettings.h"
+#include "Settings/Redirector.h"
 #include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
@@ -165,8 +166,25 @@ inline TSubclassOf<UObject> LoadBlueprintClass(FString& ObjectPath) {
 }
 
 inline UClass* LoadClass(const TSharedPtr<FJsonObject>& SuperStruct) {
-	const FString ObjectName = SuperStruct->GetStringField(TEXT("ObjectName")).Replace(TEXT("Class'"), TEXT("")).Replace(TEXT("'"), TEXT(""));
+	FString ObjectName = SuperStruct->GetStringField(TEXT("ObjectName")).Replace(TEXT("Class'"), TEXT("")).Replace(TEXT("'"), TEXT(""));
 	FString ObjectPath = SuperStruct->GetStringField(TEXT("ObjectPath"));
+
+	/* Redirected by the same rules an asset path is, since a class is named the same way */
+	{
+		FString Named = ObjectPath.Contains(TEXT(".")) ? ObjectPath : ObjectPath + TEXT(".") + ObjectName;
+
+		FRRedirects::Redirect(Named);
+
+		if (int32 Dot; Named.FindLastChar(TEXT('.'), Dot)) {
+			ObjectPath = Named.Left(Dot);
+			ObjectName = Named.RightChop(Dot + 1);
+
+			/* A blueprint names its generated class, the asset with _C after it */
+			if (!ObjectPath.Contains(TEXT("/Script/")) && !ObjectName.EndsWith(TEXT("_C"))) {
+				ObjectPath = Named;
+			}
+		}
+	}
 
 	/* It's a C++ class if it has Script in it */
 	if (ObjectPath.Contains("/Script/")) {

@@ -239,11 +239,11 @@ void FNiagaraGraphs::Rebuild(FUObjectExportContainer* Container, UPackage* Packa
 
 		for (TFieldIterator<FMapProperty> Named(Node->GetClass()); Named; ++Named) {
 			const FStructProperty* Says = CastField<FStructProperty>(Named->KeyProp);
-			const FStructProperty* Stands = CastField<FStructProperty>(Named->ValueProp);
+			const FStructProperty* StandsVar = CastField<FStructProperty>(Named->ValueProp);
 
-			if (Says == nullptr || Stands == nullptr
+			if (Says == nullptr || StandsVar == nullptr
 				|| Says->Struct != TBaseStructure<FGuid>::Get()
-				|| Stands->Struct != TBaseStructure<FGuid>::Get()) {
+				|| StandsVar->Struct != TBaseStructure<FGuid>::Get()) {
 				continue;
 			}
 

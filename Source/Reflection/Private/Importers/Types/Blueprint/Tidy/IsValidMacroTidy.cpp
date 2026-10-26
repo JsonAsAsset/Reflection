@@ -102,7 +102,7 @@ struct FIsValidMacroTidy final : FGraphTidy {
 			const TArray<UEdGraphPin*> WhenValid = Branch->GetThenPin() != nullptr ? Branch->GetThenPin()->LinkedTo : TArray<UEdGraphPin*>();
 			const TArray<UEdGraphPin*> WhenNot = Branch->GetElsePin() != nullptr ? Branch->GetElsePin()->LinkedTo : TArray<UEdGraphPin*>();
 
-			UK2Node_MacroInstance* Asks = NewObject<UK2Node_MacroInstance>(Graph);
+			UK2Node_MacroInstance* Asks = NewObject<UK2Node_MacroInstance>(Graph, UK2Node_MacroInstance::StaticClass(), NAME_None, RF_Transactional);
 
 			Graph->AddNode(Asks, false, false);
 

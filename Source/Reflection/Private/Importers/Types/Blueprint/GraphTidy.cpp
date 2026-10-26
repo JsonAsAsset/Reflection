@@ -66,7 +66,7 @@ void GiveReadersTheirOwn(UEdGraph* Graph, UK2Node_VariableGet* Converted, const 
 	for (UEdGraphPin* Reader : Readers) {
 		if (Reader == nullptr) continue;
 
-		UK2Node_VariableGet* Own = NewObject<UK2Node_VariableGet>(Graph);
+		UK2Node_VariableGet* Own = NewObject<UK2Node_VariableGet>(Graph, UK2Node_VariableGet::StaticClass(), NAME_None, RF_Transactional);
 
 		Graph->AddNode(Own, false, false);
 

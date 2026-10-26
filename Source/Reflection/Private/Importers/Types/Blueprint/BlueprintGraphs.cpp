@@ -41,10 +41,20 @@ namespace {
 	}
 
 
+	/* How a parameter is handed over. A struct or interface the game passes as const& is a reference
+	 * pin here too, or a delegate bound to it no longer matches and the compiler wraps it in a proxy */
+	void PassedAs(const TSharedPtr<FJsonObject>& Parameter, FEdGraphPinType& Type) {
+		const FString Spelled = Parameter->GetStringField(TEXT("PropertyFlags"));
+
+		Type.bIsReference = Spelled.Contains(TEXT("ReferenceParm"));
+		Type.bIsConst = Spelled.Contains(TEXT("ConstParm"));
+	}
+
 	/* Puts a node in a graph, the way the editor would have put it there */
 	template <typename T>
 	T* Place(UEdGraph* Graph) {
-		T* Node = NewObject<T>(Graph);
+		/* Transactional like a node the editor placed, or the next open flags them all and asks for a resave */
+		T* Node = NewObject<T>(Graph, T::StaticClass(), NAME_None, RF_Transactional);
 
 		Graph->AddNode(Node, false, false);
 
@@ -267,7 +277,22 @@ UEdGraph* FBlueprintGraphs::MakeLayer(UBlueprint* Blueprint, const FString& Name
 UEdGraph* FBlueprintGraphs::Make(UBlueprint* Blueprint, const FString& Name, const FUObjectJsonValueExport& Function, const TArray<TSharedPtr<FJsonValue>>& Declared) {
 	if (Blueprint == nullptr || Name.IsEmpty()) return nullptr;
 
-	UEdGraph* Graph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*Name), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
+	/* A function of the blueprint's own that a native parent also has under that name, callable but
+	 * not overridable. The cooked asset keeps both, but this compiler refuses a function whose name the parent
+	 * already uses, and refusing it fails the whole class. So the blueprint's one is made under a name
+	 * of its own, and its callers are pointed at it by FBytecodeGraph::FindFunctionOn. */
+	FString Making = Name;
+
+	if (!Function.Has(TEXT("SuperStruct")) && Blueprint->ParentClass != nullptr) {
+		if (const UFunction* Taken = Blueprint->ParentClass->FindFunctionByName(*Name); Taken != nullptr && !Taken->HasAnyFunctionFlags(FUNC_BlueprintEvent)) {
+			Making = Name + FBlueprintGraphs::ClashSuffix;
+
+			UE_LOG(LogTemp, Warning, TEXT("\"%s\" is a name %s already uses for a function of its own, so the blueprint's is made as \"%s\""),
+				*Name, *Taken->GetOwnerClass()->GetName(), *Making);
+		}
+	}
+
+	UEdGraph* Graph = FBlueprintEditorUtils::CreateNewGraph(Blueprint, FName(*Making), UEdGraph::StaticClass(), UEdGraphSchema_K2::StaticClass());
 
 	if (Graph == nullptr) return nullptr;
 
@@ -293,6 +318,13 @@ UEdGraph* FBlueprintGraphs::Make(UBlueprint* Blueprint, const FString& Name, con
 
 	if (Answered == nullptr && Blueprint->ParentClass != nullptr) {
 		Answered = Blueprint->ParentClass->FindFunctionByName(*Name);
+
+		/* Only something a blueprint may override. A parent can carry a plain callable of the same
+		 * name the blueprint's own function was written beside, and taken as an
+		 * override it is refused for not being one */
+		if (Answered != nullptr && !Answered->HasAnyFunctionFlags(FUNC_BlueprintEvent)) {
+			Answered = nullptr;
+		}
 	}
 
 	/* Said as the class it was declared on rather than as the function.
@@ -348,6 +380,8 @@ UEdGraph* FBlueprintGraphs::Make(UBlueprint* Blueprint, const FString& Name, con
 
 		if (!FBlueprintVariables::GetPinType(Parameter, Type)) continue;
 
+		PassedAs(Parameter, Type);
+
 		Entry->CreateUserDefinedPin(FName(*Parameter->GetStringField(TEXT("Name"))), Type, EGPD_Output);
 	}
 
@@ -361,6 +395,8 @@ UEdGraph* FBlueprintGraphs::Make(UBlueprint* Blueprint, const FString& Name, con
 		FEdGraphPinType Type;
 
 		if (!FBlueprintVariables::GetPinType(Parameter, Type)) continue;
+
+		PassedAs(Parameter, Type);
 
 		Result->CreateUserDefinedPin(FName(*Parameter->GetStringField(TEXT("Name"))), Type, EGPD_Input);
 	}
@@ -456,6 +492,8 @@ UK2Node* FBlueprintGraphs::MakeEvent(UBlueprint* Blueprint, UEdGraph* EventGraph
 
 		if (!FBlueprintVariables::GetPinType(Parameter, Type)) continue;
 
+		PassedAs(Parameter, Type);
+
 		Event->CreateUserDefinedPin(FName(*Parameter->GetStringField(TEXT("Name"))), Type, EGPD_Output);
 	}
 
@@ -515,6 +553,8 @@ UEdGraph* FBlueprintGraphs::MakeDispatcher(UBlueprint* Blueprint, const FString&
 			FEdGraphPinType Type;
 
 			if (!FBlueprintVariables::GetPinType(Parameter, Type)) continue;
+
+			PassedAs(Parameter, Type);
 
 			Entry->CreateUserDefinedPin(FName(*Parameter->GetStringField(TEXT("Name"))), Type, EGPD_Output);
 		}

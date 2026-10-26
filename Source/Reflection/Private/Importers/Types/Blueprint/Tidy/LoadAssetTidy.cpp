@@ -211,7 +211,7 @@ struct FLoadAssetTidy final : FGraphTidy {
 
 			if (Entered == nullptr || Done == nullptr) continue;
 
-			UEdGraphNode* Loads = NewObject<UEdGraphNode>(Graph, Drawn);
+			UEdGraphNode* Loads = NewObject<UEdGraphNode>(Graph, Drawn, NAME_None, RF_Transactional);
 
 			Graph->AddNode(Loads, false, false);
 

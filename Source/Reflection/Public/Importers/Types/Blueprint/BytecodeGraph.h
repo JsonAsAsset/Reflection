@@ -42,6 +42,11 @@ public:
 	 * address that is is what the event's own function passes to the ubergraph. */
 	void EnterAt(int32 Address, UK2Node* Node, FName Through = NAME_None);
 
+	/* Says an event's node belongs in the graph where its function enters it, kept to the address the
+	 * function passes before any stub jump, since an event placed ahead pulls its run ahead of code
+	 * the asset wrote first. */
+	void SitsAt(int32 Address, UK2Node* Node);
+
 	/* What reads the templates a call names, which are exports of their own with properties to read */
 	void SetObjectSerializer(UObjectSerializer* InObjectSerializer) { ObjectSerializer = InObjectSerializer; }
 
@@ -127,12 +132,19 @@ private:
 	/* The class a reference stands for, where it names a class's default object rather than an asset */
 	const UClass* ClassNamedBy(const FUObjectJsonValueExport& Expression);
 
+	/* The class a variable read was declared to hold, for a local that has no pin yet to say it */
+	const UClass* DeclaredClassOf(const FUObjectJsonValueExport& Expression);
+
 	/* Fetches the asset a class was written in, where a call names one the project hasn't got */
 	void BringInClass(const FUObjectJsonValueExport& Named);
 
 	/* Words filled in, laid back out as the one node that fills them in. Answers what it hands
 	 * back, or nothing where this was somebody calling Format themselves. */
 	UK2Node* FormatText(const FUObjectJsonValueExport& Expression);
+
+	/* A row read out of a table, laid back out as the one node that reads one. Answers the node,
+	 * or nothing where the call does not carry what that node is made from. */
+	UK2Node* GetDataTableRow(const FUObjectJsonValueExport& Expression);
 
 	/* A struct filled a member at a time, laid back out as the one node that makes one */
 	bool FillStruct(const FUObjectJsonValueExport& Statement, const FUObjectJsonValueExport& Variable, const FValue& Expression);
@@ -278,6 +290,12 @@ private:
 	/* The pin every compiler made local stands for, by the name it was given */
 	TMap<FString, UEdGraphPin*> Locals;
 
+	/* The Select each switch the script spells out stands for, by how it is spelled. The compiler
+	 * writes a Select inline into everything that reads it, so one node read in four places is the
+	 * same switch written four times, temporaries and all. The node rather than its pin, since a
+	 * Select lays its pins out again whenever what it is wired to changes */
+	TMap<FString, UEdGraphNode*> Picked;
+
 	/* What the function was handed, which it keeps as its own and reads by name */
 	TSet<FString> Handouts;
 
@@ -295,6 +313,9 @@ private:
 	 * than as pins, since settling the locals lays the graph out again and any pin taken before
 	 * that would be a pin of a node that no longer exists. */
 	TMap<int32, TArray<TPair<TWeakObjectPtr<UK2Node>, FName>>> Starts;
+
+	/* Event nodes by the address their function enters at, moved into place as the walk reaches it */
+	TMap<int32, TArray<TWeakObjectPtr<UK2Node>>> Sitting;
 
 
 	/* Statements that only say where a run begins, and stand for nothing in a graph */
@@ -370,6 +391,9 @@ private:
 
 	/* Which statement is being laid down, for telling how near anything else is */
 	int32 Placing = 0;
+
+	/* The Set Members node last laid down for each struct the blueprint keeps, and the statement it was laid down at */
+	TMap<FString, TPair<class UK2Node_SetFieldsInStruct*, int32>> SettingMembers;
 
 	/* Where a macro begins, and what it accounts for */
 	TMap<int32, FMacroMatch> Macros;

@@ -28,6 +28,7 @@
 #endif
 #include "VectorField/VectorFieldStatic.h"
 #include "UObject/ObjectRedirector.h"
+#include "UObject/CoreRedirects.h"
 
 #include "Utilities/ContentBrowser.h"
 #include "Utilities/Dialog.h"
@@ -82,6 +83,27 @@ T* LoadObjectByPath(const FString& InPath) {
 		return Cast<T>(ResolveRedirector(Found));
 	}
 
+	/* A native type that moved between modules is still named by its old /Script path in exports. The
+	 * engine finds it through its class, struct and enum redirects, which a lookup by plain object name
+	 * never consults, and there is no package on disk for the load below to fall back on. */
+	if (Path.StartsWith(TEXT("/Script/"))) {
+		const FCoreRedirectObjectName Named(Path);
+
+		for (const ECoreRedirectFlags Kind : { ECoreRedirectFlags::Type_Class, ECoreRedirectFlags::Type_Struct, ECoreRedirectFlags::Type_Enum }) {
+			const FCoreRedirectObjectName Moved = FCoreRedirects::GetRedirectedName(Kind, Named);
+
+			if (Moved == Named) {
+				continue;
+			}
+
+			if (UObject* Found = FindObject<UObject>(nullptr, *Moved.ToString())) {
+				return Cast<T>(Found);
+			}
+		}
+
+		return nullptr;
+	}
+
 	const FString PackageName = FPackageName::ObjectPathToPackageName(Path);
 
 	/* DoesPackageExist asserts rather than answering when it dislikes what it is handed, in two
@@ -118,6 +140,12 @@ inline void SavePackage(UPackage* Package) {
 		Package->ContainsMap() ? FPackageName::GetMapPackageExtension() : FPackageName::GetAssetPackageExtension());
 
 #if ENGINE_UE5
+	/* Saving only ever adds PKG_ContainsNoAsset to the flags the package was loaded with, never takes it
+	 * away. A package once saved empty by a failed import keeps the flag through every later import that
+	 * does build the asset, and the asset registry then hides an asset that is sitting right there. The
+	 * save puts it back if the package really is empty. */
+	Package->ClearPackageFlags(PKG_ContainsNoAsset);
+
 	FSavePackageArgs SaveArgs; {
 		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 		SaveArgs.Error = GError;

@@ -3,6 +3,7 @@
 #include "Importers/Types/Blueprint/GraphTidy.h"
 
 #include "BlueprintActionDatabase.h"
+#include "BlueprintFunctionNodeSpawner.h"
 #include "BlueprintNodeSpawner.h"
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
@@ -12,6 +13,7 @@
 #include "K2Node_CallFunction.h"
 #include "K2Node_CreateDelegate.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_IfThenElse.h"
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectionTidyAsyncTask, All, All);
 
@@ -54,6 +56,96 @@ namespace {
 		}
 
 		return false;
+	}
+
+	/* The node a handler was laid down for, read back out of the handler's name. The compiler names it
+	 * <way out>_<guid>, the node's own guid with its last part swapped for a CRC of the whole
+	 * (FKismetCompilerContext::GetGuid), so the first three parts are the node's as they were. */
+	FGuid NodeNamedBy(const FName Handler) {
+		const FString Name = Handler.ToString();
+
+		int32 Under = INDEX_NONE;
+
+		if (!Name.FindLastChar(TEXT('_'), Under)) return FGuid();
+
+		FGuid Written;
+
+		if (!FGuid::ParseExact(Name.Mid(Under + 1), EGuidFormats::Digits, Written)) return FGuid();
+
+		uint32 Table[256];
+
+		for (uint32 Index = 0; Index < 256; ++Index) {
+			uint32 Entry = Index;
+
+			for (int32 Bit = 0; Bit < 8; ++Bit) {
+				Entry = (Entry & 1) ? (Entry >> 1) ^ 0xEDB88320u : Entry >> 1;
+			}
+
+			Table[Index] = Entry;
+		}
+
+		/* Where the CRC stands once the three parts that are kept have gone through it */
+		const uint32 Kept[3] = { Written.A, Written.B, Written.C };
+		const uint8* KeptBytes = reinterpret_cast<const uint8*>(Kept);
+
+		uint32 Register = 0xFFFFFFFFu;
+
+		for (int32 Index = 0; Index < (int32)sizeof(Kept); ++Index) {
+			Register = Table[(Register ^ KeptBytes[Index]) & 0xFF] ^ (Register >> 8);
+		}
+
+		/* Walked back from where it has to end: each step's top byte names the table entry it used */
+		uint8 Used[4];
+		uint32 Wanted = ~Written.D;
+
+		for (int32 Step = 3; Step >= 0; --Step) {
+			int32 Found = INDEX_NONE;
+
+			for (int32 Index = 0; Index < 256; ++Index) {
+				if ((Table[Index] >> 24) == (Wanted >> 24)) {
+					Found = Index;
+
+					break;
+				}
+			}
+
+			if (Found == INDEX_NONE) return FGuid();
+
+			Used[Step] = (uint8)Found;
+			Wanted = (Wanted ^ Table[Found]) << 8;
+		}
+
+		/* And forward again, choosing each byte so the step uses the entry it has to */
+		uint8 Tail[4];
+
+		for (int32 Step = 0; Step < 4; ++Step) {
+			Tail[Step] = (uint8)((Register ^ Used[Step]) & 0xFF);
+			Register = Table[(Register ^ Tail[Step]) & 0xFF] ^ (Register >> 8);
+		}
+
+		uint32 Last = 0;
+		FMemory::Memcpy(&Last, Tail, sizeof(Last));
+
+		const FGuid Node(Written.A, Written.B, Written.C, Last);
+
+		/* Asked of the engine's own CRC, so a mistake here is a fresh guid rather than a wrong one */
+		if (FCrc::MemCrc32(&Node, sizeof(Node)) != Written.D) return FGuid();
+
+		return Node;
+	}
+
+	/* Whether two ways out lead to the same places, where nowhere counts as a place */
+	bool GoesWhereAsync(const UEdGraphPin* One, const UEdGraphPin* Other) {
+		const int32 OneCount = One != nullptr ? One->LinkedTo.Num() : 0;
+		const int32 OtherCount = Other != nullptr ? Other->LinkedTo.Num() : 0;
+
+		if (OneCount != OtherCount) return false;
+
+		for (int32 Index = 0; Index < OneCount; ++Index) {
+			if (!Other->LinkedTo.Contains(One->LinkedTo[Index])) return false;
+		}
+
+		return true;
 	}
 
 	/* How many ways a run can leave a node */
@@ -103,21 +195,26 @@ namespace {
 		}
 	}
 
-	/* The kind of node the editor would have made for this call, which is the editor's own answer.
-	 *
-	 * More than one kind stands for a call like this, one to each kind of task, and which of them a
-	 * call belongs to is settled by what each kind claims when the editor lists what can be placed.
-	 * So the list is asked rather than guessed at, and only where it has nothing to say is the
-	 * plainest kind used. */
-	UClass* DrawnAs(const UFunction* Makes) {
+	/* plainest kind used. The list files a call under the class it belongs to rather than under the
+	 * call, so that is where it is looked for, and a kind can refuse a graph, so the graph is asked. */
+	UClass* DrawnAs(const UFunction* Makes, const UEdGraph* Graph) {
 		if (Makes != nullptr) {
 			const FBlueprintActionDatabase::FActionRegistry& Every = FBlueprintActionDatabase::Get().GetAllActions();
 
-			if (const FBlueprintActionDatabase::FActionList* Claimed = Every.Find(FObjectKey(Makes))) {
+			if (const FBlueprintActionDatabase::FActionList* Claimed = Every.Find(FObjectKey(Makes->GetOwnerClass()))) {
 				for (const UBlueprintNodeSpawner* Spawner : *Claimed) {
 					if (Spawner == nullptr || Spawner->NodeClass == nullptr) continue;
+					if (!Spawner->NodeClass->IsChildOf(UK2Node_BaseAsyncTask::StaticClass())) continue;
 
-					if (Spawner->NodeClass->IsChildOf(UK2Node_BaseAsyncTask::StaticClass())) return Spawner->NodeClass;
+					const UBlueprintFunctionNodeSpawner* ForCall = Cast<UBlueprintFunctionNodeSpawner>(Spawner);
+
+					if (ForCall == nullptr || ForCall->GetFunction() != Makes) continue;
+
+					const UEdGraphNode* Kind = Spawner->NodeClass->GetDefaultObject<UEdGraphNode>();
+
+					if (Graph != nullptr && Kind != nullptr && !Kind->IsCompatibleWithGraph(Graph)) continue;
+
+					return Spawner->NodeClass;
 				}
 			}
 		}
@@ -179,10 +276,22 @@ struct FAsyncTaskTidy final : FGraphTidy {
 
 			UK2Node_CallFunction* Begins = nullptr;
 			UEdGraphPin* Leaves = LeavesBy(Makes);
+			TArray<UEdGraphPin*> Otherwise;
+
+			/* A task that spawns an actor for its node is asked to start the spawn and then to finish
+			 * it before the word to begin, with a branch on whether the start gave it anything to
+			 * finish (UK2Node_LatentGameplayTaskCall::ExpandNode). All of it is the node's. */
+			UK2Node_CallFunction* SpawnStarts = nullptr;
+			UK2Node_CallFunction* SpawnFinishes = nullptr;
 
 			/* Everything the making runs into that reads what it made */
 			while (UK2Node* Along = CarriesOnTo(Leaves)) {
-				if (!ReadsAsync(Along, Made, Workings)) break;
+				/* The branch on the start of a spawn asks what the start handed back, not the task */
+				UK2Node_IfThenElse* AsksSpawn = SpawnStarts != nullptr && SpawnFinishes == nullptr ? Cast<UK2Node_IfThenElse>(Along) : nullptr;
+
+				if (AsksSpawn != nullptr && !AsksSpawn->GetConditionPin()->LinkedTo.Contains(SpawnStarts->GetReturnValuePin())) AsksSpawn = nullptr;
+
+				if (AsksSpawn == nullptr && !ReadsAsync(Along, Made, Workings)) break;
 
 				if (UK2Node_AddDelegate* Binding = Cast<UK2Node_AddDelegate>(Along)) {
 					Binds.Add(Binding);
@@ -194,12 +303,26 @@ struct FAsyncTaskTidy final : FGraphTidy {
 
 					if (Starts == nullptr || Starts->HasAnyFunctionFlags(FUNC_Static) || !Task->IsChildOf(Starts->GetOwnerClass())) break;
 
-					Begins = Begin;
+					if (SpawnStarts == nullptr && Starts->GetFName() == TEXT("BeginSpawningActor")) {
+						SpawnStarts = Begin;
+					} else if (SpawnStarts != nullptr && SpawnFinishes == nullptr && Starts->GetFName() == TEXT("FinishSpawningActor")) {
+						SpawnFinishes = Begin;
+					} else {
+						Begins = Begin;
+					}
 				} else if (WaysOutOf(Along) < 2 || LeavesBy(Along) != nullptr) {
 					/* The look to see it was made, which is only this where nothing was drawn for
 					 * it having not been. A graph that does something else when the task is missing
 					 * was drawn that way and is none of this. */
 					Looks.Add(Along);
+				} else if (UK2Node_IfThenElse* Branch = Cast<UK2Node_IfThenElse>(Along); Branch != nullptr && (Otherwise.Num() == 0 || SpawnStarts != nullptr)) {
+					/* The same look where the node had somewhere to go afterwards, which is only known once the way
+					 * out is found. A spawning task has three: the task, the start of the spawn, and the task again. */
+					Looks.Add(Along);
+					Otherwise.Add(Branch->GetElsePin());
+					Leaves = Branch->GetThenPin();
+
+					continue;
 				} else {
 					break;
 				}
@@ -280,12 +403,46 @@ struct FAsyncTaskTidy final : FGraphTidy {
 				continue;
 			}
 
-			UK2Node_BaseAsyncTask* Waits = NewObject<UK2Node_BaseAsyncTask>(Graph, DrawnAs(Called));
+			/* A spawn started and never finished, or finished and never followed by the word to
+			 * begin, is not the node's expansion. Spawned values set between the two would be the
+			 * node's spawn pins, which are not put back yet, and stop the walk the same way. */
+			if (SpawnStarts != nullptr && (SpawnFinishes == nullptr || Begins == nullptr)) {
+				UE_LOG(LogReflectionTidyAsyncTask, Warning, TEXT("\"%s\" starts \"%s\" and was left as it was read: it starts spawning an actor, and what follows is not the finish and the word to begin"), *Graph->GetName(), *Named);
+
+				continue;
+			}
+
+			/* A branch whose other side goes somewhere the node's way out does not was drawn */
+			bool bDrawnBranch = false;
+
+			for (const UEdGraphPin* Other : Otherwise) {
+				if (!GoesWhereAsync(Other, Leaves)) bDrawnBranch = true;
+			}
+
+			if (bDrawnBranch) {
+				UE_LOG(LogReflectionTidyAsyncTask, Warning, TEXT("\"%s\" starts \"%s\" and was left as it was read: the look to see it was made goes somewhere of its own when it was not"), *Graph->GetName(), *Named);
+
+				continue;
+			}
+
+			UK2Node_BaseAsyncTask* Waits = NewObject<UK2Node_BaseAsyncTask>(Graph, DrawnAs(Called, Graph), NAME_None, RF_Transactional);
 
 			Graph->AddNode(Waits, false, false);
 
 			Waits->CreateNewGuid();
 			Waits->PostPlacedNewNode();
+
+			/* The guid the handlers were named after, so compiling the node names them the same again */
+			if (Handlers.Num() > 0) {
+				const FGuid Recovered = NodeNamedBy(Handlers[0]->GetFunctionName());
+
+				if (Recovered.IsValid()) {
+					Waits->NodeGuid = Recovered;
+				} else {
+					UE_LOG(LogReflectionTidyAsyncTask, Warning, TEXT("\"%s\" starts \"%s\": no node guid gives the handler name \"%s\", so it keeps a fresh one"),
+						*Graph->GetName(), *Named, *Handlers[0]->GetFunctionName().ToString());
+				}
+			}
 
 			SayTo<FNameProperty>(Waits, TEXT("ProxyFactoryFunctionName"), Called->GetFName());
 			SayTo<FObjectProperty>(Waits, TEXT("ProxyFactoryClass"), Called->GetOwnerClass());
@@ -382,6 +539,8 @@ struct FAsyncTaskTidy final : FGraphTidy {
 			}
 
 			if (Begins != nullptr) Graph->RemoveNode(Begins);
+			if (SpawnStarts != nullptr) Graph->RemoveNode(SpawnStarts);
+			if (SpawnFinishes != nullptr) Graph->RemoveNode(SpawnFinishes);
 
 			Graph->RemoveNode(Makes);
 

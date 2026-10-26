@@ -134,9 +134,46 @@ bool IStaticMeshImporter::Import() {
 
 	int32 BuiltLods = 0;
 
+	/* A Nanite mesh read back out of its cluster stream comes with every LOD the cook kept behind it, and the
+	 * first of those is the fallback the engine builds out of the Nanite mesh. Kept as well, it would sit in
+	 * front of the rest as a LOD the game never had and move every one after it, the per quality MinLODs
+	 * pointing at them included. It is left for the build to make again, at the size the cook made it. */
+	const auto CountTriangles = [](const FUObjectJsonValueExport& Lod) {
+		const TArray<TSharedPtr<FJsonValue>>* Indices;
+
+		return Lod.JsonObject->TryGetArrayField(TEXT("indices"), Indices) ? Indices->Num() / 3 : 0;
+	};
+
+	int32 NaniteSourceTriangles = 0;
+
+	for (const TSharedPtr<FJsonValue>& LodValue : *Lods) {
+		const FUObjectJsonValueExport Lod = LodValue;
+
+		if (Lod.JsonObject.IsValid() && Lod.GetBool(TEXT("nanite"), false)) {
+			NaniteSourceTriangles = CountTriangles(Lod);
+
+			break;
+		}
+	}
+
+	int32 CookedFallbackTriangles = 0;
+
 	for (const TSharedPtr<FJsonValue>& LodValue : *Lods) {
 		const FUObjectJsonValueExport Lod = LodValue;
 		if (!Lod.JsonObject.IsValid()) continue;
+
+		if (NaniteSourceTriangles > 0 && CookedFallbackTriangles == 0 && !Lod.GetBool(TEXT("nanite"), false)) {
+			CookedFallbackTriangles = FMath::Max(CountTriangles(Lod), 1);
+
+			continue;
+		}
+
+		/* The Cloud counts the stream as LOD 0 and every cooked LOD one on from where the render data has it,
+		 * and the index is what finds a LOD's sections and screen size there. The Nanite mesh stands where
+		 * the fallback did, so it takes the render data's first LOD, and every cooked LOD its own. */
+		if (NaniteSourceTriangles > 0) {
+			Lod.SetInteger(TEXT("Index"), Lod.GetBool(TEXT("nanite"), false) ? 0 : Lod.GetInteger(TEXT("Index"), 1) - 1);
+		}
 
 		if (BuildLod(StaticMesh, Lod, BuiltLods)) {
 			BuiltLods++;
@@ -180,6 +217,15 @@ bool IStaticMeshImporter::Import() {
 
 			if (Nanite.Has(TEXT("NormalPrecision"))) {
 				StaticMesh->NaniteSettings.NormalPrecision = Nanite.GetInteger(TEXT("NormalPrecision"), StaticMesh->NaniteSettings.NormalPrecision);
+			}
+
+			/* The fallback the cook kept was dropped above, so the build has to make one as large as it was.
+			 * Where the mesh is not drawn as Nanite, the mobile renderer included, that is what is drawn. */
+			if (NaniteSourceTriangles > 0 && CookedFallbackTriangles > 0) {
+#if UE5_3_BEYOND
+				StaticMesh->NaniteSettings.FallbackTarget = ENaniteFallbackTarget::PercentTriangles;
+#endif
+				StaticMesh->NaniteSettings.FallbackPercentTriangles = FMath::Clamp(static_cast<float>(CookedFallbackTriangles) / NaniteSourceTriangles, 0.0f, 1.0f);
 			}
 
 			/* Whether what it was built from is the mesh or the fallback.
@@ -243,6 +289,20 @@ bool IStaticMeshImporter::Import() {
 		FPerQualityLevelInt MinQualityLevelLOD = StaticMesh->GetQualityLevelMinLOD();
 
 		MinQualityLevelLOD.Default = FMath::Max(FirstColoredLod, 0);
+
+		StaticMesh->SetQualityLevelMinLOD(MinQualityLevelLOD);
+	}
+
+	/* A desktop cook keeps the mobile MinLOD in the render data, relative to the desktop one, and the engine drops to
+	 * it when the desktop renderer runs at the mobile feature level. With per quality level MinLODs that lookup reads
+	 * the Low quality level, so the cooked value lands there. */
+	const int32 MinMobileLODIdx = FUObjectJsonValueExport(GetAssetExport()).GetObject(TEXT("RenderData")).GetInteger(TEXT("MinMobileLODIdx"), 0);
+
+	if (MinMobileLODIdx > 0) {
+		FPerQualityLevelInt MinQualityLevelLOD = StaticMesh->GetQualityLevelMinLOD();
+
+		const int32 MobileMinLOD = FMath::Clamp(StaticMesh->GetMinLOD().Default + MinMobileLODIdx, MinQualityLevelLOD.Default, StaticMesh->GetNumSourceModels() - 1);
+		MinQualityLevelLOD.PerQuality.Add(static_cast<int32>(EPerQualityLevels::Low), MobileMinLOD);
 
 		StaticMesh->SetQualityLevelMinLOD(MinQualityLevelLOD);
 	}

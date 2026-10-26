@@ -10,6 +10,7 @@
 #include "MovieScene.h"
 #include "WidgetBlueprint.h"
 #include "K2Node_CustomEvent.h"
+#include "K2Node_FunctionEntry.h"
 #include "K2Node_ComponentBoundEvent.h"
 #include "K2Node_WidgetAnimationEvent.h"
 #include "Engine/ComponentDelegateBinding.h"
@@ -30,6 +31,9 @@
 #include "Importers/Types/Blueprint/BlueprintGraphs.h"
 #include "K2Node_Timeline.h"
 #include "Engine/TimelineTemplate.h"
+#include "Engine/BlueprintGeneratedClass.h"
+#include "UObject/Script.h"
+#include "ScriptDisassembler.h"
 #include "Importers/Types/Blueprint/BlueprintCookedMetaData.h"
 #include "Importers/Types/Blueprint/BytecodeGraph.h"
 #include "Importers/Constructor/TypesHelper.h"
@@ -92,7 +96,20 @@ UObject* IBlueprintImporter::CreateAsset(UObject* CreatedAsset) {
 			);
 
 	/* Propagate blueprint defaults if it already exists */
-	if (const UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName())) {
+	if (UBlueprint* ExistingBlueprint = LoadObject<UBlueprint>(nullptr, *GetPackage()->GetPathName())) {
+		/* A blueprint first made without its parent is built on the nearest class that was found, and
+		 * nothing looks again, so it is reparented here the way the editor's own reparent does it. Only
+		 * ever downwards, since a parent missing this time comes back as that same nearer class. */
+		if (ExistingBlueprint->ParentClass != Class && Class->IsChildOf(ExistingBlueprint->ParentClass)) {
+			UE_LOG(LogReflection, Display, TEXT("Reparenting %s from %s to %s, the parent its export names"), *ExistingBlueprint->GetName(), *GetNameSafe(ExistingBlueprint->ParentClass), *Class->GetName());
+
+			ExistingBlueprint->ParentClass = Class;
+			FBlueprintEditorUtils::RefreshAllNodes(ExistingBlueprint);
+			FBlueprintEditorUtils::MarkBlueprintAsModified(ExistingBlueprint);
+			/* Without garbage collection, like every other compile here: one in the middle of an import collects the serializers reading it */
+			CompileBlueprintGuarded(ExistingBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+		}
+
 		UBlueprintGeneratedClass* BlueprintGeneratedClass = Cast<UBlueprintGeneratedClass>(ExistingBlueprint->GeneratedClass);
 		FBlueprintEditorUtils::PropagateParentBlueprintDefaults(BlueprintGeneratedClass);
 
@@ -162,7 +179,6 @@ bool IBlueprintImporter::Import() {
 		for (FUObjectExport* Export : GetContainer()->Exports) {
 			if (Export == nullptr || Export == ClassDefaultObjectExport || !Export->IsJsonValid()) continue;
 			if (Export->GetOuter() != DefaultsName) continue;
-			if (!Export->JsonObject->HasTypedField<EJson::Object>(TEXT("Properties"))) continue;
 
 			FString Flags;
 
@@ -172,9 +188,12 @@ bool IBlueprintImporter::Import() {
 
 			if (Made == nullptr) continue;
 
+			/* Bound whether or not it carries values, since what names it points at the export rather than at them */
 			Export->Object = Made;
 
-			GetObjectSerializer()->DeserializeObjectProperties(Export->GetProperties(), Made);
+			if (Export->JsonObject->HasTypedField<EJson::Object>(TEXT("Properties"))) {
+				GetObjectSerializer()->DeserializeObjectProperties(Export->GetProperties(), Made);
+			}
 		}
 	}
 
@@ -341,6 +360,18 @@ int32 IBlueprintImporter::ConstructBody() {
 	if (Laid > 0) {
  		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 
+		/* Off for now. The search is a compile per try and only moves where the events sit in the script,
+		 * which changes no behaviour, and it can cost half a minute an import. Set to true to match
+		 * entry offsets again. Even then it runs only where nobody is waiting on it: an import from
+		 * the open editor keeps the order it was laid in */
+		constexpr bool bMatchEventLayout = false;
+
+		if (bMatchEventLayout && AssetEntries.Num() > 0 && IsRunningCommandlet()) {
+			const int32 Landed = MatchEventLayout();
+
+			UE_LOG(LogReflection, Display, TEXT("%d of %d event(s) entered where the asset enters them"), Landed, AssetEntries.Num());
+		}
+
 		/* What the compile made of it, which is the thing a rebuilt graph is judged by */
 		if (const UBlueprintGeneratedClass* Compiled = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass)) {
 			for (TFieldIterator<UFunction> It(Compiled, EFieldIteratorFlags::ExcludeSuper); It; ++It) {
@@ -382,6 +413,185 @@ int32 IBlueprintImporter::ConstructBody() {
 	}
 
 	return Laid;
+}
+
+int32 IBlueprintImporter::MatchEventLayout() {
+	UEdGraph* EventGraph = FBlueprintGraphs::Events(Blueprint);
+
+	if (EventGraph == nullptr || AssetEntries.Num() == 0) return 0;
+
+	/* How close the compiled class is. Every event entered at the asset's address counts, the rest by
+	 * how far off they are, and every statement beginning where one of the asset's does counts too,
+	 * since the events can all land with the runs between them still written in another order. */
+	const auto Measure = [this](int32& OutLanded, int64& OutOff) {
+		OutLanded = 0;
+		OutOff = 0;
+
+		if (const UBlueprintGeneratedClass* Built = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass); Built != nullptr && Built->UberGraphFunction != nullptr && AssetUbergraphStatements.Num() > 0) {
+			FStringOutputDevice Written;
+			FKismetBytecodeDisassembler Disassembler(Written);
+			Disassembler.DisassembleStructure(Built->UberGraphFunction);
+
+			int32 Matched = 0;
+			int32 Seen = 0;
+			const FString Text = Written;
+
+			for (int32 At = Text.Find(TEXT("Label_0x")); At != INDEX_NONE; At = Text.Find(TEXT("Label_0x"), ESearchCase::CaseSensitive, ESearchDir::FromStart, At + 8)) {
+				const int32 Colon = Text.Find(TEXT(":"), ESearchCase::CaseSensitive, ESearchDir::FromStart, At);
+
+				if (Colon == INDEX_NONE) break;
+
+				const int32 Offset = FParse::HexNumber(*Text.Mid(At + 8, Colon - At - 8));
+
+				Seen++;
+
+				if (AssetUbergraphStatements.Contains(Offset)) Matched++;
+			}
+
+			/* Each statement out of place weighs as one event off by a little */
+			OutOff += (int64)(FMath::Max(Seen, AssetUbergraphStatements.Num()) - Matched) * 4;
+			OutLanded -= (Matched == AssetUbergraphStatements.Num() && Seen == Matched) ? 0 : 1;
+		}
+
+		const UBlueprintGeneratedClass* Compiled = Cast<UBlueprintGeneratedClass>(Blueprint->GeneratedClass);
+
+		if (Compiled == nullptr || Compiled->UberGraphFunction == nullptr) return;
+
+		for (const TPair<FName, int32>& Wanted : AssetEntries) {
+			const UFunction* Stub = Compiled->FindFunctionByName(Wanted.Key, EIncludeSuperFlag::ExcludeSuper);
+
+			/* The address an event's function passes is the literal handed to its call into the event
+			 * graph. The engine only keeps it beside the function for an event that takes nothing, so
+			 * it is read out of the script, where every event has it. */
+			int32 Entered = INDEX_NONE;
+
+			if (Stub != nullptr) {
+				const TArray<uint8>& Script = Stub->Script;
+				const int32 Span = 1 + sizeof(UFunction*) + 1 + sizeof(int32);
+
+				for (int32 At = 0; At + Span <= Script.Num(); ++At) {
+					if (Script[At] != EX_LocalFinalFunction && Script[At] != EX_FinalFunction) continue;
+
+					UFunction* Called = nullptr;
+					FMemory::Memcpy(&Called, &Script[At + 1], sizeof(UFunction*));
+
+					if (Called != Compiled->UberGraphFunction || Script[At + 1 + sizeof(UFunction*)] != EX_IntConst) continue;
+
+					FMemory::Memcpy(&Entered, &Script[At + 2 + sizeof(UFunction*)], sizeof(int32));
+
+					break;
+				}
+			}
+
+			if (Entered == INDEX_NONE) {
+				OutOff += 100000;
+			} else if (Entered == Wanted.Value) {
+				OutLanded++;
+			} else {
+				OutOff += FMath::Abs(Entered - Wanted.Value);
+			}
+		}
+	};
+
+	int32 BestLanded = 0;
+	int64 BestOff = 0;
+
+	Measure(BestLanded, BestOff);
+
+	const int32 Count = EventGraph->Nodes.Num();
+
+	/* Bounded, since every try is a compile. A large widget takes long enough to compile that a count
+	 * alone lets this run for minutes, so the clock caps it as well */
+	int32 Tries = 0;
+	const int32 MostTries = FMath::Max(400, Count * Count * 3);
+	const double GiveUpAt = FPlatformTime::Seconds() + 30.0;
+
+	bool bMoved = true;
+
+	while (bMoved && !(BestLanded == AssetEntries.Num() && BestOff == 0) && Tries < MostTries) {
+		bMoved = false;
+
+		for (int32 From = 0; From < Count && !(BestLanded == AssetEntries.Num() && BestOff == 0) && Tries < MostTries; ++From) {
+			/* A node moves on its own, and also with the pure nodes that feed it. What a pure node
+			 * works out is written where the schedule reaches it, and the schedule reaches it right
+			 * behind whatever it reads, so moving it alone leaves it where its inputs pull it. */
+			TArray<UEdGraphNode*> Block;
+
+			const TFunction<void(UEdGraphNode*)> Gather = [&Block, &Gather](UEdGraphNode* Node) {
+				if (Node == nullptr || Block.Contains(Node)) return;
+
+				Block.Add(Node);
+
+				for (const UEdGraphPin* Pin : Node->Pins) {
+					if (Pin == nullptr || Pin->Direction != EGPD_Input) continue;
+
+					for (const UEdGraphPin* From : Pin->LinkedTo) {
+						const UK2Node* Feeds = From != nullptr ? Cast<UK2Node>(From->GetOwningNode()) : nullptr;
+
+						if (Feeds != nullptr && Feeds->IsNodePure()) Gather(const_cast<UK2Node*>(Feeds));
+					}
+				}
+			};
+
+			Gather(EventGraph->Nodes[From]);
+
+			Block.Sort([EventGraph](const UEdGraphNode& One, const UEdGraphNode& Other) {
+				return EventGraph->Nodes.IndexOfByKey(&One) < EventGraph->Nodes.IndexOfByKey(&Other);
+			});
+
+			const int32 Ways = Block.Num() > 1 ? 2 : 1;
+
+			bool bTook = false;
+
+			for (int32 Way = 0; Way < Ways && !bTook; ++Way) {
+				TArray<UEdGraphNode*> Moving = Way == 0 ? TArray<UEdGraphNode*>{ EventGraph->Nodes[From] } : Block;
+
+				for (int32 To = 0; To < Count && Tries < MostTries; ++To) {
+					const TArray<TObjectPtr<UEdGraphNode>> Before = EventGraph->Nodes;
+
+					for (UEdGraphNode* Node : Moving) EventGraph->Nodes.Remove(Node);
+
+					const int32 Into = FMath::Min(To, EventGraph->Nodes.Num());
+
+					for (int32 Index = 0; Index < Moving.Num(); ++Index) {
+						EventGraph->Nodes.Insert(Moving[Index], Into + Index);
+					}
+
+					if (EventGraph->Nodes == Before) continue;
+
+					CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+					Tries++;
+
+					/* Out of time spends the rest of the budget, which ends every loop above */
+					if (FPlatformTime::Seconds() >= GiveUpAt) Tries = MostTries;
+
+					int32 Landed = 0;
+					int64 Off = 0;
+
+					Measure(Landed, Off);
+
+					if (Landed > BestLanded || (Landed == BestLanded && Off < BestOff)) {
+						BestLanded = Landed;
+						BestOff = Off;
+						bMoved = true;
+						bTook = true;
+
+						break;
+					}
+
+					/* No better, so everything goes back where it was */
+					EventGraph->Nodes = Before;
+				}
+			}
+		}
+	}
+
+	/* The class is left compiled from where the nodes ended up */
+	CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+	UE_LOG(LogReflection, Display, TEXT("laid the event graph out against the asset in %d compile(s)"), Tries);
+
+	return BestLanded;
 }
 
 int32 IBlueprintImporter::ConstructVariables() {
@@ -665,7 +875,7 @@ int32 IBlueprintImporter::ConstructAnimationEvents() {
 
 			if (Stood == nullptr) continue;
 
-			UK2Node_WidgetAnimationEvent* Runs = NewObject<UK2Node_WidgetAnimationEvent>(EventGraph);
+			UK2Node_WidgetAnimationEvent* Runs = NewObject<UK2Node_WidgetAnimationEvent>(EventGraph, UK2Node_WidgetAnimationEvent::StaticClass(), NAME_None, RF_Transactional);
 
 			EventGraph->AddNode(Runs, false, false);
 
@@ -749,7 +959,7 @@ int32 IBlueprintImporter::ConstructComponentEvents() {
 				continue;
 			}
 
-			UK2Node_ComponentBoundEvent* Made = NewObject<UK2Node_ComponentBoundEvent>(EventGraph);
+			UK2Node_ComponentBoundEvent* Made = NewObject<UK2Node_ComponentBoundEvent>(EventGraph, UK2Node_ComponentBoundEvent::StaticClass(), NAME_None, RF_Transactional);
 
 			EventGraph->AddNode(Made, false, false);
 
@@ -912,6 +1122,7 @@ void IBlueprintImporter::ConstructWidgetTree() {
 	
 	Export->Object = WidgetBlueprint->WidgetTree;
 	GetObjectSerializer()->SpawnExport(Export, true);
+	{ TArray<UWidget*> VMProbeWidgets; WidgetBlueprint->WidgetTree->GetAllWidgets(VMProbeWidgets); UE_LOG(LogTemp, Warning, TEXT("VMPROBE widget tree %s: export valid %d, root %s, %d widget(s), %d source widget(s)"), *GetAssetName(), Export->IsJsonValid() ? 1 : 0, *GetNameSafe(WidgetBlueprint->WidgetTree->RootWidget), VMProbeWidgets.Num(), WidgetBlueprint->GetAllSourceWidgets().Num()); }
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBlueprint);
 
@@ -933,6 +1144,26 @@ void IBlueprintImporter::ConstructWidgetTree() {
 			}
 
 			WidgetBlueprint->Animations.Add(WidgetAnimation);
+
+			/* The engine finds possessables, spawnables and bindings by binary search on their GUIDs and only
+			 * sorts what was saved before they were kept sorted. A scene built here saves as current, so it
+			 * is sorted the way loading would have: left unsorted the bindings resolve to nothing. */
+			{
+				UMovieScene* SortedMovieScene = WidgetAnimation->MovieScene;
+				UClass* MovieSceneClass = UMovieScene::StaticClass();
+
+				if (const FArrayProperty* PossessablesProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("Possessables"))) {
+					PossessablesProperty->ContainerPtrToValuePtr<TArray<FMovieScenePossessable>>(SortedMovieScene)->Sort();
+				}
+
+				if (const FArrayProperty* SpawnablesProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("Spawnables"))) {
+					SpawnablesProperty->ContainerPtrToValuePtr<TArray<FMovieSceneSpawnable>>(SortedMovieScene)->Sort();
+				}
+
+				if (const FArrayProperty* BindingsProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("ObjectBindings"))) {
+					BindingsProperty->ContainerPtrToValuePtr<TArray<FMovieSceneBinding>>(SortedMovieScene)->Sort();
+				}
+			}
 
 			for (int32 Index = 0; Index < WidgetAnimation->MovieScene->GetPossessableCount(); ++Index) {
 				FMovieScenePossessable& Possessable = WidgetAnimation->MovieScene->GetPossessable(Index);
@@ -967,6 +1198,27 @@ void IBlueprintImporter::ConstructWidgetTree() {
 			}
 		}
 	});
+
+	/* What the widgets were bound to in the designer. A widget blueprint rebuilds its runtime bindings
+	 * from this list every compile, so leaving it empty drops them all. A function binding is found
+	 * again by name, which is all the cooked one has. */
+	WidgetBlueprint->Bindings.Empty();
+
+	for (const FUObjectJsonValueExport& Entry : GetAssetDataAsValue().GetArray("Bindings")) {
+		const TSharedPtr<FJsonObject> Held = Entry.JsonObject;
+		if (!Held.IsValid()) continue;
+
+		FDelegateEditorBinding Binding;
+		Binding.ObjectName = Held->GetStringField(TEXT("ObjectName"));
+		Binding.PropertyName = FName(*Held->GetStringField(TEXT("PropertyName")));
+		Binding.FunctionName = FName(*Held->GetStringField(TEXT("FunctionName")));
+
+		FString Kind;
+		Held->TryGetStringField(TEXT("Kind"), Kind);
+		Binding.Kind = Kind.EndsWith(TEXT("Property")) ? EBindingKind::Property : EBindingKind::Function;
+
+		WidgetBlueprint->Bindings.Add(Binding);
+	}
 }
 namespace {
 	/* Every function the compiler bound to something rather than anybody writing it.
@@ -1277,6 +1529,10 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		if (Written.Kind == FBlueprintGraphs::EWritten::Ubergraph) {
 			Ubergraph = Made;
 			Ubergraphed = Export->GetArray(TEXT("ScriptBytecode"));
+
+			for (const FUObjectJsonValueExport& Statement : Ubergraphed) {
+				AssetUbergraphStatements.Add(Statement.GetInteger(TEXT("StatementIndex"), INDEX_NONE));
+			}
 		}
 
 		Builders.Add(Made);
@@ -1527,6 +1783,7 @@ int32 IBlueprintImporter::ConstructGraphs() {
 		UEdGraph* EventGraph = FBlueprintGraphs::Events(Blueprint);
 
 		TSet<FString> Written;
+		TArray<TPair<int32, UEdGraphNode*>> EnteredInOrder;
 
 		for (const TPair<FString, FBlueprintGraphs::FWritten>& Event : Events) {
 			UK2Node* Node = FBlueprintGraphs::MakeEvent(Blueprint, EventGraph, Event.Key, Signatures.FindRef(Event.Key));
@@ -1534,6 +1791,8 @@ int32 IBlueprintImporter::ConstructGraphs() {
 			bSignatures = bSignatures || Node != nullptr;
 
 			if (Node == nullptr) continue;
+
+			EnteredInOrder.Add(TPair<int32, UEdGraphNode*>(Event.Value.EntryPoint, Node));
 
 			/* Sent where the asset said it was sent. An event somebody made is run where it was
 			 * called unless it was marked to go to the server, an owning client or everyone, and
@@ -1571,9 +1830,28 @@ int32 IBlueprintImporter::ConstructGraphs() {
 			Changed++;
 
 			Ubergraph->EnterAt(Event.Value.EntryPoint, Node);
+			Ubergraph->SitsAt(Event.Value.EntryPoint, Node);
+			AssetEntries.Add(FName(*Event.Key), Event.Value.EntryPoint);
 
 			for (const TPair<FString, FString>& Given : Event.Value.Frame) {
 				Ubergraph->HandOver(Given.Key, Given.Value, Node);
+			}
+		}
+
+		/* Laid out in the order the asset enters them. The compiler writes each event's run in the order
+		 * its node sits in the graph, so made in any other order the same code comes back arranged
+		 * differently and a run the asset fell into takes a jump instead. */
+		if (EventGraph != nullptr) {
+			EnteredInOrder.StableSort([](const TPair<int32, UEdGraphNode*>& One, const TPair<int32, UEdGraphNode*>& Other) {
+				return One.Key < Other.Key;
+			});
+
+			for (int32 Index = EnteredInOrder.Num() - 1; Index >= 0; --Index) {
+				UEdGraphNode* Node = EnteredInOrder[Index].Value;
+
+				if (EventGraph->Nodes.Remove(Node) > 0) {
+					EventGraph->Nodes.Insert(Node, 0);
+				}
 			}
 		}
 
@@ -1692,6 +1970,18 @@ int32 IBlueprintImporter::ConstructGraphs() {
 	 * nothing, and lays every node out against a class that has not caught up: the same asset comes
 	 * back differently depending on what the run before it left behind. */
 	{
+		/* Const correctness is a check the editor makes, not something cooked into the asset. A const function
+		 * that calls one of the blueprint's own non-const functions compiled for the build it came from, which
+		 * an older asset does with only a warning, and the cook keeps no trace of which kind it was. Enforced
+		 * here, the call is an error and the whole blueprint compiles to empty functions. */
+		TArray<UK2Node_FunctionEntry*> Entries;
+		for (UEdGraph* Function : Blueprint->FunctionGraphs) {
+			if (Function != nullptr) Function->GetNodesOfClass<UK2Node_FunctionEntry>(Entries);
+		}
+		for (UK2Node_FunctionEntry* Entry : Entries) {
+			Entry->bEnforceConstCorrectness = false;
+		}
+
 		CompileBlueprintGuarded(Blueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 	}
 
@@ -1723,7 +2013,16 @@ int32 IBlueprintImporter::ConstructTimelines() {
 
 		/* What the node is called. The template beside it is named after the same thing with a
 		 * suffix the engine puts on, so the name to build from is the one written inside. */
-		const FString Called = Held.Has(TEXT("VariableName")) ? Held.GetString(TEXT("VariableName")) : FString();
+		const bool bNamesItself = Held.Has(TEXT("VariableName"));
+		FString Called = bNamesItself ? Held.GetString(TEXT("VariableName")) : FString();
+
+		/* Older templates never wrote it down: the engine worked it out from the template's own
+		 * name each time, by taking the same suffix back off. The suffix is spelled out because
+		 * UTimelineTemplate::TemplatePostfix, which holds it, is not exported to plugins. */
+		if (Called.IsEmpty()) {
+			Called = Export->GetName().ToString();
+			Called.RemoveFromEnd(TEXT("_Template"));
+		}
 
 		if (Called.IsEmpty()) continue;
 
@@ -1757,6 +2056,14 @@ int32 IBlueprintImporter::ConstructTimelines() {
 		 * beside it, and reading them one by one here would only be a shorter list than the one the
 		 * engine already knows how to fill in. */
 		GetObjectSerializer()->DeserializeObjectProperties(Export->GetProperties(), Template);
+
+		/* An older template keeps none of the names worked out from its own: the direction, the two
+		 * functions it calls and the property each track writes to. Each is built from the
+		 * timeline's name and the guid just read, so they are worked out again now, the way the
+		 * engine does when a template is pasted in, and the script's reads of them line up. */
+		if (!bNamesItself) {
+			Template->PostEditImport();
+		}
 
 		/* The order the tracks are shown in, which the cook does not keep.
 		 *
@@ -1801,7 +2108,7 @@ int32 IBlueprintImporter::ConstructTimelines() {
 			}
 
 			if (Node == nullptr) {
-				Node = NewObject<UK2Node_Timeline>(Events);
+				Node = NewObject<UK2Node_Timeline>(Events, UK2Node_Timeline::StaticClass(), NAME_None, RF_Transactional);
 
 				Events->AddNode(Node, false, false);
 

@@ -245,8 +245,9 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 	/* Find the outer */
 	const bool bWalkedToOuter = ObjectOuter != nullptr;
 
+	/* Never itself, which is what a name alone hands back when an object is called what its outer is */
 	if (!bWalkedToOuter) {
-		if (FUObjectExport* OuterExport = PropertySerializer->ExportsContainer->Find(Outer); !Outer.IsEmpty() && OuterExport->JsonObject.IsValid()) {
+		if (FUObjectExport* OuterExport = PropertySerializer->ExportsContainer->FindOther(FName(*Outer), Export); !Outer.IsEmpty() && OuterExport->JsonObject.IsValid()) {
 			if (OuterExport->Object == nullptr) {
 				SpawnExport(OuterExport);
 			}
@@ -292,6 +293,15 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 		 * one made anywhere else fatal rather than handing it back. That class is the compiler's to
 		 * fill in, so a function the export names is left for it. */
 		if (ObjectOuter != nullptr && Class->ClassWithin != nullptr && !ObjectOuter->IsA(Class->ClassWithin)) {
+			/* A function of a blueprint is expected here and is no loss: the graph it was compiled from is rebuilt, and the
+			 * compiler makes the function again from that, an event's stub included. Only anything else left out is worth
+			 * saying. */
+			if (Class->IsChildOf(UFunction::StaticClass()) && ObjectOuter->IsA<UBlueprint>()) {
+				UE_LOG(LogReflection, Verbose, TEXT("\"%s\" is a function of %s, left for the compiler to make from the graph"), *ObjectName, *ObjectOuter->GetFullName());
+
+				return nullptr;
+			}
+
 			UE_LOG(LogReflection, Error, TEXT("\"%s\" is a %s, which has to live in a %s, and its outer is %s, so nothing was made for it"), *ObjectName, *Class->GetName(), *Class->ClassWithin->GetName(), *ObjectOuter->GetFullName());
 
 			FImportIssues::Report(
@@ -712,6 +722,34 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 			const FStructProperty* Stamped = FindFProperty<FStructProperty>(Effects, TEXT("DataVersion"));
 
 			if (Stamped != nullptr && Stamped->Struct != nullptr && Stamped->Struct->GetFName() == TEXT("GameplayEffectVersion")) {
+				/* The upgrade empties a component whenever the old field it is filled from differs from the parent's, and moves nothing across an entry it nulled on an earlier pass.
+				 * A field the reflected data does not carry is left as an earlier import saved it, so it takes the parent's value and the upgrade leaves the component alone */
+				const UObject* Inherited = Object->GetArchetype();
+
+				if (Inherited != nullptr && Inherited != Object && Inherited->IsA(Effects)) {
+					static const TCHAR* Superseded[] = {
+						TEXT("GrantedAbilities"),
+						TEXT("InheritableGameplayEffectTags"),
+						TEXT("InheritableOwnedTagsContainer"),
+						TEXT("InheritableBlockedAbilityTagsContainer"),
+						TEXT("OngoingTagRequirements"),
+						TEXT("ApplicationTagRequirements"),
+						TEXT("RemovalTagRequirements"),
+						TEXT("RemoveGameplayEffectsWithTags"),
+						TEXT("GrantedApplicationImmunityTags"),
+						TEXT("GrantedApplicationImmunityQuery"),
+						TEXT("RemoveGameplayEffectQuery")
+					};
+
+					for (const TCHAR* Field : Superseded) {
+						const FProperty* Old = FindFProperty<FProperty>(Effects, Field);
+
+						if (Old == nullptr || Properties->HasField(Field)) continue;
+
+						Old->CopyCompleteValue_InContainer(Object, Inherited);
+					}
+				}
+
 				*Stamped->ContainerPtrToValuePtr<uint8>(Object) = 0;
 
 				/* A component reaches the effect it belongs to through its outer and nothing else */
@@ -740,6 +778,10 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 					FPostCDOCompiledContext Brought;
 
 					Object->PostCDOCompiled(Brought);
+
+					/* Loading stamps the current version once the upgrade has run, and nothing loads an imported effect before it is saved.
+					 * Left at nought, every load upgrades it again; stamped, saving clears the old fields the components were filled from */
+					Stamped->CopyCompleteValue_InContainer(Object, Effects->GetDefaultObject());
 				} else {
 					FImportIssues::Report(
 						EImportIssue::Data,

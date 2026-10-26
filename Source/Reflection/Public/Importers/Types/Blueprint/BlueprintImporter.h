@@ -73,6 +73,17 @@ protected:
 	/* Puts back the events a blueprint's own widgets and components run, which arrive the same way */
 	int32 ConstructComponentEvents();
 
+	/* Moves the event graph's nodes until each event is entered where the asset entered it. The
+	 * compiler orders runs from where the nodes sit, and nothing but their offsets changes with it,
+	 * so nodes are moved one at a time while that brings them closer. Answers how many land. */
+	int32 MatchEventLayout();
+
+	/* Where the asset enters the event graph for each event, by the function that does it */
+	TMap<FName, int32> AssetEntries;
+
+	/* Where each statement of the asset's event graph begins, in order */
+	TSet<int32> AssetUbergraphStatements;
+
 	/* What each timeline hands out, by the name the script reads it under: the property a track is
 	 * kept in against the node and pin it was drawn as */
 	TMap<FString, TPair<TWeakObjectPtr<class UK2Node>, FName>> Handouts;

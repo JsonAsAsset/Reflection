@@ -15,6 +15,8 @@
 #include "MaterialCachedData.h"
 #endif
 #include "Factories/MaterialFactoryNew.h"
+#include "Materials/MaterialExpressionTextureBase.h"
+#include "Engine/Texture.h"
 #include "Settings/ReflectionSettings.h"
 
 #if ENGINE_UE5
@@ -78,6 +80,39 @@ bool IMaterialImporter::Import() {
 
 	/* Iterate through all the expressions, and set properties */
 	PropagateExpressions(ExpressionContainer);
+
+	/* A cooked material keeps what it samples only in its cached expression data: the texture
+	 * expressions themselves come back holding nothing. Where there is one of each, the one
+	 * texture can only be the one expression's */
+	if (AssetExport->GetJsonObject().Has("CachedExpressionData")) {
+		const TSharedPtr<FJsonObject> Cached = AssetExport->GetJsonObject().GetObject("CachedExpressionData").JsonObject;
+		const TArray<TSharedPtr<FJsonValue>>* Referenced = nullptr;
+
+		if (Cached.IsValid() && Cached->TryGetArrayField(TEXT("ReferencedTextures"), Referenced) && Referenced->Num() == 1) {
+			TArray<UMaterialExpressionTextureBase*> Sampling;
+
+#if UE5_1_BEYOND
+			for (UMaterialExpression* Expression : Material->GetExpressions()) {
+#else
+			for (UMaterialExpression* Expression : Material->Expressions) {
+#endif
+				if (UMaterialExpressionTextureBase* TextureExpression = Cast<UMaterialExpressionTextureBase>(Expression)) {
+					Sampling.Add(TextureExpression);
+				}
+			}
+
+			if (Sampling.Num() == 1 && Sampling[0]->Texture == nullptr) {
+				const TSharedPtr<FJsonObject> Reference = (*Referenced)[0]->AsObject();
+				TObjectPtr<UTexture> Texture = nullptr;
+
+				LoadExport<UTexture>(&Reference, Texture);
+
+				if (Texture != nullptr) {
+					Sampling[0]->Texture = Texture;
+				}
+			}
+		}
+	}
 
 #if UE5_1_BEYOND
 	UMaterialEditorOnlyData* EditorOnlyData = Material->GetEditorOnlyData();

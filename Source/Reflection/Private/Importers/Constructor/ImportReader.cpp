@@ -385,10 +385,10 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 			if (One != nullptr && !One->IsA<UMetaData>()) Built++;
 		}
 
-		/* Only taken off the list of things to save. Thrown away instead, the name stays taken by a
-		 * package nothing can be saved into, so the next import of it builds the asset, hands it to
-		 * a package already condemned, and the asset is collected out from under the save. */
-		if (Export->Object == nullptr && Built == 0) {
+		/* a package already condemned, and the asset is collected out from under the save. Decided by what
+		 * is left in the package: an importer that gives up has usually moved the asset out on the way,
+		 * leaving an export naming nothing and a package saved with PKG_ContainsNoAsset. */
+		if (Built == 0) {
 			LocalPackage->SetDirtyFlag(false);
 		}
 	}

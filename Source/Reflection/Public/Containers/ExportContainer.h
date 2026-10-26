@@ -44,6 +44,18 @@ public:
 		return FUObjectExport::EmptyExport();
 	}
 
+	/* The first export of a name other than the one given, since an object can share its name with the
+	 * one it lives in and would otherwise answer with itself. */
+	FUObjectExport* FindOther(const FName Name, const FUObjectExport* Excluding) {
+		for (FUObjectExport* Export : Exports) {
+			if (Export != Excluding && Export->IsJsonValid() && Export->GetName() == Name) {
+				return Export;
+			}
+		}
+
+		return FUObjectExport::EmptyExport();
+	}
+
 	template<typename T>
 	T* Find(const FName Name) {
 		for (const FUObjectExport* Export : Exports) {

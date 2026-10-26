@@ -113,10 +113,13 @@ namespace {
 		}
 
 		if (Type == TEXT("FloatProperty") || Type == TEXT("DoubleProperty")) {
-	/* 5.0 split the old float pin into a real pin carrying its width as a sub category */
+	/* 5.0 split the old float pin into a real pin carrying its width as a sub category, and a blueprint's own floats
+	 * became doubles in the same change: loading one saved before it upgrades every float it declares, which is why a
+	 * game cooked on 5.x carries them as DoubleProperty. Declared as single precision instead, every read of one
+	 * into the double math the engine now has goes through a cast the game's own script never had. */
 #if ENGINE_UE5
 			OutCategory = UEdGraphSchema_K2::PC_Real;
-			OutSubCategory = Type == TEXT("DoubleProperty") ? UEdGraphSchema_K2::PC_Double : UEdGraphSchema_K2::PC_Float;
+			OutSubCategory = UEdGraphSchema_K2::PC_Double;
 #else
 			OutCategory = UEdGraphSchema_K2::PC_Float;
 #endif
@@ -462,6 +465,13 @@ int32 FBlueprintVariables::Construct(UBlueprint* Blueprint, const TArray<TShared
 					if (Description.VarName != VariableName) continue;
 
 					Description.PropertyFlags |= Flags;
+
+					/* The flag alone says a function is called when the value arrives, and the
+					 * function it names is what gets called: left at None, a client takes the value
+					 * and runs nothing */
+					if (FString Notify; (Flags & CPF_RepNotify) != 0 && Property->TryGetStringField(TEXT("RepNotifyFunc"), Notify) && !Notify.IsEmpty() && Notify != TEXT("None")) {
+						Description.RepNotifyFunc = FName(*Notify);
+					}
 
 					/* Editable on a placed actor is the absence of the flag that forbids it, so
 					 * saying one means taking the other away */

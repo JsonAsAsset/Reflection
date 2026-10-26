@@ -12,6 +12,8 @@
 
 #include "Importers/Constructor/ImportReader.h"
 #include "Importers/Constructor/Importer.h"
+#include "Importers/Types/Texture/TextureImporter.h"
+#include "Importers/Types/Texture/TextureTypes.h"
 #include "Importers/Types/World/LevelRead.h"
 #include "Modules/Cloud/Cloud.h"
 /* 5.0 gathered what a save is told into a header of its own */
@@ -20,6 +22,57 @@
 #endif
 
 DECLARE_LOG_CATEGORY_CLASS(LogReflectImport, All, All);
+
+/* Everything the run left dirty, written out */
+static int32 SaveDirtyPackages() {
+	TArray<UPackage*> Dirty;
+	FEditorFileUtils::GetDirtyContentPackages(Dirty);
+	FEditorFileUtils::GetDirtyWorldPackages(Dirty);
+
+	int32 Saved = 0;
+
+	for (UPackage* One : Dirty) {
+		const FString FileName = FPackageName::LongPackageNameToFilename(One->GetName(), FPackageName::GetAssetPackageExtension());
+
+#if ENGINE_UE5
+		/* A package saved empty once keeps PKG_ContainsNoAsset through every later save, which only ever
+		 * adds it; the save sets it again if this one really holds no asset. */
+		One->ClearPackageFlags(PKG_ContainsNoAsset);
+
+		FSavePackageArgs SaveArgs;
+		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
+
+		if (UPackage::SavePackage(One, nullptr, *FileName, SaveArgs)) {
+#else
+		if (UPackage::SavePackage(One, nullptr, RF_Public | RF_Standalone, *FileName)) {
+#endif
+			Saved++;
+		} else {
+			UE_LOG(LogReflectImport, Warning, TEXT("could not save %s"), *FileName);
+		}
+	}
+
+	UE_LOG(LogReflectImport, Display, TEXT("%d package(s) saved"), Saved);
+
+	return Saved;
+}
+
+/* The object path a cloud path names: <Project>/Content/A/B.uasset is /Game/A/B.B, and
+ * .../<Plugin>/Content/A/B.uasset is /<Plugin>/A/B.B */
+static FString ObjectPathFor(const FString& CloudPath) {
+	FString Root;
+	FString Rest;
+
+	if (!CloudPath.Split(TEXT("/Content/"), &Root, &Rest)) {
+		return FString();
+	}
+
+	Rest.RemoveFromEnd(TEXT(".uasset"));
+
+	const FString Mount = Root.Contains(TEXT("/")) ? FPaths::GetCleanFilename(Root) : TEXT("Game");
+
+	return TEXT("/") + Mount + TEXT("/") + Rest + TEXT(".") + FPaths::GetBaseFilename(Rest);
+}
 
 int32 UReflectImportCommandlet::Main(const FString& Params) {
 	FString Path;
@@ -121,6 +174,22 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 		return 0;
 	}
 
+	/* No package import builds a texture: one is only ever made as the reference of something else.
+	 * Asked for on its own, it is fetched the way that reference would fetch it */
+	if (const TSharedPtr<FJsonObject> First = Exports.Num() > 0 ? Exports[0]->AsObject() : nullptr; First.IsValid() && FTextureTypes::IsSupported(First->GetStringField(TEXT("Type")))) {
+		UTexture* Texture = nullptr;
+
+		if (!FTextureImport::FromCloud(ObjectPathFor(Path), Path, Texture) || Texture == nullptr) {
+			UE_LOG(LogReflectImport, Error, TEXT("nothing was made from \"%s\""), *Path);
+
+			return 1;
+		}
+
+		SaveDirtyPackages();
+
+		return 0;
+	}
+
 	IImporter* Importer = nullptr;
 
 	const bool bImported = IImportReader::ReadExportsAndImport(Exports, Path, Importer, true, false);
@@ -209,30 +278,7 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 			Loose, LoosePins, LooseLinks);
 	}
 
-	TArray<UPackage*> Dirty;
-	FEditorFileUtils::GetDirtyContentPackages(Dirty);
-	FEditorFileUtils::GetDirtyWorldPackages(Dirty);
-
-	int32 Saved = 0;
-
-	for (UPackage* One : Dirty) {
-		const FString FileName = FPackageName::LongPackageNameToFilename(One->GetName(), FPackageName::GetAssetPackageExtension());
-
-#if ENGINE_UE5
-		FSavePackageArgs SaveArgs;
-		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
-
-		if (UPackage::SavePackage(One, nullptr, *FileName, SaveArgs)) {
-#else
-		if (UPackage::SavePackage(One, nullptr, RF_Public | RF_Standalone, *FileName)) {
-#endif
-			Saved++;
-		} else {
-			UE_LOG(LogReflectImport, Warning, TEXT("could not save %s"), *FileName);
-		}
-	}
-
-	UE_LOG(LogReflectImport, Display, TEXT("%d package(s) saved"), Saved);
+	SaveDirtyPackages();
 
 	return 0;
 }

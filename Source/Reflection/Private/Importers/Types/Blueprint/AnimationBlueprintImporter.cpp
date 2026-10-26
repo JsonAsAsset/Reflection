@@ -26,6 +26,7 @@
 #include "AnimGraphNode_StateResult.h"
 #include "AnimGraphNode_UseCachedPose.h"
 #include "Animation/AnimBlueprint.h"
+#include "Importers/Types/Animation/PreviewMesh.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
 #include "Importers/Types/Blueprint/Utilities/AnimationBlueprintUtilities.h"
@@ -607,6 +608,9 @@ bool IAnimationBlueprintImporter::Import() {
 		UE_LOG(LogReflection, Display, TEXT("%d graph(s) blend the way they were set to"), Blended);
 	}
 
+	/* Opened on whatever mesh the folder keeps, since the cook drops what it was previewed on */
+	FPreviewMesh::FromFolder(AnimBlueprint, AnimBlueprint->TargetSkeleton);
+
 	return OnAssetCreation(AnimBlueprint);
 }
 
@@ -1083,7 +1087,7 @@ void IAnimationBlueprintImporter::Draw(UAnimGraphNode_Base* Node, const FName Me
 	if (Onto->LinkedTo.Num() > 0) return;
 
 	/* The variable, read where the node that wants it is */
-	UK2Node_VariableGet* Reads = NewObject<UK2Node_VariableGet>(Into);
+	UK2Node_VariableGet* Reads = NewObject<UK2Node_VariableGet>(Into, UK2Node_VariableGet::StaticClass(), NAME_None, RF_Transactional);
 
 	Into->AddNode(Reads, false, false);
 
@@ -1102,7 +1106,7 @@ void IAnimationBlueprintImporter::Draw(UAnimGraphNode_Base* Node, const FName Me
 
 	/* And the Not that turns it round, where it was turned round */
 	if (bTurned) {
-		UK2Node_CallFunction* Turns = NewObject<UK2Node_CallFunction>(Into);
+		UK2Node_CallFunction* Turns = NewObject<UK2Node_CallFunction>(Into, UK2Node_CallFunction::StaticClass(), NAME_None, RF_Transactional);
 
 		Into->AddNode(Turns, false, false);
 

@@ -19,6 +19,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Remote.h"
 #include "Utilities/JsonHelpers.h"
+#include "Importers/Types/Animation/PreviewMesh.h"
 
 namespace {
 	/* One of the container's own lists, which it keeps to itself */
@@ -183,6 +184,9 @@ bool IPoseAssetImporter::Import() {
 		PoseAsset->SourceAnimation = OptionalAnimationSequence;
 	}
 	
+	/* Opened on whatever mesh the folder keeps, since the cook drops what it was previewed on */
+	FPreviewMesh::FromFolder(PoseAsset, PoseAsset->GetSkeleton());
+
 	return OnAssetCreation(PoseAsset);
 }
 

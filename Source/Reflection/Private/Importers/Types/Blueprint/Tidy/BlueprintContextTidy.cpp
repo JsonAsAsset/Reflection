@@ -90,11 +90,19 @@ struct FBlueprintContextTidy final : FGraphTidy {
 
 			if (Calling == nullptr) continue;
 
-			if (Calling->FunctionReference.GetMemberName() != TEXT("GetContext")) continue;
-
+			/* Which node wrote the call. GetContext only comes from the game's context node, whatever the
+			 * class; GetLocalPlayerSubsystem is what the engine's Get Subsystem writes for a local player
+			 * subsystem. Both hand back the base and leave the narrowing to the node, so both come back
+			 * from the script as a call and a cast. */
 			const UClass* Library = Calling->FunctionReference.GetMemberParentClass();
+			const FName Called = Calling->FunctionReference.GetMemberName();
 
-			if (Library == nullptr || Library->GetName() != TEXT("BlueprintContextLibrary")) continue;
+			UClass* Kind = nullptr;
+
+			if (Library != nullptr && Called == TEXT("GetContext") && Library->GetName() == TEXT("BlueprintContextLibrary")) Kind = ContextNodeClass();
+			else if (Library != nullptr && Called == TEXT("GetLocalPlayerSubsystem") && Library->GetName() == TEXT("SubsystemBlueprintLibrary")) Kind = SubsystemNodeClass();
+
+			if (Kind == nullptr) continue;
 
 			UEdGraphPin* Gives = Calling->GetReturnValuePin();
 
@@ -132,20 +140,35 @@ struct FBlueprintContextTidy final : FGraphTidy {
 
 			int32 Stood = 0;
 
+			/* The node already standing for each class asked for. The script asks once and reads the
+			 * answer as often as it likes, and every read comes back with a cast of its own, so a call
+			 * read three times is three casts to the one class and one node, not three */
+			TMap<UClass*, UEdGraphPin*> Standing;
+
 			for (UK2Node_DynamicCast* Casting : Casts) {
 				UClass* Wanted = Casting->TargetType.Get();
 
-				/* A context is a context however it is kept, so that is asked first and being a
-				 * subsystem only decides what is left */
-				UClass* Kind = IsBlueprintContext(Wanted) || !IsSubsystem(Wanted) ? ContextNodeClass() : SubsystemNodeClass();
+				if (UEdGraphPin* const* Already = Standing.Find(Wanted)) {
+					if (UEdGraphPin* Reached = CastResult(Casting)) {
+						for (UEdGraphPin* Reader : Reached->LinkedTo) {
+							(*Already)->MakeLinkTo(Reader);
+						}
 
-				if (Kind == nullptr) continue;
+						Reached->BreakAllPinLinks();
+
+						Graph->RemoveNode(Casting);
+
+						Stood++;
+					}
+
+					continue;
+				}
 
 				FObjectProperty* Says = FindFProperty<FObjectProperty>(Kind, TEXT("CustomClass"));
 
 				if (Says == nullptr) continue;
 
-				UEdGraphNode* Made = NewObject<UEdGraphNode>(Graph, Kind);
+				UEdGraphNode* Made = NewObject<UEdGraphNode>(Graph, Kind, NAME_None, RF_Transactional);
 
 				Graph->AddNode(Made, false, false);
 
@@ -192,6 +215,8 @@ struct FBlueprintContextTidy final : FGraphTidy {
 				Reached->BreakAllPinLinks();
 
 				Graph->RemoveNode(Casting);
+
+				Standing.Add(Wanted, Hands);
 
 				Stood++;
 			}

@@ -11,6 +11,9 @@
 #include "Utilities/JsonHelpers.h"
 #include "Engine/Package.h"
 #include "Importers/Constructor/ImportIssues.h"
+#include "Modules/Cloud/Cloud.h"
+#include "Modules/Cloud/Remote.h"
+#include "Utilities/AssetPaths.h"
 
 /* The curves a sequence carries, read out of whichever field the export put them in.
  *
@@ -315,6 +318,51 @@ inline bool ReadAnimationData(USerializerContainer* Container, const bool UseSel
 	 * again here, the same way the engine links them when it loads a montage, so each one resolves
 	 * against the montage it is actually in rather than against nothing. */
 	if (UAnimMontage* Montage = Cast<UAnimMontage>(AnimSequenceBase)) {
+		/* A half built reference reads as zero length, and the engine trims the segment to it, which
+		 * shortens the montage for good and stacks every notify at the new end */
+		for (const FSlotAnimationTrack& Slot : Montage->SlotAnimTracks) {
+			for (const FAnimSegment& Segment : Slot.AnimTrack.AnimSegments) {
+#if UE5_2_BEYOND
+				UAnimSequenceBase* Plays = Segment.GetAnimReference();
+#else
+				UAnimSequenceBase* Plays = Segment.AnimReference;
+#endif
+
+				if (Plays == nullptr || Plays->GetPlayLength() + KINDA_SMALL_NUMBER >= Segment.AnimEndTime) continue;
+
+				const UPackage* Holds = Plays->GetOutermost();
+
+				if (Holds == nullptr) continue;
+
+				const FBlockingRequestScope SettlingScope(FText::Format(
+					NSLOCTEXT("Reflection", "CloudSettling", "Measuring {0}"),
+					FText::FromString(Plays->GetName())
+				));
+
+				const TSharedPtr<FJsonObject> Response = Cloud::Export::GetBlocking(ToCloudPackagePath(Holds->GetName()), false);
+
+				if (!Response.IsValid() || !Response->HasTypedField<EJson::Array>(TEXT("exports"))) continue;
+
+				for (const TSharedPtr<FJsonValue>& Value : Response->GetArrayField(TEXT("exports"))) {
+					const TSharedPtr<FJsonObject>* Export;
+
+					if (!Value->TryGetObject(Export)) continue;
+
+					const TSharedPtr<FJsonObject>* Properties;
+
+					if (!(*Export)->TryGetObjectField(TEXT("Properties"), Properties)) continue;
+
+					double Length = 0.0;
+
+					if (!(*Properties)->TryGetNumberField(TEXT("SequenceLength"), Length) || Length <= 0.0) continue;
+
+					SetAnimSequenceLength(Plays, static_cast<float>(Length));
+
+					break;
+				}
+			}
+		}
+
 		/* And whether there is a montage for them to sit in. */
 		TArray<FString> Short;
 

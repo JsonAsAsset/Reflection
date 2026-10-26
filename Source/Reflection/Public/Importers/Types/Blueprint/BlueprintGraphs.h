@@ -60,6 +60,9 @@ struct REFLECTION_API FBlueprintGraphs {
 	 * what it takes is drawn on nodes rather than declared on an entry. */
 	static UEdGraph* MakeLayer(UBlueprint* Blueprint, const FString& Name, const TArray<TSharedPtr<FJsonValue>>& Declared);
 
+	/* Put after the name of a blueprint function that a native parent's own callable already uses */
+	static constexpr const TCHAR* ClashSuffix = TEXT("_BP");
+
 	/* The graph a function was written in, made where the blueprint hasn't got one */
 	static UEdGraph* Make(UBlueprint* Blueprint, const FString& Name, const FUObjectJsonValueExport& Function, const TArray<TSharedPtr<FJsonValue>>& Declared);
 

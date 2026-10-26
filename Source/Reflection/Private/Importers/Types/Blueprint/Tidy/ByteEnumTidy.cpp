@@ -112,7 +112,7 @@ struct FByteEnumTidy final : FGraphTidy {
 
 			if (First == nullptr || Second == nullptr || Answers == nullptr) continue;
 
-			UK2Node_EnumEquality* Made = NewObject<UK2Node_EnumEquality>(Graph, Kind);
+			UK2Node_EnumEquality* Made = NewObject<UK2Node_EnumEquality>(Graph, Kind, NAME_None, RF_Transactional);
 
 			Graph->AddNode(Made, false, false);
 

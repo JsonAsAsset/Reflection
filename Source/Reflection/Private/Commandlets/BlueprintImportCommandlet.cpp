@@ -145,8 +145,18 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 
 	IImporter* Importer = nullptr;
 
+	/* Built under the path given instead, so the copy at the real location is neither read back nor
+	 * written over. Spelled the way the cloud path is, since the class is named after it. */
+	FString Into = Path;
+
+	if (FString Elsewhere; FParse::Value(*Params, TEXT("into="), Elsewhere) && !Elsewhere.IsEmpty()) {
+		Into = Elsewhere;
+
+		UE_LOG(LogBlueprintImport, Display, TEXT("made at \"%s\" rather than where the cloud has it"), *Into);
+	}
+
 	/* Notifications are for somebody watching, and the path is already the one the cloud spells */
-	const bool bImported = IImportReader::ReadExportsAndImport(Exports, Path, Importer, true, false);
+	const bool bImported = IImportReader::ReadExportsAndImport(Exports, Into, Importer, true, false);
 
 	if (!bImported || Importer == nullptr) {
 		UE_LOG(LogBlueprintImport, Error, TEXT("nothing was made from \"%s\""), *Path);
@@ -176,6 +186,10 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 		/* 5.0 gathered what a save is told into one struct. Before that it is told the same
 		 * things one argument at a time. */
 #if ENGINE_UE5
+		/* A package saved empty once keeps PKG_ContainsNoAsset through every later save, which only ever
+		 * adds it; the save sets it again if this one really holds no asset. */
+		Package->ClearPackageFlags(PKG_ContainsNoAsset);
+
 		FSavePackageArgs SaveArgs;
 		SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 
