@@ -56,6 +56,11 @@ struct FMacroMatch {
 	 * and all the macro does with it is put a flag up. */
 	TMap<int32, FName> Takes;
 
+	/* Names the macro's own workings write that belong to the caller rather than the macro. A pin passed by reference
+	 * is the plain case: the macro writes the value back into whatever was wired there, which stays the caller's to
+	 * read and is never the macro's to hold. */
+	TSet<FString> ByReference;
+
 	/* Which macro this is, filled in once matched */
 	const struct FMacroPattern* Pattern = nullptr;
 

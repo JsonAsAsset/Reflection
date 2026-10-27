@@ -73,6 +73,15 @@ namespace {
 
 		if (Standing == nullptr) return nullptr;
 
+		/* A default subobject is the native constructor's, class and all, and cannot be moved out of the way: a
+		 * second object under its name is fatal. The export's class can differ when the build it came from made
+		 * that component as another type, and what both share is still filled in. */
+		if (Wanted != nullptr && !Standing->IsA(Wanted) && Standing->IsDefaultSubobject()) {
+			UE_LOG(LogReflection, Warning, TEXT("\"%s\" is a %s here and a %s in the export; it is a default subobject, so it stays what the native class makes"), *Named.ToString(), *Standing->GetClass()->GetName(), *Wanted->GetName());
+
+			return Standing;
+		}
+
 		/* There under that name, and not the thing the export is talking about. */
 		if (Wanted != nullptr && !Standing->IsA(Wanted)) {
 			MoveToTransientPackageAndRename(Standing);

@@ -19,6 +19,7 @@
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/Cloud/Tools/MeshGeometry.h"
 #include "Modules/Cloud/Tools/SkeletalMeshData.h"
+#include "Modules/Cloud/Tools/ClothingData.h"
 
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"
@@ -806,6 +807,15 @@ bool ISkeletalMeshImporter::Import() {
 	 * the same work the Skeletal Mesh Data tool does against a mesh that already exists */
 	TSkeletalMeshData MeshData;
 	MeshData.Process(SkeletalMesh, GetContainer()->JsonObjects);
+
+	/* Cloth lives inside the mesh rather than in a package of its own, so nothing else would fetch
+	 * it. Asked for only where the mesh says it has some, since the tool reports a mesh without any
+	 * as a failure and most meshes have none. Run after the build, which is what gives it the
+	 * imported model its sections are bound through. */
+	if (GetAssetData()->HasField(TEXT("MeshClothingAssets"))) {
+		TClothingData ClothingData;
+		ClothingData.Process(SkeletalMesh, GetContainer()->JsonObjects);
+	}
 
 	/* Dropped to the best LOD the mesh has, rather than wherever the game's quality settings
 	 * started it drawing */

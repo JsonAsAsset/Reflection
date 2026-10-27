@@ -7,6 +7,7 @@
 #include "Settings/Runtime.h"
 #include "Engine/EngineUtilities.h"
 #include "Containers/ExportContainer.h"
+#include "Importers/Constructor/Importer.h"
 #include "Modules/Toolbar/Tools/ImportFromPath.h"
 #include "UObject/CoreRedirects.h"
 

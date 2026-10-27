@@ -425,7 +425,7 @@ void TMeshGeometry::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 		FText::FromString("Reflected Mesh Geometry: " + SkeletalMesh->GetName()),
 		FText::FromString(FString::Printf(TEXT("%d LOD(s) rebuilt"), RebuiltLods)),
 		3.5f,
-		FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
+		FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision"),
 		RebuiltLods > 0 ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail,
 		false,
 		310.0f

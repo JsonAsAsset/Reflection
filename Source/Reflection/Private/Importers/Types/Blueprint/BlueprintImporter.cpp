@@ -1122,7 +1122,6 @@ void IBlueprintImporter::ConstructWidgetTree() {
 	
 	Export->Object = WidgetBlueprint->WidgetTree;
 	GetObjectSerializer()->SpawnExport(Export, true);
-	{ TArray<UWidget*> VMProbeWidgets; WidgetBlueprint->WidgetTree->GetAllWidgets(VMProbeWidgets); UE_LOG(LogTemp, Warning, TEXT("VMPROBE widget tree %s: export valid %d, root %s, %d widget(s), %d source widget(s)"), *GetAssetName(), Export->IsJsonValid() ? 1 : 0, *GetNameSafe(WidgetBlueprint->WidgetTree->RootWidget), VMProbeWidgets.Num(), WidgetBlueprint->GetAllSourceWidgets().Num()); }
 
 	FBlueprintEditorUtils::MarkBlueprintAsStructurallyModified(WidgetBlueprint);
 

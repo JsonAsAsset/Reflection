@@ -225,7 +225,7 @@ void TClothingData::Process(UObject* Object, const TArray<TSharedPtr<FJsonValue>
 		FText::FromString("Reflected Clothing Data: " + SkeletalMesh->GetName()),
 		FText::FromString(FString::Printf(TEXT("%d asset(s), %d section(s) bound"), SkeletalMesh->GetMeshClothingAssets().Num(), BoundSections)),
 		3.5f,
-		FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision.Small"),
+		FAppStyle::Get().GetBrush("PhysicsAssetEditor.EnableCollision"),
 		BoundSections > 0 ? SNotificationItem::CS_Success : SNotificationItem::CS_Fail,
 		false,
 		310.0f

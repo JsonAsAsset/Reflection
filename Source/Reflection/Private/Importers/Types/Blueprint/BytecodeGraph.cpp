@@ -2052,7 +2052,9 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 
 		UK2Node_MakeArray* Node = AddNode<UK2Node_MakeArray>();
 
-		Node->NumInputs = FMath::Max(1, Elements.Num());
+		/* As many pins as it was given elements, none included: an empty array made with one pin left open
+		 * would hand back an array holding one nothing. */
+		Node->NumInputs = Elements.Num();
 		Node->AllocateDefaultPins();
 
 		/* What kind of array it is, said before anything is put in it.
@@ -2100,8 +2102,11 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadExpression(const FUObjectJsonValueExp
 			else if (!Held.Literal.IsEmpty()) ApplyLiteral(Into[Which], Held.Literal);
 		}
 
-		/* What it hands back settles the kind of array it is, once something has been put in it */
-		Node->PostReconstructNode();
+		/* What it hands back settles the kind of array it is, once something has been put in it. With nothing in it,
+		 * there is nothing for it to settle from, and asked anyway it forgets the kind it was just told. */
+		if (Elements.Num() > 0) {
+			Node->PostReconstructNode();
+		}
 
 		Placed++;
 
@@ -5027,7 +5032,7 @@ void FBytecodeGraph::FindMacros() {
 			for (const int32 Inside : Match.Internal) {
 				if (!Statements.IsValidIndex(Inside)) continue;
 
-				if (const FString Kept = MacroReading::WrittenTo(Statements[Inside]); !Kept.IsEmpty()) {
+				if (const FString Kept = MacroReading::WrittenTo(Statements[Inside]); !Kept.IsEmpty() && !Match.ByReference.Contains(Kept)) {
 					Owned.Add(Kept);
 				}
 			}
@@ -5988,6 +5993,12 @@ int32 FBytecodeGraph::Build() {
 			if (Done.Key->Leads.Num() > 0) continue;
 
 			Flow = MacroPin(Done.Value, TEXT("Completed"), EGPD_Output);
+
+			/* A macro that only runs straight through has no Completed: the way out it runs through is the one the run
+			 * carries on from, which a step of a counter is the plain case of */
+			if (Flow == nullptr && Done.Key->Bodies.Num() > 0) {
+				Flow = MacroPin(Done.Value, Done.Key->Bodies.Last().Key, EGPD_Output);
+			}
 		}
 
 		if (Chained > WasChained && Address >= 0) {
