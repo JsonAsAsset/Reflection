@@ -15,7 +15,7 @@ namespace {
 	 *
 	 * A float written out as text and read back is not the number it started as, and the export
 	 * came through json either way. Anything coarser than this hides a real difference. */
-	constexpr double Tolerance = 1.0e-4;
+	constexpr double SameNumberTolerance = 1.0e-4;
 
 	FString Rendered(const TSharedPtr<FJsonValue>& Value) {
 		if (!Value.IsValid() || Value->IsNull()) return TEXT("none");
@@ -162,7 +162,7 @@ namespace {
 
 			if (!Theirs->TryGetNumber(Left) || !Ours->TryGetNumber(Right)) return false;
 
-			return FMath::IsNearlyEqual(Left, Right, Tolerance);
+			return FMath::IsNearlyEqual(Left, Right, SameNumberTolerance);
 		}
 
 		if (Theirs->Type == EJson::Boolean && Ours->Type == EJson::Boolean) {

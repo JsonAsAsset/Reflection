@@ -1,6 +1,8 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/ObjectSerializer.h"
+
+#include "Tracks/MovieScenePropertyTrack.h"
 #include "Engine/Package.h"
 
 #include "Animation/AnimNodeBase.h"
@@ -338,6 +340,29 @@ UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnly
 	
 	DeserializeObjectProperties(Export->GetProperties(), Export->Object);
 
+	/* What a track drives, said the way this engine says it.
+	 *
+	 * 4.26 moved the property name and path into a binding of their own and left the two it
+	 * replaced behind as deprecated. An export written before that names the old pair, which
+	 * lands on the deprecated fields and leaves the binding empty: the track then drives
+	 * nothing and the editor shows it as None.
+	 *
+	 * Loading a package upgrades one to the other. Nothing is loaded here, so it is done the
+	 * same way the upgrade does it, through the call both sides have always had. */
+	if (UMovieScenePropertyTrack* PropertyTrack = Cast<UMovieScenePropertyTrack>(Export->Object)) {
+		const FUObjectJsonValueExport Said = Export->GetPropertiesAsValue();
+
+		if (Said.Has(TEXT("PropertyName")) || Said.Has(TEXT("PropertyPath"))) {
+			const FString Named = Said.GetString(TEXT("PropertyName"));
+			const FString Path = Said.GetString(TEXT("PropertyPath"));
+
+			/* The path is what the binding resolves through, and an export that named only one of
+				 * the two means the same thing by both */
+			PropertyTrack->SetPropertyNameAndPath(
+				FName(*(Named.IsEmpty() ? Path : Named)),
+				Path.IsEmpty() ? Named : Path);
+		}
+	}
 
 	if (UParticleEmitter* ParticleEmitter = Cast<UParticleEmitter>(Export->Object)) {
 		ParticleEmitter->EmitterEditorColor = FColor::MakeRandomColor();

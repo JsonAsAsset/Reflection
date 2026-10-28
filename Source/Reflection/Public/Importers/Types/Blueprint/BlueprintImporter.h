@@ -44,6 +44,17 @@ protected:
 	/* Handles WidgetTree, the UI layout for Widget blueprints */
 	void ConstructWidgetTree();
 
+	/* Reads a widget tree out of another asset when this widget was cooked without one.
+	 *
+	 * Run before the variables are worked out, not alongside the tree itself. The widgets a
+	 * tree holds are the ones left out of the variable list, and a tree that arrives after
+	 * that list is settled gets a variable and a widget of the same name apiece, which is two
+	 * properties under one name on the compiled class. */
+	void BorrowWidgetTree();
+
+	/* What BorrowWidgetTree brought in, kept for the tree step to use */
+	FUObjectExport* BorrowedWidgetTree = nullptr;
+
 	/* Lays every function the class carries back out as a graph, read from the bytecode it was
 	 * cooked as. Returns how many nodes it placed across all of them. */
 	int32 ConstructGraphs();

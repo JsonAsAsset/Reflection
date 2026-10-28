@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "Importers/Types/Blueprint/WidgetTreeSource.h"
 #include "Engine/Package.h"
 #include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "AnimationGraphSchema.h"
@@ -156,6 +157,10 @@ bool IBlueprintImporter::Import() {
 
 	/* The default object, not the class holding it: what is outered to the defaults is looked for there */
 	ClassDefaultObjectExport->Object = GeneratedClass != nullptr ? GeneratedClass->GetDefaultObject() : nullptr;
+
+	/* Brought in first, so the widgets it holds are known to be widgets by the time the
+	 * variables are worked out below */
+	BorrowWidgetTree();
 
 	/* The variables have to exist before their defaults can land anywhere. A recreated blueprint
 	 * only has what its parent class gave it, so any property the blueprint declared itself is
@@ -1069,6 +1074,15 @@ int32 IBlueprintImporter::ConstructOverriddenComponents() {
 	return Put;
 }
 
+void IBlueprintImporter::BorrowWidgetTree() {
+	/* Only a widget names a tree, and only one that names a tree it hasn't got needs this */
+	if (!GetAssetDataAsValue().Has("WidgetTree")) return;
+
+	if (GetContainer()->GetExportByObjectPath(GetAssetDataAsValue().GetObject("WidgetTree"))->IsJsonValid()) return;
+
+	BorrowedWidgetTree = FWidgetTreeSource::Borrow(GetContainer(), AssetExport->GetName());
+}
+
 void IBlueprintImporter::ConstructWidgetTree() {
 	if (!GetAssetDataAsValue().Has("WidgetTree")) return;
 
@@ -1125,7 +1139,30 @@ void IBlueprintImporter::ConstructWidgetTree() {
 	} else {
 		Export = GetContainer()->GetExportByObjectPath(GetAssetDataAsValue().GetObject("WidgetTree"));
 	}
-	
+
+	/* Nothing here holds the tree.
+	 *
+	 * A widget only ever placed inside another one can be cooked as part of that one, leaving
+	 * this WidgetTree null and the tree itself in the containing asset. The settings say which
+	 * assets to look inside. */
+	if (Export->IsJsonInvalid() && BorrowedWidgetTree != nullptr) {
+		Export = BorrowedWidgetTree;
+	}
+
+	/* The empty export is shared by everything that asked for one and got nothing, so a miss
+	 * here must not be written into */
+	if (Export->IsJsonInvalid()) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			FString::Printf(TEXT("\"%s\" has no widget tree to read"), *GetAssetName()),
+			FString::Printf(
+				TEXT("The widget names a tree and nothing in the export holds one, which is how a widget cooked as part of another one comes back. Mirror says which assets hold trees for others, and none of them holds this one. Everything else about \"%s\" was imported."),
+				*GetAssetName())
+		);
+
+		return;
+	}
+
 	Export->Object = WidgetBlueprint->WidgetTree;
 	GetObjectSerializer()->SpawnExport(Export, true);
 

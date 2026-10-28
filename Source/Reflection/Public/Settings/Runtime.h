@@ -22,6 +22,13 @@ struct FRRuntime {
 	FRCloudProfile Profile;
 	FDirectoryPath ExportDirectory;
 
+	/* Assets to look inside for a widget tree a widget has not got one of.
+	 *
+	 * A widget only ever placed inside another one is cooked as part of that one: its own
+	 * WidgetTree is null and the tree sits under the instance placed in the containing asset.
+	 * Mirror says which assets those are, since it is the half that knows the build. */
+	TArray<FString> WidgetTreeSources;
+
 	bool bEnableToolbarToggling;
 
 	/* Helper Functions ~~~~~~~~~~~ */

@@ -406,6 +406,20 @@ static void ApplyMetadata(const TSharedPtr<FJsonObject>& MetadataResponse) {
 		GReflectionRuntime.MinorVersion = MinorVersion;
 	}
 
+	/* Where a widget tree may have been cooked instead of in the widget itself. Mirror knows
+		 * the build, so it is the half that names these. */
+	GReflectionRuntime.WidgetTreeSources.Empty();
+
+	if (const TArray<TSharedPtr<FJsonValue>>* Sources = nullptr; MetadataResponse->TryGetArrayField(TEXT("widget_tree_sources"), Sources)) {
+		for (const TSharedPtr<FJsonValue>& Value : *Sources) {
+			if (!Value.IsValid()) continue;
+
+			const FString Held = Value->AsString().TrimStartAndEnd();
+
+			if (!Held.IsEmpty()) GReflectionRuntime.WidgetTreeSources.AddUnique(Held);
+		}
+	}
+
 	if (MetadataResponse->HasField(TEXT("profile"))) {
 		const auto Profile = MetadataResponse->GetObjectField(TEXT("profile"));
 

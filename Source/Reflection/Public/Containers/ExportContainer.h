@@ -35,6 +35,23 @@ public:
 		}
 	}
 
+	/* Brings more exports in alongside the ones already here.
+	 *
+	 * Fill replaces the json it was given, and every export remembers where it sat in that
+	 * array, so a second Fill would leave the first lot pointing at the wrong entries. */
+	void Append(const TArray<TSharedPtr<FJsonValue>>& Array) {
+		for (const TSharedPtr<FJsonValue>& Value : Array) {
+			if (!Value.IsValid() || Value->Type != EJson::Object) continue;
+
+			const TSharedPtr<FJsonObject> Object = Value->AsObject();
+
+			if (!Object->HasField(TEXT("Name")) || !Object->HasField(TEXT("Type"))) continue;
+
+			JsonObjects.Add(Value);
+			Exports.Add(new FUObjectExport(Object, nullptr, nullptr, JsonObjects.Num() - 1));
+		}
+	}
+
 	FUObjectExport* Find(const FName Name) {
 		for (FUObjectExport* Export : Exports) {
 			if (Export->IsJsonValid() && Export->GetName() == Name) {

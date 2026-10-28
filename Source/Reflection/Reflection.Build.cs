@@ -149,6 +149,9 @@ public class Reflection : ModuleRules {
 			"UMGEditor",
 			"MovieScene",
 
+			/* UMovieScenePropertyTrack, which says what a widget animation track drives */
+			"MovieSceneTracks",
+
 #if UE_4_26_OR_LATER
 			/* UDeveloperSettings lived inside Engine, at the same header path, until 4.26 gave
 			 * it a module of its own */
