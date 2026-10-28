@@ -891,7 +891,7 @@ static void ReportTangentFidelity(USkeletalMesh* Mesh, const FString& FetchPath)
 
 	const TSharedPtr<FJsonObject> Payload = Cloud::Export::GetLodModelBlocking(FetchPath);
 
-	const TArray<TSharedPtr<FJsonValue>>* Lods;
+	const TArray<TSharedPtr<FJsonValue>>* Lods = nullptr;
 
 	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("lods"), Lods)) {
 		UE_LOG(LogRigImportTest, Display, TEXT("tangent check: no cooked geometry to compare against"));
@@ -1116,18 +1116,28 @@ static void ReportExpressionSyntax() {
 		Asset->PostEditChangeProperty(PropertyChangedEvent);
 	}
 
+/* 5.4 gathered these behind one handle. Before it the map is asked for directly, and the
+ * constants behind it are the asset's own with nothing outside able to count them. */
+#if UE5_4_BEYOND
 	const TSharedPtr<const FExpressionData> Data = Asset->GetCompiledExpressionData();
-	const int32 Compiled = Data.IsValid() ? Data->ExpressionMap.Num() : 0;
+	const TMap<FName, CurveExpression::Evaluator::FExpressionObject>* Parsed = Data.IsValid() ? &Data->ExpressionMap : nullptr;
+	const int32 Constants = Data.IsValid() ? Data->NamedConstants.Num() : 0;
+#else
+	const TMap<FName, CurveExpression::Evaluator::FExpressionObject>* Parsed = &Asset->GetCompiledExpressionMap();
+	const int32 Constants = 0;
+#endif
+
+	const int32 Compiled = Parsed != nullptr ? Parsed->Num() : 0;
 
 	UE_LOG(LogRigImportTest, Display, TEXT("expression syntax: %d of %d lines parsed, %d constants seen"),
-		Compiled, Assignments.Num(), Data.IsValid() ? Data->NamedConstants.Num() : 0);
+		Compiled, Assignments.Num(), Constants);
 
 	for (const FString& Line : Assignments) {
 		FString Target, Body;
 
 		if (!Line.Split(TEXT(" = "), &Target, &Body)) continue;
 
-		const bool bParsed = Data.IsValid() && Data->ExpressionMap.Contains(FName(*Target));
+		const bool bParsed = Parsed != nullptr && Parsed->Contains(FName(*Target));
 
 		if (!bParsed) UE_LOG(LogRigImportTest, Display, TEXT("  REJECTED: %s"), *Body);
 	}
@@ -1250,9 +1260,15 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 			for (const URigVMPin* Pin : Node->GetPins()) {
 				if (Pin->GetName() != TEXT("A") && Pin->GetName() != TEXT("B")) continue;
 
+				/* What the editor last stored on a pin is only readable from 5.4 */
+#if UE5_4_BEYOND
 				UE_LOG(LogRigImportTest, Display, TEXT("cold %s.%s [%s] = '%s' (stored '%s')"),
 					*Node->GetName(), *Pin->GetName(), *Pin->GetCPPType(), *Pin->GetDefaultValue(),
 					*Pin->GetDefaultValueStoredByUserInterface());
+#else
+				UE_LOG(LogRigImportTest, Display, TEXT("cold %s.%s [%s] = '%s'"),
+					*Node->GetName(), *Pin->GetName(), *Pin->GetCPPType(), *Pin->GetDefaultValue());
+#endif
 			}
 		}
 
@@ -1335,8 +1351,6 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 
 #if REFLECTION_CURVE_EXPRESSION
 	if (UCurveExpressionsDataAsset* Expressions = Cast<UCurveExpressionsDataAsset>(Importer->GetAsset())) {
-		const TSharedPtr<const FExpressionData> Data = Expressions->GetCompiledExpressionData();
-
 		UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *Expressions->GetPathName());
 		int32 SourceLines = 0;
 
@@ -1347,6 +1361,10 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 
 			SourceLines = Lines.Num();
 		}
+
+/* 5.4 gathered these behind one handle, and only it carries the named constants */
+#if UE5_4_BEYOND
+		const TSharedPtr<const FExpressionData> Data = Expressions->GetCompiledExpressionData();
 
 		UE_LOG(LogRigImportTest, Display, TEXT("source lines: %d, compiled expressions: %d, named constants: %d"),
 			SourceLines,
@@ -1362,6 +1380,19 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 				UE_LOG(LogRigImportTest, Display, TEXT("  compiled '%s'"), *Pair.Key.ToString());
 			}
 		}
+#else
+		const TMap<FName, CurveExpression::Evaluator::FExpressionObject>& Compiled = Expressions->GetCompiledExpressionMap();
+
+		UE_LOG(LogRigImportTest, Display, TEXT("source lines: %d, compiled expressions: %d"), SourceLines, Compiled.Num());
+
+		int32 Shown = 0;
+
+		for (const TPair<FName, CurveExpression::Evaluator::FExpressionObject>& Pair : Compiled) {
+			if (Shown++ >= 3) break;
+
+			UE_LOG(LogRigImportTest, Display, TEXT("  compiled '%s'"), *Pair.Key.ToString());
+		}
+#endif
 
 		return 0;
 	}
@@ -1538,7 +1569,7 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 	UE_LOG(LogRigImportTest, Display, TEXT("=== asset: %s"), *Blueprint->GetPathName());
 
 	/* Hierarchy */
-	if (const URigHierarchy* Hierarchy = Blueprint->GetHierarchy()) {
+	if (const URigHierarchy* Hierarchy = RigHierarchyOf(Blueprint)) {
 		int32 Bones = 0, Nulls = 0, Controls = 0, Curves = 0, Parented = 0;
 
 		for (const FRigElementKey& Key : Hierarchy->GetAllKeys(true)) {
@@ -1663,6 +1694,8 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 		if (URigVM* VM = const_cast<URigVMHost*>(Host)->GetVM()) {
 			UE_LOG(LogRigImportTest, Display, TEXT("recompiled VM: %d instructions"), VM->GetByteCode().GetNumInstructions());
 
+			/* The VM only lets anything outside it see its own function table from 5.4 */
+#if UE5_4_BEYOND
 			/* Per function: what the recompiled VM actually calls, to diff against the cook */
 			TMap<FString, int32> Calls;
 
@@ -1685,6 +1718,7 @@ int32 URigImportCommandlet::Main(const FString& Params) {
 			for (const TPair<FString, int32>& Call : Calls) {
 				UE_LOG(LogRigImportTest, Display, TEXT("vmcall %d %s"), Call.Value, *Call.Key);
 			}
+#endif
 		}
 	}
 

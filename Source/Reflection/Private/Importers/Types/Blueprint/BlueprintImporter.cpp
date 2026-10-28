@@ -33,6 +33,11 @@
 #include "Engine/TimelineTemplate.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "UObject/Script.h"
+#if UE5_7_BEYOND
+/* 5.7 split this out of UnrealString.h, which used to carry it along with everything else */
+#include "Misc/StringOutputDevice.h"
+#endif
+
 #include "ScriptDisassembler.h"
 #include "Importers/Types/Blueprint/BlueprintCookedMetaData.h"
 #include "Importers/Types/Blueprint/BytecodeGraph.h"
@@ -547,7 +552,7 @@ int32 IBlueprintImporter::MatchEventLayout() {
 				TArray<UEdGraphNode*> Moving = Way == 0 ? TArray<UEdGraphNode*>{ EventGraph->Nodes[From] } : Block;
 
 				for (int32 To = 0; To < Count && Tries < MostTries; ++To) {
-					const TArray<TObjectPtr<UEdGraphNode>> Before = EventGraph->Nodes;
+					const auto Before = EventGraph->Nodes;
 
 					for (UEdGraphNode* Node : Moving) EventGraph->Nodes.Remove(Node);
 
@@ -1152,15 +1157,18 @@ void IBlueprintImporter::ConstructWidgetTree() {
 				UClass* MovieSceneClass = UMovieScene::StaticClass();
 
 				if (const FArrayProperty* PossessablesProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("Possessables"))) {
-					PossessablesProperty->ContainerPtrToValuePtr<TArray<FMovieScenePossessable>>(SortedMovieScene)->Sort();
+					PossessablesProperty->ContainerPtrToValuePtr<TArray<FMovieScenePossessable>>(SortedMovieScene)->Sort(
+						[](const FMovieScenePossessable& Left, const FMovieScenePossessable& Right) { return Left.GetGuid() < Right.GetGuid(); });
 				}
 
 				if (const FArrayProperty* SpawnablesProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("Spawnables"))) {
-					SpawnablesProperty->ContainerPtrToValuePtr<TArray<FMovieSceneSpawnable>>(SortedMovieScene)->Sort();
+					SpawnablesProperty->ContainerPtrToValuePtr<TArray<FMovieSceneSpawnable>>(SortedMovieScene)->Sort(
+						[](const FMovieSceneSpawnable& Left, const FMovieSceneSpawnable& Right) { return Left.GetGuid() < Right.GetGuid(); });
 				}
 
 				if (const FArrayProperty* BindingsProperty = FindFProperty<FArrayProperty>(MovieSceneClass, TEXT("ObjectBindings"))) {
-					BindingsProperty->ContainerPtrToValuePtr<TArray<FMovieSceneBinding>>(SortedMovieScene)->Sort();
+					BindingsProperty->ContainerPtrToValuePtr<TArray<FMovieSceneBinding>>(SortedMovieScene)->Sort(
+						[](const FMovieSceneBinding& Left, const FMovieSceneBinding& Right) { return Left.GetObjectGuid() < Right.GetObjectGuid(); });
 				}
 			}
 
@@ -1799,23 +1807,13 @@ int32 IBlueprintImporter::ConstructGraphs() {
 			if (UK2Node_CustomEvent* Custom = Cast<UK2Node_CustomEvent>(Node)) {
 				const FString& Flags = Said.FindRef(Event.Key);
 
-#if UE4_26
-				const TTuple<const TCHAR*, EFunctionFlags> Marks[] = {
-					TTuple<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetMulticast"), FUNC_NetMulticast),
-					TTuple<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetServer"), FUNC_NetServer),
-					TTuple<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetClient"), FUNC_NetClient),
-					TTuple<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetReliable"), FUNC_NetReliable),
-				};
-#else
-				
+				/* Named rather than braced, which is what the pair's own constructor asks for */
 				const TPair<const TCHAR*, EFunctionFlags> Marks[] = {
-					{ TEXT("FUNC_NetMulticast"), FUNC_NetMulticast },
-					{ TEXT("FUNC_NetServer"), FUNC_NetServer },
-					{ TEXT("FUNC_NetClient"), FUNC_NetClient },
-					{ TEXT("FUNC_NetReliable"), FUNC_NetReliable },
+					TPair<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetMulticast"), FUNC_NetMulticast),
+					TPair<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetServer"), FUNC_NetServer),
+					TPair<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetClient"), FUNC_NetClient),
+					TPair<const TCHAR*, EFunctionFlags>(TEXT("FUNC_NetReliable"), FUNC_NetReliable),
 				};
-				
-#endif // UE4_26
 
 				for (const TPair<const TCHAR*, EFunctionFlags>& Mark : Marks) {
 					if (Flags.Contains(Mark.Key)) Custom->FunctionFlags |= Mark.Value;

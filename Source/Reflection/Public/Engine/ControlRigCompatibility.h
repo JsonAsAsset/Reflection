@@ -23,6 +23,11 @@
 #include "RigVMModel/RigVMNode.h"
 #include "RigVMModel/RigVMPin.h"
 
+#if REFLECTION_CONTROL_RIG
+#include "Factories/Factory.h"
+#include "Rigs/RigHierarchy.h"
+#endif
+
 /* Drawing a graph, said the same way on either side of RigVM's move into UE5.
  *
  * The parts are the same and always were: a graph, a controller that edits it, nodes made from the
@@ -101,6 +106,39 @@ inline URigVMPin* RigExecutePin(URigVMNode* Node) {
 
 	return nullptr;
 }
+
+#if REFLECTION_CONTROL_RIG
+/* The factory that gives a new rig blueprint its graph.
+ *
+ * It only reached that module's public headers in 5.4, and is an exported reflected class
+ * either side of that, so it is asked for by class rather than by header and driven through
+ * the factory interface every version shares. */
+inline UFactory* RigBlueprintFactory(UClass* ParentClass) {
+	UClass* FactoryClass = FindClassByType(TEXT("ControlRigBlueprintFactory"));
+
+	if (FactoryClass == nullptr) return nullptr;
+
+	UFactory* Factory = NewObject<UFactory>(GetTransientPackage(), FactoryClass);
+
+	if (const FClassProperty* Parent = CastField<FClassProperty>(FactoryClass->FindPropertyByName(TEXT("ParentClass")))) {
+		Parent->SetObjectPropertyValue(Parent->ContainerPtrToValuePtr<void>(Factory), ParentClass);
+	}
+
+	return Factory;
+}
+
+/* The hierarchy a rig blueprint keeps, which 5.4 put behind an accessor the rig interface
+ * declares. Before that it is the member itself. */
+inline URigHierarchy* RigHierarchyOf(UControlRigBlueprint* Blueprint) {
+	if (Blueprint == nullptr) return nullptr;
+
+#if UE5_4_BEYOND
+	return Blueprint->GetHierarchy();
+#else
+	return Blueprint->Hierarchy;
+#endif
+}
+#endif
 
 /* The units a curve mapping is drawn out of.
  *

@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/GraphTidy.h"
+#include "Engine/Compatibility.h"
 
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"

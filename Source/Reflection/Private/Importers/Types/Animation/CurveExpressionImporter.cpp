@@ -14,9 +14,8 @@
 #include "Engine/ControlRigCompatibility.h"
 #include "ControlRig.h"
 
-#if ENGINE_UE5
-#include "ControlRigBlueprintFactory.h"
-#else
+/* Without the rig's own factory a blueprint is made by hand, which needs these */
+#if !REFLECTION_CONTROL_RIG
 #include "ControlRigBlueprintGeneratedClass.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #endif
@@ -35,19 +34,18 @@ UObject* ICurveExpressionImporter::CreateAsset(UObject* CreatedAsset) {
 			return IImporter::CreateAsset(Existing);
 		}
 
-#if ENGINE_UE5
+#if REFLECTION_CONTROL_RIG
 		/* The factory is what knows to give a blueprint its rig graph, which nothing else creates */
-		UControlRigBlueprintFactory* Factory = NewObject<UControlRigBlueprintFactory>();
-		Factory->ParentClass = UControlRig::StaticClass();
+		UFactory* Factory = RigBlueprintFactory(UControlRig::StaticClass());
 
-		return IImporter::CreateAsset(Factory->FactoryCreateNew(
+		return IImporter::CreateAsset(Factory != nullptr ? Factory->FactoryCreateNew(
 			UControlRigBlueprint::StaticClass(),
 			GetPackage(),
 			FName(*GetAssetName()),
 			RF_Public | RF_Standalone,
 			nullptr,
 			GWarn
-		));
+		) : nullptr);
 #else
 		/* The factory that would do this lives in the rig's own editor module and is private there,
 		 * so the one call it makes is made here instead.
@@ -169,11 +167,19 @@ bool ICurveExpressionImporter::Import() {
 		 * so an expression like "a - (b - c)" is one of the ways a line does not survive. */
 		TArray<FName> Rejected;
 
+		/* 5.4 gathered the compiled expressions behind one handle; before it the map is asked
+		 * for directly */
+#if UE5_4_BEYOND
 		if (const TSharedPtr<const FExpressionData> Data = Asset->GetCompiledExpressionData()) {
 			for (const FName& Target : Targets) {
 				if (!Data->ExpressionMap.Contains(Target)) Rejected.Add(Target);
 			}
 		}
+#else
+		for (const FName& Target : Targets) {
+			if (!Asset->GetCompiledExpressionMap().Contains(Target)) Rejected.Add(Target);
+		}
+#endif
 
 		if (Rejected.Num() > 0) {
 			TArray<FString> Names;

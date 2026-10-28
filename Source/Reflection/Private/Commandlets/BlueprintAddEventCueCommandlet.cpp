@@ -12,7 +12,11 @@
 #include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/PackageName.h"
+#include "Engine/Compatibility.h"
+/* 5.0 gathered what a save is told into a header of its own */
+#if ENGINE_UE5
 #include "UObject/SavePackage.h"
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintAddEventCue, Display, All);
 
@@ -216,10 +220,16 @@ int32 UBlueprintAddEventCueCommandlet::Main(const FString& Params) {
 	UPackage* Package = Blueprint->GetOutermost();
 	const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
 
+	/* 5.0 gathered what a save is told into one struct. Before that it is told the same
+	 * things one argument at a time. */
+#if ENGINE_UE5
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 
 	if (!UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs)) {
+#else
+	if (!UPackage::SavePackage(Package, nullptr, RF_Public | RF_Standalone, *FileName)) {
+#endif
 		UE_LOG(LogBlueprintAddEventCue, Error, TEXT("could not save %s"), *FileName);
 		return 1;
 	}

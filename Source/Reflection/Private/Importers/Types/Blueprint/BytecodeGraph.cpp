@@ -5,6 +5,8 @@
 
 #include "EdGraphSchema_K2.h"
 #include "Engine/Compatibility.h"
+#include "Policies/CondensedJsonPrintPolicy.h"
+#include "Serialization/JsonWriter.h"
 #include "K2Node_AddComponent.h"
 #include "Importers/Types/Blueprint/GraphTidy.h"
 #include "Importers/Types/Blueprint/MacroPattern.h"
@@ -611,7 +613,7 @@ FString FBytecodeGraph::SpellValue(const FProperty* Property, const FUObjectJson
 			Enum = Enumerated->GetEnum();
 		}
 
-		const int64 Whole = FMath::RoundToInt64(FCString::Atod(*Said));
+		const int64 Whole = static_cast<int64>(FMath::RoundToDouble(FCString::Atod(*Said)));
 
 		if (Enum != nullptr) {
 			const FString Named = Enum->GetNameStringByValue(Whole);
@@ -745,7 +747,12 @@ FString FBytecodeGraph::ReadStructConst(const FUObjectJsonValueExport& Expressio
 
 			/* SpellValue quotes a name or a string, and without PPF_Delimited a name keeps the quotes as part of
 			 * itself: a gameplay tag became "\"Event.Athena.EnvCampFire.Light\"", which no tag is called */
+			/* 5.1 split the direct form out. Before it the same call is ImportText. */
+#if UE5_1_BEYOND
 			Place.Property->ImportText_Direct(*Held, Place.Property->ContainerPtrToValuePtr<void>(Value.GetStructMemory(), Place.Index), nullptr, PPF_Delimited);
+#else
+			Place.Property->ImportText(*Held, Place.Property->ContainerPtrToValuePtr<void>(Value.GetStructMemory(), Place.Index), PPF_Delimited, nullptr);
+#endif
 		}
 
 		FString AsText;
@@ -4884,7 +4891,9 @@ void FBytecodeGraph::FindConstants() {
 			|| What == TEXT("EX_LocalOutVariable")
 			|| What == TEXT("EX_StructMemberContext");
 
-		bool& Holds = Plain.FindOrAdd(Name, true);
+		if (!Plain.Contains(Name)) Plain.Add(Name, true);
+
+		bool& Holds = Plain[Name];
 
 		Holds = Holds && (bSaidOutright || bCopied);
 	}
@@ -5842,7 +5851,7 @@ int32 FBytecodeGraph::Build() {
 
 			int32 Colon = INDEX_NONE;
 			if (Calls.FindLastChar(TEXT(':'), Colon)) {
-				Calls.RightChopInline(Colon + 1);
+				Calls = Calls.RightChop(Colon + 1);
 			}
 
 			return Calls;

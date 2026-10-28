@@ -258,7 +258,12 @@ bool ISkeletalMeshImporter::ApplyDna(USkeletalMesh* SkeletalMesh, const FString&
 		}
 
 		if (Start > 0) {
+			/* 5.4 spells the shrink choice as an enum; before it the flag is a plain bool */
+#if UE5_4_BEYOND
 			Cooked.RemoveAt(0, Start, EAllowShrinking::No);
+#else
+			Cooked.RemoveAt(0, Start, false);
+#endif
 
 			UE_LOG(LogReflection, Display, TEXT("\"%s\" trimmed %d byte(s) ahead of its DNA stream"), *GetAssetName(), Start);
 		}
@@ -828,7 +833,23 @@ UPoseAsset* ISkeletalMeshImporter::BakeDnaPoseAsset(USkeletalMesh* SkeletalMesh)
 
 	PoseAsset->SetSkeleton(Skeleton);
 	PoseAsset->SetPreviewMesh(SkeletalMesh);
+	/* 5.3 names a pose by name. Before it the asset is given the skeleton's own curve names,
+	 * which it hands back for the ones it knows and adds for the ones it does not. */
+#if UE5_3_BEYOND
 	PoseAsset->CreatePoseFromAnimation(Sequence, &PoseNames);
+#else
+	TArray<FSmartName> Named;
+	Named.Reserve(PoseNames.Num());
+
+	for (const FName& One : PoseNames) {
+		FSmartName Found;
+
+		Skeleton->AddSmartNameAndModify(USkeleton::AnimCurveMappingName, One, Found);
+		Named.Add(Found);
+	}
+
+	PoseAsset->CreatePoseFromAnimation(Sequence, &Named);
+#endif
 
 	/* Additive against the base pose, so the controls a face is driven by add up the way they do in
 	 * the rig rather than each replacing the last */

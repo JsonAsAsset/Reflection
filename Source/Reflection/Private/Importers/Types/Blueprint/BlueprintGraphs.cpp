@@ -250,8 +250,13 @@ UEdGraph* FBlueprintGraphs::MakeLayer(UBlueprint* Blueprint, const FString& Name
 			Handing->CreateNewGuid();
 			Handing->PostPlacedNewNode();
 
+			/* 4.23 is where the node grew a name, a place in the order and inputs of its own.
+			 * Before that it carries a pose and nothing else, so there is nothing to say. */
+#if !UE4_22_BELOW
 			Handing->Node.Name = Named;
-			Handing->InputPoseIndex = Which++;
+			Handing->InputPoseIndex = Which;
+#endif
+			Which++;
 
 			Handing->AllocateDefaultPins();
 
@@ -261,15 +266,19 @@ UEdGraph* FBlueprintGraphs::MakeLayer(UBlueprint* Blueprint, const FString& Name
 		/* A value handed in before any pose has nowhere to be drawn */
 		if (Handing == nullptr) continue;
 
+#if !UE4_22_BELOW
 		Handing->Inputs.Add(FAnimBlueprintFunctionPinInfo(Named, Type));
+#endif
 	}
 
 	/* Laid out again once, since each of them grows a pin for everything it carries */
+#if !UE4_22_BELOW
 	for (UEdGraphNode* Node : Graph->Nodes) {
 		if (UAnimGraphNode_LinkedInputPose* Takes_Pose = Cast<UAnimGraphNode_LinkedInputPose>(Node); Takes_Pose != nullptr && Takes_Pose->Inputs.Num() > 0) {
 			Takes_Pose->ReconstructNode();
 		}
 	}
+#endif
 
 	return Graph;
 }

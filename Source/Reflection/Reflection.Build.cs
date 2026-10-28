@@ -115,11 +115,12 @@ public class Reflection : ModuleRules {
 
 		PublicDefinitions.Add("REFLECTION_CURVE_EXPRESSION=" + (bCurveExpression ? "1" : "0"));
 
-#if UE_5_0_OR_LATER
-	    /* Unreal Engine 5 and later */
+/* 5.1 and later. 5.0 is left at the standard it ships with: its own Niagara headers declare
+ * equality in a way C++20's reversed candidates make ambiguous, and nothing here needs C++20. */
+#if UE_5_1_OR_LATER
 	    CppStandard = CppStandardVersion.Cpp20;
 #else
-		/* Unreal Engine 4 */
+		/* Unreal Engine 4, and 5.0 */
 		CppStandard = CppStandardVersion.Cpp17;
 
 #if !UE_4_26_OR_LATER
@@ -203,6 +204,12 @@ public class Reflection : ModuleRules {
 
 			/* UEdGraphSchema_K2, whose PC_* pin categories name the type of a blueprint variable */
 			"BlueprintGraph",
+
+#if !UE_4_25_OR_LATER
+			/* UK2Node_AsyncAction, which the kismet editor exported until 4.25 moved it next to
+				 * the rest of the K2 nodes */
+			"Kismet",
+#endif
 
 			/* AInstancedFoliageActor and what it plants */
 			"Foliage",

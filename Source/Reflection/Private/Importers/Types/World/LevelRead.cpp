@@ -4,7 +4,13 @@
 
 #include "Containers/Export.h"
 #include "Containers/ExportContainer.h"
+#include "Engine/Compatibility.h"
+/* AssetRegistryModule.h only moved under an AssetRegistry/ folder later on */
+#if UE4_25_BELOW
+#include "AssetRegistryModule.h"
+#else
 #include "AssetRegistry/AssetRegistryModule.h"
+#endif
 #include "Importers/Constructor/Asset.h"
 #include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/Types.h"
@@ -28,9 +34,18 @@
 #include "Engine/World.h"
 #include "EngineUtils.h"
 #include "GameFramework/WorldSettings.h"
+
+#if UE5_5_BEYOND
+/* 5.5 moved the per level simplification settings out of WorldSettings, which now only forward
+ * declares them */
+#include "HLOD/HLODSetup.h"
+#endif
 #include "Engine/LODActor.h"
 #include "Engine/HLODProxy.h"
+/* The description a built HLOD actor is rebuilt from arrived in 4.26 */
+#if !UE4_25_BELOW
 #include "HLOD/HLODProxyDesc.h"
+#endif
 #include "HierarchicalLOD.h"
 
 /* [4.26] 	4.26 doesn't find the Importer header on it's own.
@@ -238,8 +253,8 @@ UWorld* FLevelRead::LevelFor(UPackage* Package) const {
 		.CreateAISystem(false);
 
 
-	/* [4.26]	This overload of CreateWorld does not exist under 4.26. */
-	#if !UE4_26
+	/* The overload that is handed what to initialise only exists from 5.0 */
+	#if ENGINE_UE5
 	/* Named for the asset, and not rooted: a rooted world is still standing when its own level is opened */
 	UWorld* Made = UWorld::CreateWorld(EWorldType::Inactive, false, FName(*FPackageName::GetShortName(Package)),
 		Package, /* bAddToRoot */ false, ERHIFeatureLevel::Num, &Values);
@@ -341,7 +356,7 @@ void FLevelRead::ReadHLODSetup(UWorld* World, const TArray<ALODActor*>& Actors) 
 	/* [4.26] 	Under the 4.26.2 engine, we don't have access to IsEmpty on a TArray.
 	 *			Getting Max == 0 *should* return the same functionality. */
 	#if !UE4_26
-	if (Settings == nullptr || Actors.IsEmpty()) return;
+	if (Settings == nullptr || Actors.Num() == 0) return;
 	#else
 	if (Settings == nullptr || Actors.Max() == 0) return;
 	#endif
@@ -382,7 +397,7 @@ void FLevelRead::ReadHLODs(UWorld* World, const TArray<ALODActor*>& Actors, FRLe
 	/* [4.26] 	Under the 4.26.2 engine, we don't have access to IsEmpty on a TArray.
 	 *			Getting Max == 0 *should* return the same functionality. */
 	#if !UE4_26
-	if (World == nullptr || Actors.IsEmpty()) return;
+	if (World == nullptr || Actors.Num() == 0) return;
 	#else
 	if (World == nullptr || Actors.Max() == 0) return;
 	#endif
@@ -400,10 +415,15 @@ void FLevelRead::ReadHLODs(UWorld* World, const TArray<ALODActor*>& Actors, FRLe
 		Proxy->MarkPackageDirty();
 	}
 
-	/* Kept in the proxy, as this project is set up: the editor remakes each actor from its description, which the cook drops */
+	/* Kept in the proxy, as this project is set up: the editor remakes each actor from its description, which the cook drops.
+	 *
+	 * Before 4.26 there is no description to keep and no setting saying where it would go, so the
+	 * lookups below find nothing and the read gives up there instead. */
+#if !UE4_25_BELOW
 	if (!GetDefault<UHierarchicalLODSettings>()->bSaveLODActorsToHLODPackages) {
 		return;
 	}
+#endif
 
 	/* Both kept to themselves, so both are reached the way everything else here is reached */
 	const FObjectProperty* Held = FindFProperty<FObjectProperty>(ALODActor::StaticClass(), TEXT("ProxyDesc"));
@@ -522,7 +542,9 @@ void FLevelRead::ReadHLODs(UWorld* World, const TArray<ALODActor*>& Actors, FRLe
 			continue;
 		}
 
+#if !UE4_25_BELOW
 		Proxy->UpdateHLODDescs(World->PersistentLevel);
+#endif
 
 		if (UPackage* Written = Proxy->GetOutermost(); Written != nullptr && GetSettings()->AssetSettings.SaveAssets) {
 			SavePackage(Written);
@@ -726,7 +748,10 @@ FRLevelReadResult FLevelRead::Read(const TArray<TSharedPtr<FJsonValue>>& Exports
 		FActorSpawnParameters Named;
 
 		Named.Name = Export->GetName();
+		/* Asking for a name rather than insisting on one arrived in 4.25 */
+#if !UE4_24_BELOW
 		Named.NameMode = FActorSpawnParameters::ESpawnActorNameMode::Requested;
+#endif
 
 		AActor* Actor = World->SpawnActor<AActor>(ActorClass, Named);
 
@@ -848,7 +873,7 @@ FRLevelReadResult FLevelRead::Read(const TArray<TSharedPtr<FJsonValue>>& Exports
 	/* [4.26] 	Under the 4.26.2 engine, we don't have access to IsEmpty on a TArray.
 	 *			Getting Max == 0 *should* return the same functionality. */
 	#if !UE4_26
-	if (!SubLevels.IsEmpty()) {
+	if (SubLevels.Num() > 0) {
 	#else
 	if (SubLevels.Max() != 0) {
 	#endif

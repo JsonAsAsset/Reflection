@@ -8,7 +8,12 @@
 #include "EdGraph/EdGraph.h"
 #include "EdGraphSchema_K2.h"
 #include "K2Node_AddDelegate.h"
+/* Kept under the kismet editor's own nodes folder before 4.25 */
+#if __has_include("K2Node_AsyncAction.h")
 #include "K2Node_AsyncAction.h"
+#else
+#include "Nodes/K2Node_AsyncAction.h"
+#endif
 #include "K2Node_BaseAsyncTask.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_CreateDelegate.h"

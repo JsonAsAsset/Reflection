@@ -231,7 +231,7 @@ namespace {
 
 /* 4.24 is where a cooked hull started carrying its triangles. Before it only the corners
  * survive, which is the case the faces below are already worked out from. */
-#if UE4_23_BELOW
+#if UE4_24_BELOW
 		const TArray<int32> Indices;
 #else
 		const TArray<int32>& Indices = Convex.IndexData;

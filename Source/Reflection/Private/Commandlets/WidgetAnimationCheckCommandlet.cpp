@@ -50,7 +50,15 @@ int32 UWidgetAnimationCheckCommandlet::Main(const FString& Params) {
 
 		for (const FMovieSceneBinding& Binding : Animation->MovieScene->GetBindings()) {
 			TArray<UObject*, TInlineAllocator<1>> Objects;
+
+#if UE5_5_BEYOND
+			/* 5.5 resolves a binding through a locator and a playback state rather than against the
+			 * widget itself. This only reports what a binding points at, so the older call is the
+			 * one worth keeping and the newer path is left to the engine's own tooling. */
+			Animation->LocateBoundObjects(Binding.GetObjectGuid(), UE::UniversalObjectLocator::FResolveParams(Widget), nullptr, Objects);
+#else
 			Animation->LocateBoundObjects(Binding.GetObjectGuid(), Widget, Objects);
+#endif
 
 			FString Names;
 			for (const UObject* Object : Objects) {

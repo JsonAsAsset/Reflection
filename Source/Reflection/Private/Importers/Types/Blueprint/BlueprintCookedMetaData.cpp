@@ -231,7 +231,10 @@ int32 FBlueprintCookedMetaData::Apply(UBlueprint* Blueprint, FUObjectExportConta
 		if (Given(FBlueprintMetadata::MD_Tooltip, Held)) Entered->MetaData.ToolTip = FText::FromString(Held);
 		if (Given(FBlueprintMetadata::MD_FunctionKeywords, Held)) Entered->MetaData.Keywords = FText::FromString(Held);
 		if (Given(FBlueprintMetadata::MD_CompactNodeTitle, Held)) Entered->MetaData.CompactNodeTitle = FText::FromString(Held);
+		/* Saying why a function is deprecated is a 4.23 idea; nothing before it carries one */
+#if !UE4_22_BELOW
 		if (Given(FBlueprintMetadata::MD_DeprecationMessage, Held)) Entered->MetaData.DeprecationMessage = Held;
+#endif
 		if (Given(FBlueprintMetadata::MD_CallInEditor, Held)) Entered->MetaData.bCallInEditor = Held == TEXT("true");
 		/* Whether a function may run off the game thread is a 5.0 idea; nothing before it asks */
 #if ENGINE_UE5

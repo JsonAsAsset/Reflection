@@ -7,7 +7,6 @@
 
 #include "ControlRig.h"
 #include "Engine/ControlRigCompatibility.h"
-#include "ControlRigBlueprintFactory.h"
 #include "Rigs/RigHierarchyController.h"
 
 #include "Engine/SkeletalMesh.h"
@@ -157,18 +156,17 @@ UObject* IControlRigImporter::CreateAsset(UObject* CreatedAsset) {
 		ParentClass = UControlRig::StaticClass();
 	}
 
-	UControlRigBlueprintFactory* Factory = NewObject<UControlRigBlueprintFactory>();
-	Factory->ParentClass = ParentClass;
-
 	/* The factory is what knows to give the blueprint its rig graph, which nothing else creates */
-	UObject* Blueprint = Factory->FactoryCreateNew(
+	UFactory* Factory = RigBlueprintFactory(ParentClass);
+
+	UObject* Blueprint = Factory != nullptr ? Factory->FactoryCreateNew(
 		UControlRigBlueprint::StaticClass(),
 		GetPackage(),
 		FName(*GetAssetName()),
 		RF_Public | RF_Standalone,
 		nullptr,
 		GWarn
-	);
+	) : nullptr;
 
 	return IImporter::CreateAsset(Blueprint);
 }
@@ -200,7 +198,7 @@ bool IControlRigImporter::Import() {
 }
 
 int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) const {
-	URigHierarchy* Hierarchy = Blueprint->GetHierarchy();
+	URigHierarchy* Hierarchy = RigHierarchyOf(Blueprint);
 	URigHierarchyController* Controller = Blueprint->GetHierarchyController();
 
 	if (Hierarchy == nullptr || Controller == nullptr) return 0;
@@ -218,7 +216,7 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 		HierarchyExport = GetContainer()->FindByType(FName(TEXT("RigHierarchy")));
 	}
 
-	const TArray<TSharedPtr<FJsonValue>>* Elements;
+	const TArray<TSharedPtr<FJsonValue>>* Elements = nullptr;
 
 	if (HierarchyExport->IsJsonInvalid() || !HierarchyExport->JsonObject->TryGetArrayField(TEXT("Elements"), Elements)) {
 		FImportIssues::Report(

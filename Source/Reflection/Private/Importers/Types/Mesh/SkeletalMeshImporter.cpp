@@ -822,7 +822,8 @@ bool ISkeletalMeshImporter::Import() {
 	if (GetSettings()->AssetSettings.Mesh.IgnoreMinQualityLevelLODDefault) {
 		SetMeshMinLod(SkeletalMesh, FPerPlatformInt(0));
 
-#if ENGINE_UE5
+/* A MinLOD per quality level, rather than per platform, arrived in 5.1 */
+#if UE5_1_BEYOND
 		FPerQualityLevelInt MinQualityLevelLod = SkeletalMesh->GetQualityLevelMinLod();
 
 		MinQualityLevelLod.Default = 0;

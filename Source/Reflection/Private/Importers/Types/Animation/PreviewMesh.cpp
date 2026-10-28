@@ -35,7 +35,12 @@ bool FPreviewMesh::FromFolder(UObject* Asset, const USkeleton* Skeleton) {
 	FAssetData Picked;
 
 	for (const FAssetData& One : Beside) {
+		/* 5.1 spells a class as a path. Before it the registry keeps the bare name. */
+#if UE5_1_BEYOND
 		if (One.AssetClassPath != USkeletalMesh::StaticClass()->GetClassPathName()) continue;
+#else
+		if (One.AssetClass != USkeletalMesh::StaticClass()->GetFName()) continue;
+#endif
 
 		/* Read off the registry rather than by loading, so a folder of meshes isn't loaded to
 		 * choose one of them */
@@ -47,7 +52,7 @@ bool FPreviewMesh::FromFolder(UObject* Asset, const USkeleton* Skeleton) {
 		}
 
 		/* By name where the folder keeps more than one, so the same folder always picks the same */
-		if (!Picked.IsValid() || One.AssetName.LexicalLess(Picked.AssetName)) {
+		if (!Picked.IsValid() || One.AssetName.Compare(Picked.AssetName) < 0) {
 			Picked = One;
 		}
 	}

@@ -28,7 +28,7 @@ void SAdditiveBaseDialog::Construct(const FArguments& InArgs) {
 	ChildSlot
 	[
 		SNew(SBorder)
-		.BorderImage(FAppStyle::GetBrush("ToolPanel.GroupBorder"))
+		.BorderImage(FAppStyle::Get().GetBrush("ToolPanel.GroupBorder"))
 		.Padding(16.0f)
 		[
 			SNew(SVerticalBox)

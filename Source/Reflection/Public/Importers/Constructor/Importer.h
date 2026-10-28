@@ -5,6 +5,7 @@
 #include "Importers/Types/Texture/TextureTypes.h"
 
 #include "Engine/Compatibility.h"
+#include "UObject/MetaData.h"
 #include "Dom/JsonObject.h"
 #include "CoreMinimal.h"
 #include "Serializers/SerializerContainer.h"
@@ -54,8 +55,16 @@ inline bool PackageHoldsAsset(const FString& LongPackageName) {
 		GetObjectsWithOuter(Standing, Inside, false);
 
 		for (const UObject* One : Inside) {
-			/* Every package carries one of these whether or not anything was built in it */
-			if (One != nullptr && !One->IsA<UMetaData>()) return true;
+			if (One == nullptr) continue;
+
+#if !UE5_6_BEYOND
+			/* Every package carries one of these whether or not anything was built in it. From 5.6
+			 * metadata is kept on the package rather than as an object inside it, so there is none
+			 * to pass over. */
+			if (One->IsA<UMetaData>()) continue;
+#endif
+
+			return true;
 		}
 
 		return false;

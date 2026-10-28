@@ -3,7 +3,10 @@
 #include "Importers/Types/Blueprint/AnimationBlueprintImporter.h"
 #include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "AnimGraphNode_BlendListByInt.h"
+/* 4.23 is where a node driving something of its own grew a base of its own */
+#if !UE4_22_BELOW
 #include "AnimGraphNode_CustomProperty.h"
+#endif
 #include "Kismet/KismetMathLibrary.h"
 #include "K2Node_CallFunction.h"
 #include "K2Node_VariableGet.h"
@@ -1894,6 +1897,7 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 		 * itself, against this node. */
 		TArray<FString> Handing;
 
+#if !UE4_22_BELOW
 		if (Cast<UAnimGraphNode_CustomProperty>(Node) != nullptr) {
 			if (const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr; NodeProperties->TryGetArrayField(TEXT("DestPropertyNames"), Listed)) {
 				for (const TSharedPtr<FJsonValue>& One : *Listed) {
@@ -1904,6 +1908,7 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 			NodeProperties->RemoveField(TEXT("SourcePropertyNames"));
 			NodeProperties->RemoveField(TEXT("DestPropertyNames"));
 		}
+#endif
 
 		/* What rig to run, said the way this engine says it.
 		 *
@@ -2269,6 +2274,9 @@ void IAnimationBlueprintImporter::SettleInputPoses(UEdGraph* Layer) const {
 
 		if (!UAnimationGraphSchema::IsPosePin(Type)) continue;
 
+		/* A node carrying no name and no order cannot be matched to a parameter, which is
+		 * every one of them before 4.23 */
+#if !UE4_22_BELOW
 		for (UAnimGraphNode_LinkedInputPose* One : Taking) {
 			if (One->Node.Name != Parameter->GetFName()) continue;
 
@@ -2279,6 +2287,7 @@ void IAnimationBlueprintImporter::SettleInputPoses(UEdGraph* Layer) const {
 			One->FunctionReference.SetExternalMember(Layer->GetFName(), Declaring);
 			One->Modify();
 		}
+#endif
 
 		Which++;
 	}

@@ -215,9 +215,12 @@ bool IStaticMeshImporter::Import() {
 				StaticMesh->NaniteSettings.PositionPrecision = Nanite.GetInteger(TEXT("PositionPrecision"), StaticMesh->NaniteSettings.PositionPrecision);
 			}
 
+			/* How precisely a nanite normal is kept is a 5.2 setting */
+#if UE5_2_BEYOND
 			if (Nanite.Has(TEXT("NormalPrecision"))) {
 				StaticMesh->NaniteSettings.NormalPrecision = Nanite.GetInteger(TEXT("NormalPrecision"), StaticMesh->NaniteSettings.NormalPrecision);
 			}
+#endif
 
 			/* The fallback the cook kept was dropped above, so the build has to make one as large as it was.
 			 * Where the mesh is not drawn as Nanite, the mobile renderer included, that is what is drawn. */
@@ -284,7 +287,8 @@ bool IStaticMeshImporter::Import() {
 
 	/* Dropped to the first LOD worth showing. A cook can strip the colours from LOD 0, and landing
 	 * there renders the mesh white. */
-#if ENGINE_UE5
+/* A MinLOD per quality level, rather than per platform, arrived in 5.1 */
+#if UE5_1_BEYOND
 	if (GetSettings()->AssetSettings.Mesh.IgnoreMinQualityLevelLODDefault) {
 		FPerQualityLevelInt MinQualityLevelLOD = StaticMesh->GetQualityLevelMinLOD();
 
@@ -342,7 +346,7 @@ void IStaticMeshImporter::BuildCollisionAndSockets(UStaticMesh* StaticMesh) {
 
 	for (const FUObjectExport* Export : Container->Exports) {
 		if (UStaticMeshSocket* Socket = Cast<UStaticMeshSocket>(Export->Object)) {
-			StaticMesh->AddSocket(Socket);
+			StaticMesh->Sockets.AddUnique(Socket);
 		}
 	}
 
@@ -391,7 +395,7 @@ bool IStaticMeshImporter::BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonVa
 		FirstColoredLod = LodIndex;
 	}
 
-	while (StaticMesh->GetNumSourceModels() <= LodIndex) {
+	while (NumSourceModelsOf(StaticMesh) <= LodIndex) {
 		StaticMesh->AddSourceModel();
 	}
 
@@ -502,7 +506,7 @@ bool IStaticMeshImporter::BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonVa
 
 	if (BuiltTriangles == 0) return false;
 
-	FStaticMeshSourceModel& SourceModel = StaticMesh->GetSourceModel(LodIndex);
+	FStaticMeshSourceModel& SourceModel = SourceModelOf(StaticMesh, LodIndex);
 
 	SourceModel.BuildSettings.bRecomputeNormals = false;
 	SourceModel.BuildSettings.bRecomputeTangents = false;
@@ -522,11 +526,11 @@ bool IStaticMeshImporter::BuildLod(UStaticMesh* StaticMesh, const FUObjectJsonVa
 		const TArray<FUObjectJsonValueExport> ExportSections = ExportLods[SourceLod].GetArray(TEXT("Sections"));
 
 		for (int32 SectionIndex = 0; SectionIndex < ExportSections.Num(); ++SectionIndex) {
-			FMeshSectionInfo Info = StaticMesh->GetSectionInfoMap().Get(LodIndex, SectionIndex);
+			FMeshSectionInfo Info = SectionInfoMapOf(StaticMesh).Get(LodIndex, SectionIndex);
 
 			GetPropertySerializer()->DeserializeStruct(FMeshSectionInfo::StaticStruct(), ExportSections[SectionIndex].JsonObject.ToSharedRef(), &Info);
 
-			StaticMesh->GetSectionInfoMap().Set(LodIndex, SectionIndex, Info);
+			SectionInfoMapOf(StaticMesh).Set(LodIndex, SectionIndex, Info);
 		}
 	}
 

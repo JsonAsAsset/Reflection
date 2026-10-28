@@ -26,7 +26,9 @@
 #if _MSC_VER < 1500
 #	define vsnprintf _vsnprintf
 #endif
-#define vsscanf _vsscanf
+#if _MSC_VER < 1800
+#	define vsscanf _vsscanf
+#endif
 #define chdir _chdir
 #define getcwd _getcwd
 

@@ -78,6 +78,12 @@
 	#define UE5_1_BEYOND 0
 #endif
 
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2
+	#define UE5_2_BEYOND 1
+#else
+	#define UE5_2_BEYOND 0
+#endif
+
 #if ENGINE_MAJOR_VERSION == 4
 	#define ENGINE_UE4 1
 #else
@@ -106,6 +112,27 @@
 	#define UE4_25_BELOW 1
 #else
 	#define UE4_25_BELOW 0
+#endif
+
+/* 4.23 is where the custom property anim node arrived */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION < 23
+	#define UE4_22_BELOW 1
+#else
+	#define UE4_22_BELOW 0
+#endif
+
+/* 4.24 is where the linked input pose node took over from the sub input node */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION < 24
+	#define UE4_23_BELOW 1
+#else
+	#define UE4_23_BELOW 0
+#endif
+
+/* 4.25 is where a convex element kept the indices of its own hull */
+#if ENGINE_UE4 && ENGINE_MINOR_VERSION < 25
+	#define UE4_24_BELOW 1
+#else
+	#define UE4_24_BELOW 0
 #endif
 
 #if ENGINE_UE4 && ENGINE_MINOR_VERSION < 27
@@ -586,6 +613,32 @@ private:
 
 using UAnimGraphNode_LinkedInputPose = UAnimGraphNode_SubInput;
 #endif
+
+/* 4.23 put the mesh's own LOD list and section map behind accessors. Before that they are
+ * the members themselves, so both are asked for the same way here. */
+inline int32 NumSourceModelsOf(UStaticMesh* Mesh) {
+#if UE4_22_BELOW
+	return Mesh->SourceModels.Num();
+#else
+	return Mesh->GetNumSourceModels();
+#endif
+}
+
+inline FStaticMeshSourceModel& SourceModelOf(UStaticMesh* Mesh, const int32 Lod) {
+#if UE4_22_BELOW
+	return Mesh->SourceModels[Lod];
+#else
+	return Mesh->GetSourceModel(Lod);
+#endif
+}
+
+inline FMeshSectionInfoMap& SectionInfoMapOf(UStaticMesh* Mesh) {
+#if UE4_22_BELOW
+	return Mesh->SectionInfoMap;
+#else
+	return Mesh->GetSectionInfoMap();
+#endif
+}
 
 inline UClass* FindClassByType(const FString& Type) {
 #if UE5_1_BEYOND

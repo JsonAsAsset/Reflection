@@ -784,9 +784,14 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 				const UObject* Made = Object->GetArchetype();
 
 				if (Made != nullptr && Made != Object && Made->IsA(Effects)) {
+					/* 5.1 started saying what the call is part of; before it nothing is passed */
+#if UE5_1_BEYOND
 					FPostCDOCompiledContext Brought;
 
 					Object->PostCDOCompiled(Brought);
+#else
+					Object->PostCDOCompiled();
+#endif
 
 					/* Loading stamps the current version once the upgrade has run, and nothing loads an imported effect before it is saved.
 					 * Left at nought, every load upgrades it again; stamped, saving clears the old fields the components were filled from */

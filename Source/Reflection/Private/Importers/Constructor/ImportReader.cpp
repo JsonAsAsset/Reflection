@@ -2,6 +2,8 @@
 
 #include "Importers/Constructor/ImportReader.h"
 
+#include "UObject/MetaData.h"
+
 #include "Importers/Constructor/ImportIssues.h"
 #include "Importers/Constructor/Importer.h"
 #include "Importers/Constructor/TemplatedImporter.h"
@@ -382,7 +384,13 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 		int32 Built = 0;
 
 		for (const UObject* One : Held) {
-			if (One != nullptr && !One->IsA<UMetaData>()) Built++;
+			if (One == nullptr) continue;
+
+#if !UE5_6_BEYOND
+			if (One->IsA<UMetaData>()) continue;
+#endif
+
+			Built++;
 		}
 
 		/* a package already condemned, and the asset is collected out from under the save. Decided by what

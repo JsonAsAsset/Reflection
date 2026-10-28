@@ -185,7 +185,12 @@ void FFoliageActor::Rebuild(AInstancedFoliageActor* Actor, const UPropertySerial
 		/* The type the game planted it as, where that asset has been brought in already */
 		UFoliageType* Type = LoadReferenced<UFoliageType>(PathFromQuoted(Entry.Key));
 
+		/* Called the mesh info before 4.23, under the same shape */
+#if UE4_22_BELOW
+		FFoliageMeshInfo* Info = nullptr;
+#else
 		FFoliageInfo* Info = nullptr;
+#endif
 
 		if (Type != nullptr) {
 			Type = Actor->AddFoliageType(Type, &Info);
@@ -239,6 +244,10 @@ void FFoliageActor::Rebuild(AInstancedFoliageActor* Actor, const UPropertySerial
 
 #if ENGINE_UE5
 			Info->AddInstance(Type, Instance);
+#elif UE4_22_BELOW
+			/* 4.23 gathered the tree rebuild behind Refresh below. Before it the only way to ask
+				 * for one is as each instance goes in. */
+			Info->AddInstance(Actor, Type, Instance, /* RebuildFoliageTree */ true);
 #else
 			Info->AddInstance(Actor, Type, Instance);
 #endif
@@ -249,7 +258,7 @@ void FFoliageActor::Rebuild(AInstancedFoliageActor* Actor, const UPropertySerial
 		/* Builds the tree the instances are drawn out of, which nothing else does for them */
 #if ENGINE_UE5
 		Info->Refresh(false, true);
-#else
+#elif !UE4_22_BELOW
 		Info->Refresh(Actor, false, true);
 #endif
 

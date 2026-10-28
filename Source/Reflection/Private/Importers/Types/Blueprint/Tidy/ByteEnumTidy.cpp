@@ -34,7 +34,7 @@ namespace {
 	 * Each of these says which function it compiles down to, so it is asked rather than matched by
 	 * name: whatever the engine turns one into is what a call of that name came from. */
 	bool CompilesTo(const UClass* Kind, const FName Called, const UClass* Upon) {
-		const UK2Node_EnumEquality* Asking = Kind != nullptr ? Cast<UK2Node_EnumEquality>(Kind->GetDefaultObject()) : nullptr;
+		const UK2Node_EnumEquality* Asking = Kind != nullptr ? Cast<UK2Node_EnumEquality>(const_cast<UClass*>(Kind)->GetDefaultObject()) : nullptr;
 
 		if (Asking == nullptr) return false;
 

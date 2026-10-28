@@ -17,28 +17,52 @@
 #include "Serializers/PropertySerializer.h"
 
 namespace {
-	/* The registry grew a read and a write half in 5.5, and every use here only reads. 5.7 deleted
-	 * both halves again and put the locking back behind the registry's own accessors, so the plain
-	 * one is what to ask for either side of that. */
+	/* The registry grew a read and a write half in 5.5, but the half it hands out keeps the
+	 * locking accessors and deletes the unlocked ones, so the plain registry is what every
+	 * version is asked for. */
 	FORCEINLINE decltype(auto) GetRigVMRegistry() {
-#if UE5_5_BEYOND && !UE5_7_BEYOND
-		return FRigVMRegistry::GetForRead();
-#else
 		return FRigVMRegistry::Get();
-#endif
 	}
 
-	/* What a dispatch's arguments are called, and what the argument behind an operand is called.
+	/* What a dispatch's arguments are called, and which way each one points.
 	 *
-	 * 5.7 made both of these take the registry handle the caller is reading under rather than
-	 * reach for the registry themselves. Taken by value so the read lock is only held for as long
-	 * as the copy takes, which is what the engine does with them too. */
-	TArray<FRigVMTemplateArgumentInfo> GetFactoryArgumentInfos(const FRigVMDispatchFactory* Factory) {
+	 * 5.4 moved both onto an info struct the factory hands back, and before that the arguments
+	 * themselves carry them. 5.7 made the call take the registry handle the caller is reading
+	 * under rather than reach for the registry itself. Only the name and the direction are read
+	 * here, so one shape is built out of whichever the engine offers. */
+	struct FDispatchArgument {
+		FName Name;
+		ERigVMPinDirection Direction;
+	};
+
+	TArray<FDispatchArgument> GetFactoryArgumentInfos(const FRigVMDispatchFactory* Factory) {
+		TArray<FDispatchArgument> Built;
+
 #if UE5_7_BEYOND
 		FRigVMRegistryReadLock ReadLock(FRigVMRegistry::Get());
-		return Factory->GetArgumentInfos(ReadLock);
+
+		for (const FRigVMTemplateArgumentInfo& Info : Factory->GetArgumentInfos(ReadLock)) {
+			Built.Add({ Info.Name, Info.Direction });
+		}
+#elif UE5_4_BEYOND
+		for (const FRigVMTemplateArgumentInfo& Info : Factory->GetArgumentInfos()) {
+			Built.Add({ Info.Name, Info.Direction });
+		}
 #else
-		return Factory->GetArgumentInfos();
+		for (const FRigVMTemplateArgument& Argument : Factory->GetArguments()) {
+			Built.Add({ Argument.GetName(), Argument.GetDirection() });
+		}
+#endif
+
+		return Built;
+	}
+
+	/* 5.4 grew a say over whether a pin linked to this one takes the value too */
+	bool RigSetPinDefault(URigVMController* Controller, const FString& PinPath, const FString& Value) {
+#if UE5_4_BEYOND
+		return Controller->SetPinDefaultValue(PinPath, Value, true, false, false, false, false);
+#else
+		return Controller->SetPinDefaultValue(PinPath, Value, true, false, false, false);
 #endif
 	}
 
@@ -491,7 +515,7 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 			}
 
 			if (Function->Factory != nullptr) {
-				for (const FRigVMTemplateArgumentInfo& Info : GetFactoryArgumentInfos(Function->Factory)) {
+				for (const FDispatchArgument& Info : GetFactoryArgumentInfos(Function->Factory)) {
 					if (Info.Name.ToString() == ArgumentName) {
 						return Info.Direction == ERigVMPinDirection::Output || Info.Direction == ERigVMPinDirection::IO;
 					}
@@ -908,7 +932,7 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 				return false;
 			}
 
-			return Controller->SetPinDefaultValue(Pin->GetPinPath(), Exported, true, false, false, false, false);
+			return RigSetPinDefault(Controller, Pin->GetPinPath(), Exported);
 		}
 
 		/* Walked pin first rather than field first: an exporter writes what it read off the struct,
@@ -933,7 +957,7 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 		return false;
 	}
 
-	return Controller->SetPinDefaultValue(Pin->GetPinPath(), DefaultValue, true, false, false, false, false);
+	return RigSetPinDefault(Controller, Pin->GetPinPath(), DefaultValue);
 }
 
 void FRigVMGraphReconstruction::UpdateLayout() {
@@ -1209,7 +1233,7 @@ void FRigVMGraphReconstruction::ConsolidateDefaults() {
 
 			if (Composed.IsEmpty() || Composed == TEXT("()")) continue;
 
-			Controller->SetPinDefaultValue(Pin->GetPinPath(), Composed, true, false, false, false, false);
+			RigSetPinDefault(Controller, Pin->GetPinPath(), Composed);
 		}
 	}
 }

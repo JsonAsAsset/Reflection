@@ -15,7 +15,11 @@
 #include "Kismet2/KismetEditorUtilities.h"
 #include "Misc/FileHelper.h"
 #include "Misc/PackageName.h"
+#include "Engine/Compatibility.h"
+/* 5.0 gathered what a save is told into a header of its own */
+#if ENGINE_UE5
 #include "UObject/SavePackage.h"
+#endif
 
 DEFINE_LOG_CATEGORY_STATIC(LogBlueprintCopyEvent, Display, All);
 
@@ -210,14 +214,14 @@ int32 UBlueprintCopyEventCommandlet::Main(const FString& Params) {
 		for (const FString& Function : Functions) {
 			const FName FunctionName(*Function.TrimStartAndEnd());
 
-			const TObjectPtr<UEdGraph>* SourceGraph = Source->FunctionGraphs.FindByPredicate([FunctionName](const UEdGraph* Graph) { return Graph && Graph->GetFName() == FunctionName; });
+			const auto* SourceGraph = Source->FunctionGraphs.FindByPredicate([FunctionName](const UEdGraph* Graph) { return Graph && Graph->GetFName() == FunctionName; });
 
 			if (!SourceGraph) {
 				UE_LOG(LogBlueprintCopyEvent, Error, TEXT("%s has no function %s"), *Source->GetName(), *FunctionName.ToString());
 				return 1;
 			}
 
-			if (const TObjectPtr<UEdGraph>* Existing = Target->FunctionGraphs.FindByPredicate([FunctionName](const UEdGraph* Graph) { return Graph && Graph->GetFName() == FunctionName; })) {
+			if (const auto* Existing = Target->FunctionGraphs.FindByPredicate([FunctionName](const UEdGraph* Graph) { return Graph && Graph->GetFName() == FunctionName; })) {
 				/* Only on -replace, since what the target has may be somebody's own work rather than a stub an earlier import left */
 				if (!FParse::Param(*Params, TEXT("replace"))) {
 					UE_LOG(LogBlueprintCopyEvent, Error, TEXT("%s already has a function %s, nothing changed"), *Target->GetName(), *FunctionName.ToString());
@@ -317,10 +321,16 @@ int32 UBlueprintCopyEventCommandlet::Main(const FString& Params) {
 	UPackage* Package = Target->GetOutermost();
 	const FString FileName = FPackageName::LongPackageNameToFilename(Package->GetName(), FPackageName::GetAssetPackageExtension());
 
+	/* 5.0 gathered what a save is told into one struct. Before that it is told the same
+	 * things one argument at a time. */
+#if ENGINE_UE5
 	FSavePackageArgs SaveArgs;
 	SaveArgs.TopLevelFlags = RF_Public | RF_Standalone;
 
 	if (!UPackage::SavePackage(Package, nullptr, *FileName, SaveArgs)) {
+#else
+	if (!UPackage::SavePackage(Package, nullptr, RF_Public | RF_Standalone, *FileName)) {
+#endif
 		UE_LOG(LogBlueprintCopyEvent, Error, TEXT("could not save %s"), *FileName);
 		return 1;
 	}

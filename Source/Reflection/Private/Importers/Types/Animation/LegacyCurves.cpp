@@ -191,7 +191,7 @@ bool FReflectionLegacyCurves::Rewrite(TArray<TSharedPtr<FJsonValue>>& FloatCurve
 	if (Rows.Num() == 0) return false;
 
 	TArray<FName> Curves = Involved.Array();
-	Curves.Sort(FNameLexicalLess());
+	Curves.Sort([](const FName& Left, const FName& Right) { return Left.Compare(Right) < 0; });
 
 	/* Every control the animation drives, read as a row of how much of each curve went into it */
 	const int32 Height = Rows.Num();

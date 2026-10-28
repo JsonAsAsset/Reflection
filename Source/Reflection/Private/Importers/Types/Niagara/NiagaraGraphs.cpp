@@ -70,7 +70,12 @@ namespace {
 #if ENGINE_UE4
 		if (Call->FunctionScript == nullptr) return nullptr;
 
+		/* 4.27 keeps a script per version and names the newest one apart from the rest */
+#if UE4_27
+		const UNiagaraScriptSource* Source = Cast<UNiagaraScriptSource>(Call->FunctionScript->GetLatestSource());
+#else
 		const UNiagaraScriptSource* Source = Cast<UNiagaraScriptSource>(Call->FunctionScript->GetSource());
+#endif
 
 		return Source != nullptr ? Source->NodeGraph : nullptr;
 #else
