@@ -331,7 +331,7 @@ bool FTextureCreator::GetCookedLayout(const TSharedPtr<FJsonObject>& Export, con
 	 * the mip's depth to one, so the height had to be divided back down. It now leaves the height
 	 * alone and writes the real depth on each mip, which is the same thing the archive holds.
 	 *
-	 * Mip zero tells them apart without having to know which Core produced the dump: it says how
+	 * Mip zero tells them apart without having to know which Mirror produced the dump: it says how
 	 * many bytes it holds, and only one of the two readings accounts for all of them. */
 	int32 MipSlices = 0;
 	int64 MipPayload = 0;
@@ -345,7 +345,7 @@ bool FTextureCreator::GetCookedLayout(const TSharedPtr<FJsonObject>& Export, con
 		if (Slices <= 0) {
 			Slices = SizeX > 0 ? ReportedSizeY / SizeX : 0;
 
-			UE_LOG(LogReflection, Warning, TEXT("\"%s\" was sent without a slice count, reading %d off its width. Update Core to import this reliably."), *AssetName, Slices);
+			UE_LOG(LogReflection, Warning, TEXT("\"%s\" was sent without a slice count, reading %d off its width. Update Mirror to import this reliably."), *AssetName, Slices);
 		}
 	}
 

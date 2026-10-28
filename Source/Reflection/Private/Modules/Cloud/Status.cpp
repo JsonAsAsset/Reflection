@@ -27,7 +27,7 @@ bool Cloud::Status::IsOpened() {
 	}
 
 	GLastOpenedCheck = CurrentTime;
-	GLastOpened = IsProcessRunning(TEXT("Core.exe"));
+	GLastOpened = IsProcessRunning(TEXT("Mirror.exe")) || IsProcessRunning(TEXT("Core.exe"));
 
 	return GLastOpened;
 }

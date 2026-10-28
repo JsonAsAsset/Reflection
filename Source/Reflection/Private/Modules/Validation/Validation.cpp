@@ -195,9 +195,9 @@ void FValidation::DispatchBatches() {
 void FValidation::HandleBatchResponse(const int32 BatchStart, const int32 BatchEnd, const TSharedPtr<FJsonObject>& Response, const int32 ResponseCode) {
 	if (!Response.IsValid()) {
 		if (ResponseCode == 404) {
-			Finish(TEXT("This Cloud build has no '/api/validate' endpoint. Update Core to run validation."));
+			Finish(TEXT("This Cloud build has no '/api/validate' endpoint. Update Mirror to run validation."));
 		} else if (ResponseCode == 0) {
-			Finish(TEXT("Couldn't reach the Cloud. Make sure Core is running and a profile is loaded."));
+			Finish(TEXT("Couldn't reach the Cloud. Make sure Mirror is running and a profile is loaded."));
 		} else {
 			Finish(FString::Printf(TEXT("The Cloud rejected the validation request (HTTP %d)."), ResponseCode));
 		}

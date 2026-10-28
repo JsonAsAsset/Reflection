@@ -464,7 +464,7 @@ void SValidationPanel::StartValidation() {
 
 	TWeakPtr<SValidationPanel> WeakPanel = SharedThis(this);
 
-	/* Surfaces the usual "no Cloud instance" notification when Core isn't up */
+	/* Surfaces the usual "no Cloud instance" notification when Mirror isn't up */
 	Cloud::Status::Check([WeakPanel, RootPath](const bool bReady) {
 		const TSharedPtr<SValidationPanel> Panel = WeakPanel.Pin();
 		if (!Panel.IsValid() || !Panel->Validation.IsValid()) {
