@@ -2,6 +2,8 @@
 
 #include "Importers/Types/Animation/PreviewMesh.h"
 
+#include "Engine/Compatibility.h"
+
 #include "Engine/Log.h"
 #include "Engine/SkeletalMesh.h"
 #include "Animation/Skeleton.h"

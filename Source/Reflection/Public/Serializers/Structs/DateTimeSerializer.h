@@ -3,6 +3,7 @@
 #pragma once
 
 #include "StructSerializer.h"
+#include "Dom/JsonObject.h"
 
 class FDateTimeSerializer : public FStructSerializer {
 public:

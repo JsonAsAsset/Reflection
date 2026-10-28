@@ -2,6 +2,12 @@
 
 #pragma once
 
+#include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
+
+/* TObjectPtr below is the engine's own from 5.0 and the shim from here before that */
+#include "Engine/Compatibility.h"
+
 struct REFLECTION_API FAssetUtilities {
 public:
 	/* Creates a UPackage to create assets in the Content Browser. */

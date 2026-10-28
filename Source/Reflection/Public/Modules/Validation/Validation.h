@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 #include "Engine/Compatibility.h"
 
 /* Validation is UE5 only */

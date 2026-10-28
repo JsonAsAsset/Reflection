@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #pragma once
+#include "Dom/JsonObject.h"
 
 /** Handles struct serialization */
 class REFLECTION_API FStructSerializer {

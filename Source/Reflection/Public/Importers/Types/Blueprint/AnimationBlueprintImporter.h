@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "Engine/Compatibility.h"
 
 class UAnimGraphNode_BlendListByEnum;
 class UAnimGraphNode_Base;

@@ -5,6 +5,7 @@
 /* Like most things, all of a sudden, what seemed impossible, is now possible. Yeah, give me the best philosopher award. */
 
 #include "CoreMinimal.h"
+#include "Engine/Compatibility.h"
 
 #include "Distributions/DistributionFloat.h"
 

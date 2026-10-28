@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Importers/Types/Blueprint/BlueprintImporter.h"
+#include "Engine/Package.h"
 #include "Importers/Types/Blueprint/BlueprintCompile.h"
 #include "AnimationGraphSchema.h"
 #include "AnimGraphNode_Root.h"

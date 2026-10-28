@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/Structs/TimeSpanSerializer.h"
+#include "Dom/JsonObject.h"
 
 void FTimeSpanSerializer::Deserialize(UScriptStruct* Struct, void* StructData, const TSharedPtr<FJsonObject> JsonValue, UObject* OptionalOuter) {
 	FTimespan* Timespan = static_cast<FTimespan*>(StructData);

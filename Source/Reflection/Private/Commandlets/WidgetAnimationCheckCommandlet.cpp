@@ -2,6 +2,8 @@
 
 #include "Commandlets/WidgetAnimationCheckCommandlet.h"
 
+#include "Engine/Compatibility.h"
+
 #include "Animation/WidgetAnimation.h"
 #include "Blueprint/UserWidget.h"
 #include "Blueprint/WidgetBlueprintGeneratedClass.h"

@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/ObjectSerializer.h"
+#include "Engine/Package.h"
 
 #include "Animation/AnimNodeBase.h"
 #include "Animation/WidgetAnimation.h"

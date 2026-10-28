@@ -48,11 +48,7 @@
 #endif
 #include "HierarchicalLOD.h"
 
-/* [4.26] 	4.26 doesn't find the Importer header on it's own.
- * 			Let's help it out. */
-#if UE4_26
 #include "Importers/Constructor/Importer.h"
-#endif
 
 /* An actor sits directly inside the level; everything else inside a package sits inside something */
 static const FName GActorOuter = TEXT("PersistentLevel");
@@ -355,11 +351,7 @@ void FLevelRead::ReadHLODSetup(UWorld* World, const TArray<ALODActor*>& Actors) 
 
 	/* [4.26] 	Under the 4.26.2 engine, we don't have access to IsEmpty on a TArray.
 	 *			Getting Max == 0 *should* return the same functionality. */
-	#if !UE4_26
 	if (Settings == nullptr || Actors.Num() == 0) return;
-	#else
-	if (Settings == nullptr || Actors.Max() == 0) return;
-	#endif
 
 	/* As many levels as the actors say, rather than guessed: each carries the one it belongs to */
 	int32 Levels = 0;
@@ -396,11 +388,7 @@ void FLevelRead::ReadHLODs(UWorld* World, const TArray<ALODActor*>& Actors, FRLe
 
 	/* [4.26] 	Under the 4.26.2 engine, we don't have access to IsEmpty on a TArray.
 	 *			Getting Max == 0 *should* return the same functionality. */
-	#if !UE4_26
 	if (World == nullptr || Actors.Num() == 0) return;
-	#else
-	if (World == nullptr || Actors.Max() == 0) return;
-	#endif
 
 	/* Which map the proxy belongs to, which the cook keeps nowhere: it is editor-only, so a proxy
 	 * that came across names no map and every check the editor makes against it fails */

@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Modules/Cloud/Tools/WidgetAnimations.h"
+#include "Engine/Package.h"
 #include "WidgetBlueprint.h"
 #include "Animation/WidgetAnimation.h"
 #include "Engine/EngineUtilities.h"

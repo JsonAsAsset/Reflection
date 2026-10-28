@@ -9,6 +9,7 @@
  * already in scope, so pull in the header that defines them rather than relying on whichever
  * shared PCH the current engine happens to build with. */
 #include "Misc/EngineVersionComparison.h"
+#include "Dom/JsonObject.h"
 
 /* Compiles an experimental version of Reflection */
 #ifndef REFLECTION_EXPERIMENTAL

@@ -3,6 +3,7 @@
 #pragma once
 
 #include "StructSerializer.h"
+#include "Dom/JsonObject.h"
 #include "FallbackStructSerializer.h"
 
 class UPropertySerializer;

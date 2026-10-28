@@ -3,6 +3,7 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "Dom/JsonObject.h"
 
 /* One of the newer rig's controls, and how much of an older head's curve went into it */
 struct FLegacyCurveDrive {

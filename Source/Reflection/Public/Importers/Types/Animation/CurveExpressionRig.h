@@ -3,6 +3,7 @@
 #pragma once
 
 #include "Engine/Compatibility.h"
+#include "Dom/JsonObject.h"
 
 #if REFLECTION_RIGVM
 

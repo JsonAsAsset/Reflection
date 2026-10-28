@@ -1,6 +1,7 @@
 /* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/Structs/NiagaraVariableSerializer.h"
+#include "Dom/JsonObject.h"
 
 #include "Engine/Compatibility.h"
 
