@@ -33,9 +33,10 @@ Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts
 
 ### **Table of Contents**
 
-> 1. [Asset Types](#asset-types)  
-> 2. [Installation](#installation)  
-> 3. [→ Workflow](#workflow)
+> 1. [Supported Versions](#supported-versions)  
+> 2. [Asset Types](#asset-types)  
+> 3. [Installation](#installation)  
+> 4. [→ Workflow](#workflow)
 
 -----------------
 
@@ -49,6 +50,15 @@ This project aims to streamline the porting and modding experience, making it ea
 
 -----------------
 
+<a name="supported-versions"></a>
+## Supported Versions
+* **Unreal Engine 5:** 5.0.1-5.7.1
+* **Unreal Engine 4:** 4.22.3, 4.23.1, 4.24.3, 4.25.4, 4.26.2, 4.27.2
+
+All of them build from the same source. There are no per-engine branches.
+
+-----------------
+
 <a name="asset-types"></a>
 ## Asset Types
 If an asset type isn't listed below, **it's not currently supported by the plugin**.
@@ -56,29 +66,39 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 |  | Asset Types |
 |--------------------------------|------------------------------------------------------------------------------------------------------------------------|
 | 🟢 **Curve** | CurveFloat, CurveVector, CurveLinearColor, CurveLinearColorAtlas |
-| 🟣 **Data** | DataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, UserDefinedEnum, UserDefinedStruct |
+| 🟣 **Data** | DataAsset, CurveExpressionsDataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, FortBakedPropertyMetadataCache, UserDefinedEnum, UserDefinedStruct |
 | 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
 | 🟠 **Material** | Material, MaterialFunction, MaterialInstanceConstant, MaterialParameterCollection, SubsurfaceProfile |
-| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite. Pixels are fetched by a [Cloud Server](#cloud)! |
+| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite, PaperSpriteAtlas. Pixels are fetched by a [Cloud Server](#cloud)! |
+| 🟦 **Mesh** | SkeletalMesh, StaticMesh. Geometry is fetched by a [Cloud Server](#cloud)! |
 | 🟡 **Sound** | SoundCue and most other sound classes are supported. SoundWave is fetched by a [Cloud Server](#cloud)! |
-| 🔴 **Animation** | PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D |
+| 🔴 **Animation** | AnimSequence, AnimMontage, PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D, ControlRigBlueprintGeneratedClass |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
 | 🟤 **Sequencer** | CameraAnim, ForceFeedbackEffect |
 | ✨ **Effects** | ParticleSystem, VectorFieldStatic. Vector data is fetched by a [Cloud Server](#cloud)! |
+| 💫 **Niagara** |  NiagaraParameterCollection, NiagaraParameterCollectionInstance, NiagaraParameterDefinitions, NiagaraEffectType, NiagaraDataChannelAsset, NiagaraAssetTagDefinitions, NiagaraValidationRuleSet, NiagaraSimCache, NiagaraSystemReadinessSettings |
 | 🟩 **Landscape** | LandscapeGrassType, FoliageType_InstancedStaticMesh, FoliageType_Actor |
-| 🔤 **UI** | Font |
+| 🧠 **AI** | BehaviorTree, BlackboardData |
+| 🔤 **UI** | Font, FontFace |
 
-#### The following asset types add onto a pre-existing asset
-|  | Asset Types |
+#### Reflecting extra data onto an asset you already have
+| Tool | What it reflects |
 |-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| **🔴 Animation** | AnimSequence, AnimMontage **(Animation Curves)** |
-| **🔵 Mesh** | StaticMesh **(Collision)**, SkeletalMesh **(Sockets, Clothing)** |
-| **🔤 UI** | FontFace **(Font Properties)**, WidgetBlueprint **(Widget Animations)** |
+| **Animations** | Curve data, notifies and other properties |
+| **Clothing Assets** | Cloth data onto the selected mesh, bound to its sections |
+| **Fonts** | Font properties (not vectorized data) |
+| **Linear Colors** | Colors, if any changes were made |
+| **Mesh Geometry** | Rebuilds the selected mesh's LOD models from the cooked geometry |
+| **Skeletal Meshes** | Sockets and other properties |
+| **Static Meshes** | Collision and other properties |
+| **Widget Animations** | Widget animations |
 
 These are reached from **Cloud Tools** with the asset selected in your content browser, and need a [Cloud Server](#cloud).
 
-#### Partial Blueprint Importing (Experimental)
-If the parent class exists, it'll import the components and defaults of the blueprint (Blueprints, Widget Blueprints, and Animation Blueprints). Enable **Enable Experiments** in Plugin Settings to use it.
+#### Blueprints and Levels (Experimental)
+Blueprints, Widget Blueprints and Animation Blueprints rebuild their components, variables and defaults, and their graphs are rebuilt from the bytecode where the parent class exists. Levels place the actors they hold, with settings for what to place and what to skip.
+
+Both need **Enable Experiments** in Plugin Settings.
 
 <a name="material-data-prerequisites"></a>
 #### 🟠 Material Data Prerequisites
@@ -162,7 +182,7 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 
 <a name="cloud"></a>
 ### Cloud ☁️
-[Set up a Cloud instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
+The Cloud app is **Mirror**. [Set up an instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
 
 Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported.
 
