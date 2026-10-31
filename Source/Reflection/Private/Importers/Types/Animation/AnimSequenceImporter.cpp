@@ -15,6 +15,7 @@
 
 #if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2
 #include "Animation/AnimData/IAnimationDataController.h"
+#include "Animation/AnimData/IAnimationDataModel.h"
 #endif
 
 /* Where the Cloud reads a sequence's keys back out of what the cook left of it */
@@ -305,6 +306,215 @@ bool IAnimSequenceImporter::Import() {
 	return OnAssetCreation(AnimSequence);
 }
 
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2
+/* One bone of a sequence as the Cloud sent it, pointing into the payload it came in */
+struct FCloudBoneKeys {
+	const TArray<TSharedPtr<FJsonValue>>* Positions = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Rotations = nullptr;
+	const TArray<TSharedPtr<FJsonValue>>* Scales = nullptr;
+};
+
+static TMap<FName, FCloudBoneKeys> CloudKeysByBone(const TSharedPtr<FJsonObject>& Payload) {
+	TMap<FName, FCloudBoneKeys> ByBone;
+
+	const TArray<TSharedPtr<FJsonValue>>* TracksJson = nullptr;
+	if (!Payload.IsValid() || !Payload->TryGetArrayField(TEXT("tracks"), TracksJson)) return ByBone;
+
+	for (const TSharedPtr<FJsonValue>& TrackValue : *TracksJson) {
+		const TSharedPtr<FJsonObject> TrackJson = TrackValue.IsValid() ? TrackValue->AsObject() : nullptr;
+		if (!TrackJson.IsValid()) continue;
+
+		FString BoneName;
+		if (!TrackJson->TryGetStringField(TEXT("bone"), BoneName) || BoneName.IsEmpty()) continue;
+
+		FCloudBoneKeys& Keys = ByBone.Add(FName(*BoneName));
+
+		TrackJson->TryGetArrayField(TEXT("positions"), Keys.Positions);
+		TrackJson->TryGetArrayField(TEXT("rotations"), Keys.Rotations);
+		TrackJson->TryGetArrayField(TEXT("scales"), Keys.Scales);
+	}
+
+	return ByBone;
+}
+
+/* A frame of a bone the Cloud sent, held at either end. A channel with no keys is the fallback. */
+static FTransform ReadCloudKey(const FCloudBoneKeys& Keys, const int32 Frame, const FTransform& Fallback) {
+	FVector Translation = Fallback.GetTranslation();
+	FQuat Rotation = Fallback.GetRotation();
+	FVector Scale = Fallback.GetScale3D();
+
+	if (const int32 Count = Keys.Positions != nullptr ? Keys.Positions->Num() / 3 : 0) {
+		const int32 Key = FMath::Clamp(Frame, 0, Count - 1);
+
+		Translation = FVector(ReadKeyFloat(Keys.Positions, Key * 3), ReadKeyFloat(Keys.Positions, Key * 3 + 1), ReadKeyFloat(Keys.Positions, Key * 3 + 2));
+	}
+
+	if (const int32 Count = Keys.Rotations != nullptr ? Keys.Rotations->Num() / 4 : 0) {
+		const int32 Key = FMath::Clamp(Frame, 0, Count - 1);
+
+		Rotation = FQuat(ReadKeyFloat(Keys.Rotations, Key * 4), ReadKeyFloat(Keys.Rotations, Key * 4 + 1), ReadKeyFloat(Keys.Rotations, Key * 4 + 2), ReadKeyFloat(Keys.Rotations, Key * 4 + 3));
+	}
+
+	if (const int32 Count = Keys.Scales != nullptr ? Keys.Scales->Num() / 3 : 0) {
+		const int32 Key = FMath::Clamp(Frame, 0, Count - 1);
+
+		Scale = FVector(ReadKeyFloat(Keys.Scales, Key * 3), ReadKeyFloat(Keys.Scales, Key * 3 + 1), ReadKeyFloat(Keys.Scales, Key * 3 + 2));
+	}
+
+	return FTransform(Rotation, Translation, Scale);
+}
+
+/* Between two frames, the way the Cloud reads a base whose frames don't land on the one asked for */
+static FTransform ReadCloudKeyAt(const FCloudBoneKeys& Keys, const float Position, const FTransform& Fallback) {
+	const int32 Previous = FMath::FloorToInt(Position);
+	const float Alpha = Position - Previous;
+
+	const FTransform From = ReadCloudKey(Keys, Previous, Fallback);
+	if (Alpha <= 0.0f) return From;
+
+	const FTransform To = ReadCloudKey(Keys, Previous + 1, Fallback);
+
+	FQuat Rotation = FQuat::Slerp(From.GetRotation(), To.GetRotation(), Alpha);
+	Rotation.Normalize();
+
+	return FTransform(Rotation, FMath::Lerp(From.GetTranslation(), To.GetTranslation(), Alpha), FMath::Lerp(From.GetScale3D(), To.GetScale3D(), Alpha));
+}
+
+/* The keys of a difference, moved off the pose the Cloud put them over and onto the pose this
+ * project takes them off again.
+ *
+ * The Cloud sends a difference as the animation, put back over its own copy of the base: the one
+ * the sequence names in the build being read, a stand-in handed to it, or the bind pose when it has
+ * neither. The engine works the difference out again from whatever the sequence names here, and
+ * the two are often not the same pose. A cook from one build and a base imported from another, or
+ * a base that was itself only ever a difference and was rebuilt over something picked by hand, and
+ * every bone comes out moved by however far apart the two bases are. A hang glider lean imported
+ * over the bind pose and played against the glide pose had its IK bones over a metre out.
+ *
+ * So the Cloud's base is asked for too, taken back off, and the project's own base put on in its
+ * place. Only a difference in a bone's own space from one frame of another sequence is moved: a
+ * mesh space difference is not made by taking one pose off another, and one measured against the
+ * bind pose or its own frame is already against the same pose at both ends. */
+static void RebaseOntoProjectBase(const UAnimSequence* AnimSequence, const FReferenceSkeleton& RefSkeleton, const TSharedPtr<FJsonObject>& Payload, TArray<FName>& BoneNames, TArray<TArray<FVector>>& PositionKeys, TArray<TArray<FQuat>>& RotationKeys, TArray<TArray<FVector>>& ScaleKeys) {
+	FString AdditiveType;
+	FString RefPoseType;
+
+	Payload->TryGetStringField(TEXT("additiveType"), AdditiveType);
+	Payload->TryGetStringField(TEXT("refPoseType"), RefPoseType);
+
+	if (AdditiveType != TEXT("AAT_LocalSpaceBase") || RefPoseType != TEXT("ABPT_AnimFrame")) return;
+	if (AnimSequence->AdditiveAnimType != AAT_LocalSpaceBase || AnimSequence->RefPoseType != ABPT_AnimFrame) return;
+
+	/* Nothing named here leaves the engine nothing to take off, and the keys are left as sent */
+	const UAnimSequence* ProjectBase = AnimSequence->RefPoseSeq.Get();
+	if (ProjectBase == nullptr || ProjectBase == AnimSequence) return;
+
+	const IAnimationDataModel* ProjectModel = ProjectBase->GetDataModel();
+	if (ProjectModel == nullptr) return;
+
+	/* What the Cloud put the keys over, picked the way it picks: the base the sequence names unless
+	 * that is the sequence itself, then whatever was handed in, then the bind pose. A named base the
+	 * Cloud couldn't load was passed over there as well, so failing to get it here goes the same way. */
+	const FString AssetName = AnimSequence->GetName();
+
+	auto NamesAnother = [&AssetName](const FString& Path) {
+		return !Path.IsEmpty() && Path.Mid(Path.Find(TEXT("."), ESearchCase::CaseSensitive, ESearchDir::FromEnd) + 1) != AssetName;
+	};
+
+	FString NamedBase;
+	FString HandedBase;
+
+	Payload->TryGetStringField(TEXT("refPoseSequence"), NamedBase);
+	Payload->TryGetStringField(TEXT("baseUsed"), HandedBase);
+
+	TSharedPtr<FJsonObject> CloudBase;
+
+	if (NamesAnother(NamedBase)) {
+		CloudBase = GetAnimation(NamedBase);
+	}
+
+	if (!CloudBase.IsValid() && !HandedBase.IsEmpty()) {
+		CloudBase = GetAnimation(HandedBase);
+	}
+
+	const TMap<FName, FCloudBoneKeys> CloudBaseKeys = CloudKeysByBone(CloudBase);
+
+	/* The frame each end reads its base at. The Cloud spreads the index over the frames the base
+	 * has; the engine over the keys it samples, across the length it plays for. */
+	const int32 CloudBaseFrames = CloudBase.IsValid() ? FMath::Max(1, static_cast<int32>(CloudBase->GetIntegerField(TEXT("numFrames")))) : 1;
+	const float CloudFraction = FMath::Clamp(static_cast<float>(Payload->GetIntegerField(TEXT("refFrameIndex"))) / CloudBaseFrames, 0.0f, 1.0f);
+	const float CloudPosition = CloudFraction * (CloudBaseFrames - 1);
+
+	const int32 ProjectSampledKeys = ProjectBase->GetNumberOfSampledKeys();
+	const double ProjectFraction = ProjectSampledKeys > 0 ? FMath::Clamp(static_cast<double>(AnimSequence->RefFrameIndex) / ProjectSampledKeys, 0.0, 1.0) : 0.0;
+	const FFrameTime ProjectTime = ProjectModel->GetFrameRate().AsFrameTime(ProjectBase->GetPlayLength() * ProjectFraction);
+
+	/* Every bone either base moves, not only the ones the difference does. A bone the difference
+	 * leaves alone still holds the Cloud's base, and has to be made to hold this one instead or the
+	 * engine reads the gap between the two as part of the difference. */
+	TArray<FName> Bones = BoneNames;
+
+	for (const TPair<FName, FCloudBoneKeys>& Pair : CloudBaseKeys) {
+		Bones.AddUnique(Pair.Key);
+	}
+
+	for (int32 BoneIndex = 0; BoneIndex < RefSkeleton.GetNum(); ++BoneIndex) {
+		const FName BoneName = RefSkeleton.GetBoneName(BoneIndex);
+
+		if (ProjectModel->IsValidBoneTrackName(BoneName)) {
+			Bones.AddUnique(BoneName);
+		}
+	}
+
+	for (const FName& BoneName : Bones) {
+		const int32 BoneIndex = RefSkeleton.FindBoneIndex(BoneName);
+		if (BoneIndex == INDEX_NONE) continue;
+
+		const FTransform BindPose = RefSkeleton.GetRefBonePose()[BoneIndex];
+
+		const FCloudBoneKeys* CloudKeys = CloudBaseKeys.Find(BoneName);
+		const FTransform CloudPose = CloudKeys != nullptr ? ReadCloudKeyAt(*CloudKeys, CloudPosition, BindPose) : BindPose;
+
+		const FTransform ProjectPose = ProjectModel->IsValidBoneTrackName(BoneName)
+			? ProjectModel->EvaluateBoneTrackTransform(BoneName, ProjectTime, EAnimInterpolationType::Linear)
+			: BindPose;
+
+		int32 Track = BoneNames.IndexOfByKey(BoneName);
+
+		/* A bone the Cloud sent nothing for sits at the bind pose, both in the sequence and in the
+		 * Cloud's base, and is given a track of its own to hold this project's base in */
+		if (Track == INDEX_NONE) {
+			Track = BoneNames.Add(BoneName);
+
+			PositionKeys.Add({ BindPose.GetTranslation() });
+			RotationKeys.Add({ BindPose.GetRotation() });
+			ScaleKeys.Add({ BindPose.GetScale3D() });
+		}
+
+		/* The Cloud's own sums undone and done again: a turn after the base's, a move from it, and a
+		 * scale against it */
+		const FQuat CloudInverse = CloudPose.GetRotation().Inverse();
+		const FVector CloudScaleInverse = FTransform::GetSafeScaleReciprocal(CloudPose.GetScale3D());
+
+		for (FVector& Position : PositionKeys[Track]) {
+			Position = Position - CloudPose.GetTranslation() + ProjectPose.GetTranslation();
+		}
+
+		for (FQuat& Rotation : RotationKeys[Track]) {
+			Rotation = Rotation * CloudInverse * ProjectPose.GetRotation();
+			Rotation.Normalize();
+		}
+
+		for (FVector& Scale : ScaleKeys[Track]) {
+			Scale = Scale * CloudScaleInverse * ProjectPose.GetScale3D();
+		}
+	}
+
+	UE_LOG(LogReflection, Display, TEXT("\"%s\" was moved off %s and onto \"%s\", the base it is played against here"),
+		*AssetName, CloudBase.IsValid() ? *FString::Printf(TEXT("\"%s\""), *(NamesAnother(NamedBase) ? NamedBase : HandedBase)) : TEXT("the bind pose"), *ProjectBase->GetName());
+}
+#endif
+
 int32 IAnimSequenceImporter::BuildTracks(UAnimSequence* AnimSequence, USkeleton* Skeleton, const TSharedPtr<FJsonObject>& Payload) const {
 	const TArray<TSharedPtr<FJsonValue>>* TracksJson = nullptr;
 
@@ -435,6 +645,10 @@ int32 IAnimSequenceImporter::BuildTracks(UAnimSequence* AnimSequence, USkeleton*
 	}
 
 	if (BoneNames.Num() == 0) return 0;
+
+#if ENGINE_UE5 && ENGINE_MINOR_VERSION >= 2
+	RebaseOntoProjectBase(AnimSequence, RefSkeleton, Payload, BoneNames, PositionKeys, RotationKeys, ScaleKeys);
+#endif
 
 	/* The rate the frames were laid out at, which is the sequence's own: the last frame lands on
 	 * the end of it rather than a frame beyond it. */

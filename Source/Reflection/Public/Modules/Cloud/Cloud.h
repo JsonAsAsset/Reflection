@@ -19,6 +19,13 @@ class REFLECTION_API Cloud {
 public:
 	static inline FString URL = TEXT("http://localhost:1500");
 
+	/* The profile every request is pinned to, named by its file the way Mirror names one.
+	 *
+	 * Mirror serves any profile it has mounted, not only the one its window has open, and a
+	 * request says which by naming it ahead of the path. Empty, and nothing is named, which is
+	 * Mirror answering for whatever it is showing. */
+	static inline FString Build;
+
 	/* Status ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
 	class REFLECTION_API Status {
@@ -147,6 +154,51 @@ public:
 		static TArray<FString> GetPathsBlocking(const FString& Path);
 	};
 
+	/* Builds ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+public:
+	static inline FString BuildsURL = TEXT("/api/builds");
+
+	/* One of the profiles Mirror has, which is one game's files and the mappings to read them. */
+	struct FBuild {
+		/* What it is called, which is whatever it was named when it was made */
+		FString Name;
+
+		/* The file it is kept in, and the only name two of them cannot share. What every request
+		 * about a build names it by. */
+		FString Id;
+
+		/* Whether its archives are mounted, which is all it takes for it to answer for an asset */
+		bool Loaded = false;
+
+		/* Whether it is the one Mirror has open, which is the one that answers when nothing names
+		 * another */
+		bool Open = false;
+
+		/* The engine its files were cooked by, as Mirror spells it */
+		FString Version;
+
+		int32 Files = 0;
+	};
+
+	class REFLECTION_API Builds {
+	public:
+		/* Every profile Mirror knows of, open or not, mounted or not. Empty when it cannot say,
+		 * which is also what a Mirror too old to have been asked this answers. */
+		static void ListAsync(TFunction<void(const TArray<FBuild>&)> OnResponse);
+
+		/* Opens one, so Mirror's own window moves to it as well.
+		 *
+		 * Answers as soon as Mirror has asked its window to move: opening a profile takes however
+		 * long its archives take, and that happens after the answer. Whoever asked watches
+		 * metadata for the name to come back. */
+		static void UseAsync(const FString& Id, TFunction<void(bool)> OnResponse);
+
+		/* Mounts one without opening it, which is all it takes for the editor to read out of it,
+		 * and lets a mounted one go again. The open one cannot be let go from here. */
+		static void StartAsync(const FString& Id, TFunction<void(bool)> OnResponse);
+		static void StopAsync(const FString& Id, TFunction<void(bool)> OnResponse);
+	};
+
 	/* Requests ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 public:
 	static void Get(
@@ -166,6 +218,18 @@ public:
 	);
 
 	static TSharedPtr<FJsonObject> GetBlocking(const FString& RequestURL, const TMap<FString, FString>& Parameters = {}, const TMap<FString, FString>& Headers = {});
+
+	/* The same as Post, waited on. OutResponseCode is filled whether or not the body parsed, and
+	 * is zero when the request never reached the Cloud. */
+	static TSharedPtr<FJsonObject> PostBlocking(const FString& RequestURL, const FString& Body, const TMap<FString, FString>& Headers = {}, int32* OutResponseCode = nullptr);
+
+	/* Drives the requests in flight by hand, and delivers whatever finished.
+	 *
+	 * A modal window runs a loop that ticks Slate and nothing else, so the engine is not ticking
+	 * the HTTP manager and an answer asked for from inside one never arrives. A blocking wait
+	 * drives it itself; anything meaning to wait without parking the editor drives it from a
+	 * timer, a frame at a time, which is this. */
+	static void PumpRequests(float DeltaSeconds);
 
 	/* Runs Work on the next editor tick, off whatever call stack the response arrived on.
 	 *

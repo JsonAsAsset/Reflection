@@ -28,7 +28,20 @@ struct FRRedirector {
 	GENERATED_BODY()
 public:
 	bool IsEnabled() const;
-	
+
+	/* What this one is called, which is all anything showing a moved path can say about why */
+	FName GetName() const { return Name; }
+	void SetName(const FName InName) { Name = InName; }
+
+	/* The toggle on its own, which is not the same question as IsEnabled: that one also asks
+	 * whether this redirector is meant for the profile that is loaded */
+	bool IsOn() const { return Enable; }
+	void SetOn(const bool bOn) { Enable = bOn; }
+
+	/* The profiles this one is kept to, empty for all of them */
+	const TArray<FString>& GetProfiles() const { return Profiles; }
+	void SetProfiles(const TArray<FString>& InProfiles) { Profiles = InProfiles; }
+
 private:
 	/* The name of this redirector. */
 	UPROPERTY(EditAnywhere, Config, Category = Redirector)
@@ -54,6 +67,21 @@ private:
 	TArray<FString> Profiles;
 };
 
+/* What a redirect would do to a path, without doing it. */
+struct FRRedirectPreview {
+	/* The path every matching point left behind, which is where the asset lands */
+	FString Path;
+
+	/* The redirectors that moved it, in the order they were applied */
+	TArray<FName> By;
+
+	/* The same ones by where they sit in the settings, for anything that has to tell two apart
+	 * when both are called the same or neither is called anything */
+	TArray<int32> Indices;
+
+	bool Moved() const { return By.Num() > 0; }
+};
+
 /* Redirect Handler */
 struct FRRedirects {
 	static TMap<FString, TArray<FRRedirectorPoint>> History;
@@ -61,4 +89,11 @@ struct FRRedirects {
 	static void Clear();
 	static void Redirect(FString& Path);
 	static void Reverse(FString& Path);
+
+	/* Where a path would end up, for anything that only means to show it.
+	 *
+	 * Redirect keeps a history so a moved path can be turned back into the one Cloud answers to.
+	 * Nothing is being imported here, so there would be nothing to turn back, and a history entry
+	 * for a path that was never fetched is one Reverse can later find instead of the real one. */
+	static FRRedirectPreview Preview(const FString& Path);
 };

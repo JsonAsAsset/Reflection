@@ -281,9 +281,31 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 
 	if (Class == nullptr) return nullptr;
 
+	/* The one named after the file is the asset; anything else in it is a part of it */
+	const bool IsMainAsset = Name == FPaths::GetBaseFilename(File);
+
 	/* Check if this export can be imported */
 	const bool InheritsDataAsset = Class->IsChildOf(UDataAsset::StaticClass());
-	if (!CanImport(Type, false, Class)) return nullptr;
+
+	/* A data asset kept inside the file's asset is part of it, not an asset of its own.
+	 *
+	 * A sound cue template keeps its project defaults this way. Offered here it passes as a data
+	 * asset, is built first since the cue names it, and lands in the package as the asset, so the
+	 * package opens to a settings object and the cue itself is nowhere. */
+	if (InheritsDataAsset && !IsMainAsset) {
+		FUObjectExport* Outer = Container->Find(Export->GetOuter());
+
+		if (Outer->IsJsonValid() && Outer->GetName().ToString() == FPaths::GetBaseFilename(File)) {
+			return nullptr;
+		}
+	}
+
+	/* Only the file's own asset falls back to what its class derives from; a part of it that no
+	 * importer names stays with whatever builds the asset it belongs to. */
+	const bool Importable = CanImport(Type, false, Class);
+	const FImporterFactoryDelegate* AncestorFactory = !Importable && IsMainAsset ? FindFactoryForClassAncestor(Class) : nullptr;
+
+	if (!Importable && AncestorFactory == nullptr) return nullptr;
 
 	if (bUseRelativePath) {
 		/* Convert from relative path to full path */
@@ -344,6 +366,11 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	/* If it inherits DataAsset, use the data asset importer */
 	if (Importer == nullptr && InheritsDataAsset) {
 		Importer = new IDataAssetImporter();
+	}
+
+	/* A game class deriving from an asset type something imports, built by that importer */
+	if (Importer == nullptr && AncestorFactory != nullptr) {
+		Importer = (*AncestorFactory)();
 	}
 
 	/* By default, (with no existing importer) use the templated importer with the asset class. */

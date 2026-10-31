@@ -4941,6 +4941,30 @@ void FBytecodeGraph::FindConstants() {
 		}
 	}
 
+	/* Written and then jumped away from.
+	 *
+	 * A Select's scratch is read straight after it is written, so wiring each read to the write
+	 * before it is how it ran. A scratch filled at the end of one branch and then jumped to where
+	 * the branches meet is the other thing: two Assigns onto one Local, one per way in. Read as a
+	 * value passed on, the read only ever sees the write laid out before it, and every other way
+	 * in is lost. A launch pad's camera distance went that way: the valid branch's VSize was
+	 * dropped and the compare read the other branch's 1 every time. */
+	for (int32 Index = 0; Index + 1 < Statements.Num(); ++Index) {
+		const FUObjectJsonValueExport& Statement = Statements[Index];
+
+		if (!MacroReading::IsLet(MacroReading::TokenOf(Statement))) continue;
+
+		const FString Name = MacroReading::WrittenTo(Statement);
+
+		if (!Name.StartsWith(TEXT("Temp_"))) continue;
+
+		if (MacroReading::TokenOf(Statements[Index + 1]) != TEXT("EX_Jump")) continue;
+
+		if (bool* Holds = Plain.Find(Name)) *Holds = false;
+
+		HeldScratch.Add(Name);
+	}
+
 	for (const TPair<FString, bool>& Wrote : Plain) {
 		/* Every write, not just the one.
 		 *
@@ -5545,7 +5569,16 @@ int32 FBytecodeGraph::Build() {
 		FindMacros();
 	}
 
-	Clear();
+	/* Cleared only when the whole graph is being laid out.
+	 *
+	 * A stretch is laid into a graph that already has everything else in it: an animation state with
+	 * the poses it blends, a transition with the result it answers through. Cleared first, a state
+	 * loses every node it was imported with and a transition's result loses what it was wired to, so
+	 * the state plays nothing and the transition is never taken. A second stretch laid into the same
+	 * graph would take the first one out the same way. */
+	if (Stretch.Num() == 0) {
+		Clear();
+	}
 
 	/* What the graph was handed comes out of whatever it is entered through, so a read of a
 	 * parameter is a read of that pin rather than of anything the graph keeps of its own.

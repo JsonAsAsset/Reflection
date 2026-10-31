@@ -4,6 +4,7 @@
 
 #include "Editor.h"
 #include "HttpModule.h"
+#include "HttpManager.h"
 #include "TimerManager.h"
 #include "GenericPlatform/GenericPlatformHttp.h"
 #include "Settings/Runtime.h"
@@ -15,7 +16,15 @@
 FReflectionHttpRequest Cloud::BuildRequest(const FString& RequestURL, const TMap<FString, FString>& Parameters, const TMap<FString, FString>& Headers) {
 	FReflectionHttpRequest NewRequest = FHttpModule::Get().CreateRequest();
 
-	FString FullUrl = URL + RequestURL;
+	/* A profile named ahead of the path pins the request to it, rather than it going to whichever
+	 * one Mirror happens to be showing.
+	 *
+	 * Not the build endpoints themselves: what Mirror has, and which of them it should open or let
+	 * go, are Mirror's own business rather than any one profile's, and pinning those to a profile
+	 * that has just been let go would take the question down with it. */
+	const bool Pinned = !Build.IsEmpty() && !RequestURL.StartsWith(BuildsURL);
+
+	FString FullUrl = URL + (Pinned ? TEXT("/") + Build : FString()) + RequestURL;
 
 	bool First = true;
 
@@ -89,11 +98,31 @@ void Cloud::Post(const FString& RequestURL,
 	});
 }
 
+TSharedPtr<FJsonObject> Cloud::PostBlocking(const FString& RequestURL, const FString& Body, const TMap<FString, FString>& Headers, int32* OutResponseCode) {
+	const FReflectionHttpRequest Request = BuildRequest(RequestURL, {}, Headers);
+	Request->SetVerb(TEXT("POST"));
+	Request->SetHeader(TEXT("Content-Type"), TEXT("application/json"));
+	Request->SetContentAsString(Body);
+
+	const FReflectionHttpResponse Response = FRemoteUtilities::ExecuteRequestBlocking(Request);
+
+	if (OutResponseCode != nullptr) {
+		/* Zero tells a Cloud that never answered apart from one that answered and refused */
+		*OutResponseCode = Response.IsValid() ? Response->GetResponseCode() : 0;
+	}
+
+	return ParseResponse(Response);
+}
+
 TSharedPtr<FJsonObject> Cloud::GetBlocking(const FString& RequestURL, const TMap<FString, FString>& Parameters, const TMap<FString, FString>& Headers) {
 	const FReflectionHttpRequest Request = BuildRequest(RequestURL, Parameters, Headers);
 	Request->SetVerb(TEXT("GET"));
 
 	return ParseResponse(FRemoteUtilities::ExecuteRequestBlocking(Request));
+}
+
+void Cloud::PumpRequests(const float DeltaSeconds) {
+	FHttpModule::Get().GetHttpManager().Tick(DeltaSeconds);
 }
 
 void Cloud::RunWhenSafe(TFunction<void()> Work) {
@@ -459,6 +488,64 @@ bool Cloud::EnsureMetadataBlocking() {
 			FPlatformProcess::Sleep(0.02f);
 		}
 	}
+}
+
+/* Builds ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
+void Cloud::Builds::ListAsync(TFunction<void(const TArray<FBuild>&)> OnResponse) {
+	Get(BuildsURL, {}, {}, [OnResponse](const TSharedPtr<FJsonObject>& Response) {
+		TArray<FBuild> Builds;
+
+		const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+
+		if (!Response.IsValid() || !Response->TryGetArrayField(TEXT("builds"), Listed)) {
+			OnResponse(Builds);
+
+			return;
+		}
+
+		for (const TSharedPtr<FJsonValue>& Value : *Listed) {
+			if (!Value.IsValid() || Value->Type != EJson::Object) continue;
+
+			const TSharedPtr<FJsonObject> Listing = Value->AsObject();
+
+			FBuild Found;
+
+			Listing->TryGetStringField(TEXT("name"), Found.Name);
+			Listing->TryGetStringField(TEXT("id"), Found.Id);
+			Listing->TryGetStringField(TEXT("versionName"), Found.Version);
+			Listing->TryGetBoolField(TEXT("loaded"), Found.Loaded);
+			Listing->TryGetBoolField(TEXT("isMain"), Found.Open);
+			Listing->TryGetNumberField(TEXT("files"), Found.Files);
+
+			/* The file is what a request names it by, so one without that cannot be acted on */
+			if (Found.Id.IsEmpty()) continue;
+
+			Builds.Add(Found);
+		}
+
+		OnResponse(Builds);
+	});
+}
+
+/* Said the same way for all three: they differ only in what they ask Mirror to do */
+static void PostToBuild(const FString& Id, const FString& What, TFunction<void(bool)> OnResponse) {
+	Cloud::Post(Cloud::BuildsURL + TEXT("/") + Id + TEXT("/") + What, TEXT("{}"), {},
+		[OnResponse](const TSharedPtr<FJsonObject>& Response, const int32 ResponseCode) {
+			OnResponse(ResponseCode >= 200 && ResponseCode < 300);
+		}
+	);
+}
+
+void Cloud::Builds::UseAsync(const FString& Id, TFunction<void(bool)> OnResponse) {
+	PostToBuild(Id, TEXT("use"), MoveTemp(OnResponse));
+}
+
+void Cloud::Builds::StartAsync(const FString& Id, TFunction<void(bool)> OnResponse) {
+	PostToBuild(Id, TEXT("start"), MoveTemp(OnResponse));
+}
+
+void Cloud::Builds::StopAsync(const FString& Id, TFunction<void(bool)> OnResponse) {
+	PostToBuild(Id, TEXT("stop"), MoveTemp(OnResponse));
 }
 
 void Cloud::Update(TFunction<void(bool)> OnResponse) {

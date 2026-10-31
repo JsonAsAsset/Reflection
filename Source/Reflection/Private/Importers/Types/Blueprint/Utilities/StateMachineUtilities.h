@@ -265,7 +265,10 @@ inline void CreateStateMachineGraph(
 
 	/* Creating Transitions ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */
 	const TArray<TSharedPtr<FJsonValue>>& Transitions = StateMachineJsonObject->GetArrayField(TEXT("Transitions"));
-	
+
+	/* Each transition made, by the index the machine knows it by, for putting them in order after */
+	TMap<int32, UAnimStateTransitionNode*> Made;
+
 	for (int32 TransitionIndex = 0; TransitionIndex < Transitions.Num(); ++TransitionIndex) {
 	    const TSharedPtr<FJsonObject>& TransitionObject = Transitions[TransitionIndex]->AsObject();
 
@@ -296,6 +299,8 @@ inline void CreateStateMachineGraph(
         TransitionNode->AllocateDefaultPins();
         StateMachineGraph->Nodes.Add(TransitionNode);
 
+		Made.Add(TransitionIndex, TransitionNode);
+
 		/* Find the Transition Graph from the transition node */
         UAnimationTransitionGraph* AnimationTransitionGraph = Cast<UAnimationTransitionGraph>(TransitionNode->BoundGraph);
         if (!AnimationTransitionGraph || !AnimationTransitionGraph->MyResultNode) {
@@ -304,8 +309,6 @@ inline void CreateStateMachineGraph(
 
 		UAnimGraphNode_TransitionResult* TransitionResult = AnimationTransitionGraph->MyResultNode;
         FAnimNode_TransitionResult& ResultStruct = TransitionResult->Node;
-
-        ResultStruct.bCanEnterTransition = TransitionObject->GetBoolField(TEXT("bDesiredTransitionReturnValue"));
 
 		/* Set TransitionNode data */
 		TSharedPtr<FJsonObject> TransitionStateObject;
@@ -333,14 +336,34 @@ inline void CreateStateMachineGraph(
 		/* CanTakeDelegateIndex is the index in nodes where the transition result node is */
 		const int CanTakeDelegateIndex = TransitionStateObject->GetIntegerField(TEXT("CanTakeDelegateIndex"));
 		
-		if (CanTakeDelegateIndex != -1 &&
-			/* Hide if it's already automatically transitioning */
-			!TransitionNode->bAutomaticRuleBasedOnSequencePlayerInState
-		) {
+		/* Read whether or not it also leaves when the animation runs out.
+		 *
+		 * Leaving on the time remaining does not take the place of the rule in the class: the
+		 * compiler still builds the rule's graph and gives its result what drives it, even though
+		 * the machine asks the time instead and never runs it. Passed over for a transition that
+		 * does both, the class comes out without that copy and is not the one that shipped. */
+		if (CanTakeDelegateIndex != -1) {
 			FString DelegateExportName = ReversedNodesKeys[CanTakeDelegateIndex];
 			
 			/* Use if needed */
 			FUObjectExport* DelegateExport = RootContainer->Find(DelegateExportName);
+
+			/* Whether the rule says yes when nothing is drawn into it, the same as a conduit's.
+			 *
+			 * A rule that is a plain yes is a ticked box on its result, kept on the class as a value
+			 * rather than anything compiled. The compiler reads that box off the pin, not off the
+			 * node, so it was always read as unticked: the transition is never taken, and a machine
+			 * that leaves its first state that way never leaves it at all. What the transition
+			 * itself says about it is what the rule is compared against, not what the rule is. */
+			if (DelegateExport != nullptr && DelegateExport->IsJsonValid()) {
+				if (bool bEnters; DelegateExport->JsonObject->TryGetBoolField(TEXT("bCanEnterTransition"), bEnters)) {
+					ResultStruct.bCanEnterTransition = bEnters;
+
+					if (UEdGraphPin* Decides = TransitionResult->FindPin(TEXT("bCanEnterTransition"), EGPD_Input)) {
+						Decides->DefaultValue = bEnters ? TEXT("true") : TEXT("false");
+					}
+				}
+			}
 
 			HandlePropertyBinding(DelegateExport, Importer->GetContainer()->JsonObjects, TransitionResult, Importer, AnimBlueprint);
 
@@ -369,6 +392,35 @@ inline void CreateStateMachineGraph(
                 TransitionOut->MakeLinkTo(ToInput);
             }
 	    }
+	}
+
+	/* Each state's way out, tried in the order the shipped machine tries them.
+	 *
+	 * A state lists what leads out of it in the order the compiler sorted them by priority, and
+	 * that order is the order they are tried in: when two could both be taken, the earlier wins.
+	 * The cook keeps the sorted list and drops the priorities it was sorted by. Linked in that order
+	 * and left at the priority every transition starts with, they are sorted again on the way in by
+	 * a sort that does not keep equal things where they were, and come out turned round: two swap,
+	 * four move along by one. Numbered by where each stands in the shipped list, the sort has
+	 * nothing left to decide and puts them back exactly where they were. */
+	for (int32 StateIndex = 0; StateIndex < States.Num(); ++StateIndex) {
+		const TSharedPtr<FJsonObject> StateObject = States[StateIndex]->AsObject();
+
+		const TArray<TSharedPtr<FJsonValue>>* Leading = nullptr;
+
+		if (!StateObject.IsValid() || !StateObject->TryGetArrayField(TEXT("Transitions"), Leading)) continue;
+
+		int32 Priority = 1;
+
+		for (const TSharedPtr<FJsonValue>& One : *Leading) {
+			const TSharedPtr<FJsonObject> Says = One.IsValid() ? One->AsObject() : nullptr;
+
+			if (!Says.IsValid()) continue;
+
+			if (UAnimStateTransitionNode* const* Node = Made.Find(Says->GetIntegerField(TEXT("TransitionIndex")))) {
+				(*Node)->PriorityOrder = Priority++;
+			}
+		}
 	}
 
 	/* Connecting Entry Node to Initial State ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~ */

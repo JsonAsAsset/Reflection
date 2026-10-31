@@ -35,6 +35,13 @@ namespace {
 	/* Nothing of its own to unwind, which is what lets the guard sit around it. Everything the
 	 * compiler makes is made further in, where the compiler is the one that owns it. */
 	bool Attempt(UBlueprint* Blueprint, const EBlueprintCompileOptions Options) {
+		/* PROBE: -compileunguarded lets a failing compile crash with its whole call stack */
+		if (FParse::Param(FCommandLine::Get(), TEXT("compileunguarded"))) {
+			FKismetEditorUtilities::CompileBlueprint(Blueprint, Options);
+
+			return true;
+		}
+
 #if PLATFORM_WINDOWS && !PLATFORM_SEH_EXCEPTIONS_DISABLED
 		__try {
 			FKismetEditorUtilities::CompileBlueprint(Blueprint, Options);
@@ -70,10 +77,60 @@ namespace {
 	}
 }
 
+/* PROBE: every object property in the package holding a value no live object could have */
+static void ProbeBadPointers(const UStruct* Struct, const void* Container, const FString& Path, int32 Depth) {
+	if (Depth > 6 || Struct == nullptr || Container == nullptr) return;
+
+	for (TFieldIterator<FProperty> It(Struct); It; ++It) {
+		const FProperty* Property = *It;
+
+		for (int32 Index = 0; Index < Property->ArrayDim; ++Index) {
+			const void* Value = Property->ContainerPtrToValuePtr<void>(Container, Index);
+			const FString Here = Path + TEXT(".") + Property->GetName();
+
+			if (const FObjectPropertyBase* Object = CastField<FObjectPropertyBase>(Property); Object && !Object->IsA<FWeakObjectProperty>() && !Object->IsA<FLazyObjectProperty>() && !Object->IsA<FSoftObjectProperty>()) {
+				const UPTRINT Raw = *reinterpret_cast<const UPTRINT*>(Value);
+
+				if (Raw != 0 && ((Raw & 7) != 0 || Raw < 0x10000 || (Raw >> 48) != 0 || !GUObjectArray.IsValid(reinterpret_cast<const UObjectBase*>(Raw)))) {
+					UE_LOG(LogReflection, Warning, TEXT("PROBE bad pointer 0x%llx at %s (%s)"), (unsigned long long)Raw, *Here, *Property->GetCPPType());
+				}
+			} else if (const FStructProperty* Inner = CastField<FStructProperty>(Property)) {
+				ProbeBadPointers(Inner->Struct, Value, Here, Depth + 1);
+			} else if (const FArrayProperty* Array = CastField<FArrayProperty>(Property)) {
+				FScriptArrayHelper Helper(Array, Value);
+
+				for (int32 Element = 0; Element < Helper.Num(); ++Element) {
+					if (const FStructProperty* ElementStruct = CastField<FStructProperty>(Array->Inner)) {
+						ProbeBadPointers(ElementStruct->Struct, Helper.GetRawPtr(Element), FString::Printf(TEXT("%s[%d]"), *Here, Element), Depth + 1);
+					} else if (CastField<FObjectProperty>(Array->Inner)) {
+						const UPTRINT Raw = *reinterpret_cast<const UPTRINT*>(Helper.GetRawPtr(Element));
+
+						if (Raw != 0 && ((Raw & 7) != 0 || Raw < 0x10000 || (Raw >> 48) != 0)) {
+							UE_LOG(LogReflection, Warning, TEXT("PROBE bad pointer 0x%llx at %s[%d]"), (unsigned long long)Raw, *Here, Element);
+						}
+					}
+				}
+			}
+		}
+	}
+}
+
 bool CompileBlueprintGuarded(UBlueprint* Blueprint, const EBlueprintCompileOptions Options) {
 	if (Blueprint == nullptr) return false;
 
 	const FString Named = Blueprint->GetName();
+
+	/* PROBE */
+	if (FParse::Param(FCommandLine::Get(), TEXT("compileunguarded"))) {
+		TArray<UObject*> Held;
+		GetObjectsWithPackage(Blueprint->GetOutermost(), Held, true);
+
+		for (UObject* Object : Held) {
+			if (Object != nullptr) ProbeBadPointers(Object->GetClass(), Object, Object->GetPathName(), 0);
+		}
+
+		UE_LOG(LogReflection, Warning, TEXT("PROBE walked %d object(s) before compiling %s"), Held.Num(), *Named);
+	}
 
 	const int32 Depth = SlowTasks();
 

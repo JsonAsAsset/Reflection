@@ -20,4 +20,11 @@ public:
 	 * True when that way back was the one taken, which is the reflect dialog's cue to open again.
 	 * Nothing was reflected in that case. */
 	bool Execute(const FString& InitialFolder = FString(), bool bUseClipboard = false, bool bCanGoBack = false);
+
+	/* Reflects a listing that has already been picked, which is what the reflect window's folder
+	 * page hands over: it did its own listing, so there is no window left to open.
+	 *
+	 * Counted and cancelled as one run rather than as however many paths the folder came to, which
+	 * is the difference between this and reflecting the same paths one at a time. */
+	static void Run(const TArray<FString>& Paths, const TSet<FString>& AllowedTypes);
 };

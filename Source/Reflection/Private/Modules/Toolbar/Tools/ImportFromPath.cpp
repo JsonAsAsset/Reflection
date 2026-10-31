@@ -19,31 +19,13 @@ void TToolImportFromPath::Execute() {
 	/* Nothing is asked of Cloud to put a list together, so it is not asked for until Reflect is */
 	TArray<FString> Paths;
 
-	/* The two windows hand back and forth, so this goes round rather than opening one inside the
-	 * other: however many times they are bounced between, only one of each is ever up */
-	for (;;) {
-		FString Folder;
+	/* Only the folder page fills these, and only with what it was told to let through */
+	TSet<FString> AllowedTypes;
 
-		const EReflectPathsChoice Choice = SReflectPathsDialog::Open(Paths, Folder);
+	const EReflectPathsChoice Choice = SReflectPathsDialog::Open(Paths, AllowedTypes);
 
-		/* The dialog has already shut itself by this point, so the folder one opens into the space
-		 * it left rather than on top of it */
-		if (Choice == EReflectPathsChoice::Folder) {
-			TToolImportFolder Tool;
-
-			/* Back out of that one comes round to this one again */
-			if (Tool.Execute(Folder, /* bUseClipboard */ true, /* bCanGoBack */ true)) {
-				continue;
-			}
-
-			return;
-		}
-
-		if (Choice != EReflectPathsChoice::Reflect) {
-			return;
-		}
-
-		break;
+	if (Choice == EReflectPathsChoice::Cancelled) {
+		return;
 	}
 
 	/* Asked for now the reader has said go, rather than for the window to open */
@@ -55,6 +37,14 @@ void TToolImportFromPath::Execute() {
 
 	/* Nothing here goes through the reflect button, so this is where the project name gets fetched */
 	if (!Cloud::EnsureMetadataBlocking()) {
+		return;
+	}
+
+	/* The folder page did its own listing, so what came back is a folder rather than a queue: it
+	 * is counted as one run and cancelled as one */
+	if (Choice == EReflectPathsChoice::Folder) {
+		TToolImportFolder::Run(Paths, AllowedTypes);
+
 		return;
 	}
 

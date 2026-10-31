@@ -38,6 +38,12 @@ bool TToolImportFolder::Execute(const FString& InitialFolder, const bool bUseCli
 		return false;
 	}
 
+	Run(Paths, AllowedTypes);
+
+	return false;
+}
+
+void TToolImportFolder::Run(const TArray<FString>& Paths, const TSet<FString>& AllowedTypes) {
 	int32 Reflected = 0;
 	int32 Attempted = 0;
 	int32 Filtered = 0;
@@ -87,6 +93,4 @@ bool TToolImportFolder::Execute(const FString& InitialFolder, const bool bUseCli
 	);
 
 	FImportIssues::Finish();
-
-	return false;
 }

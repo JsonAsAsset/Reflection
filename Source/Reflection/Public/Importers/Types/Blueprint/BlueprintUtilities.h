@@ -111,6 +111,15 @@ inline void ReadStructMemberContext(const FUObjectJsonValueExport& Variable, FSt
 		Spelled.Split(TEXT(":"), nullptr, &Spelled);
 
 		Member = Spelled.Replace(TEXT("'"), TEXT(""));
+
+		return;
+	}
+
+	/* Or spelled out in full, which is how a member of a struct the blueprint itself made is said:
+	 * an animation blueprint's own slots for the values it folds away are one of those, and a write
+	 * into one of them names nothing else */
+	if (const TSharedPtr<FJsonObject>* Held = nullptr; Named->TryGetObjectField(TEXT("Property"), Held)) {
+		(*Held)->TryGetStringField(TEXT("Name"), Member);
 	}
 }
 

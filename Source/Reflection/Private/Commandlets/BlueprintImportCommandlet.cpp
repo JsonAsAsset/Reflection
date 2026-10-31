@@ -5,6 +5,8 @@
 #include "FileHelpers.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
+#include "JsonObjectConverter.h"
+#include "Animation/AnimClassInterface.h"
 #include "Engine/BlueprintGeneratedClass.h"
 #include "ScriptDisassembler.h"
 /* Given a header of its own after 5.6, and part of the string header before that */
@@ -241,6 +243,106 @@ int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 
 				UE_LOG(LogBlueprintImport, Display, TEXT("[disasm %s] %d byte(s)") LINE_TERMINATOR TEXT("%s"), *It->GetName(), It->Script.Num(), *Written);
 			}
+		}
+	}
+
+	/* The class the compile made, written out the way the cloud writes the shipped one.
+	 *
+	 * An animation blueprint does most of its work without any script at all: what feeds each node
+	 * is a list of copies on the class, its state machines are baked onto it, and the values
+	 * somebody typed into a pin are folded into its sparse data. None of that is in the graphs or
+	 * the disassembly, and the graphs leave out every pin that is hidden, so neither says whether a
+	 * copy the shipped class makes is made here too. Written as the same kind of json, the two can
+	 * be read side by side. */
+	if (FString ClassFile; FParse::Value(*Params, TEXT("dumpclass="), ClassFile) && !ClassFile.IsEmpty()) {
+		UPackage* Package = Importer->GetPackage();
+
+		TArray<UObject*> Inside;
+
+		if (Package != nullptr) {
+			GetObjectsWithOuter(Package, Inside, false);
+		}
+
+		const TSharedRef<FJsonObject> Written = MakeShared<FJsonObject>();
+
+		for (UObject* Object : Inside) {
+			UBlueprintGeneratedClass* Compiled = Cast<UBlueprintGeneratedClass>(Object);
+
+			if (Compiled == nullptr) continue;
+
+			/* The skeleton class sits in the same package, and is the outline the editor checks
+			 * against: no nodes, no copies and nothing folded, which is none of what is wanted */
+			if (const UBlueprint* Made = Cast<UBlueprint>(Compiled->ClassGeneratedBy); Made != nullptr && Made->SkeletonGeneratedClass == Compiled) continue;
+
+			/* What the class itself holds, which is the baked machines, the node data and the rest */
+			if (const TSharedRef<FJsonObject> Holds = MakeShared<FJsonObject>(); FJsonObjectConverter::UStructToJsonObject(Compiled->GetClass(), Compiled, Holds, 0, 0)) {
+				Written->SetObjectField(TEXT("Properties"), Holds);
+			}
+
+			/* Which node each node index is, and what kind of node it is.
+			 *
+			 * The node data and the baked machines both say a node by its place in this list rather
+			 * than by name, and the shipped class names its nodes differently, so without the list
+			 * neither can be read as anything. */
+			if (const IAnimClassInterface* Animated = IAnimClassInterface::GetFromClass(Compiled)) {
+				TArray<TSharedPtr<FJsonValue>> Nodes;
+
+				const TSharedRef<FJsonObject> Kinds = MakeShared<FJsonObject>();
+
+				for (const FStructProperty* Node : Animated->GetAnimNodeProperties()) {
+					Nodes.Add(MakeShared<FJsonValueString>(Node->GetName()));
+					Kinds->SetStringField(Node->GetName(), Node->Struct->GetName());
+				}
+
+				Written->SetArrayField(TEXT("Nodes"), Nodes);
+				Written->SetObjectField(TEXT("Kinds"), Kinds);
+
+				/* And what each node holds on the default object, which is where a value nothing feeds
+				 * and nothing folded is kept: a rule that is a ticked box, for one */
+				if (const UObject* Defaults = Compiled->GetDefaultObject(false)) {
+					const TSharedRef<FJsonObject> Held = MakeShared<FJsonObject>();
+
+					for (const FStructProperty* Node : Animated->GetAnimNodeProperties()) {
+						if (const TSharedRef<FJsonObject> Says = MakeShared<FJsonObject>(); FJsonObjectConverter::UStructToJsonObject(Node->Struct, Node->ContainerPtrToValuePtr<void>(Defaults), Says, 0, 0)) {
+							Held->SetObjectField(Node->GetName(), Says);
+						}
+					}
+
+					Written->SetObjectField(TEXT("Defaults"), Held);
+				}
+			}
+
+			/* And the slots of what changes at run time, in the order a node's entry counts them */
+			if (const FStructProperty* Mutables = FindFProperty<FStructProperty>(Compiled, TEXT("__AnimBlueprintMutables"))) {
+				const TSharedRef<FJsonObject> Slots = MakeShared<FJsonObject>();
+
+				for (TFieldIterator<FProperty> It(Mutables->Struct); It; ++It) {
+					Slots->SetStringField(It->GetName(), It->GetCPPType());
+				}
+
+				Written->SetObjectField(TEXT("Mutables"), Slots);
+			}
+
+			/* And what it keeps beside itself, which is where the copies and the folded values are */
+			if (const UScriptStruct* Sparse = Compiled->GetSparseClassDataStruct()) {
+				if (const void* Data = Compiled->GetSparseClassData(EGetSparseClassDataMethod::ReturnIfNull)) {
+					if (const TSharedRef<FJsonObject> Holds = MakeShared<FJsonObject>(); FJsonObjectConverter::UStructToJsonObject(Sparse, Data, Holds, 0, 0)) {
+						Written->SetObjectField(TEXT("SerializedSparseClassData"), Holds);
+					}
+				}
+			}
+
+			break;
+		}
+
+		FString Said;
+
+		const TSharedRef<TJsonWriter<>> Writer = TJsonWriterFactory<>::Create(&Said);
+
+		if (FJsonSerializer::Serialize(Written, Writer) && FFileHelper::SaveStringToFile(Said, *ClassFile)) {
+			UE_LOG(LogBlueprintImport, Display, TEXT("the class as compiled was written to \"%s\""), *ClassFile);
+		} else {
+			UE_LOG(LogBlueprintImport, Error, TEXT("could not write the class to \"%s\""), *ClassFile);
 		}
 	}
 

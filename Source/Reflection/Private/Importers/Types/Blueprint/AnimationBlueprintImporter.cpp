@@ -9,7 +9,12 @@
 #endif
 #include "Kismet/KismetMathLibrary.h"
 #include "K2Node_CallFunction.h"
+#include "K2Node_AnimGetter.h"
+#include "AnimStateNode.h"
+#include "AnimStateTransitionNode.h"
 #include "K2Node_VariableGet.h"
+#include "K2Node_BreakStruct.h"
+#include "EdGraphSchema_K2.h"
 /* Renamed from the sub input node in 4.24 */
 #if UE4_23_BELOW
 #include "AnimGraphNode_SubInput.h"
@@ -602,6 +607,10 @@ bool IAnimationBlueprintImporter::Import() {
 
 	ConstructBody();
 
+	/* After the body, since that is what brings the calls in, and after every graph, since what a
+	 * getter reads is a node or state somewhere in them */
+	SettleAnimGetters();
+
 	/* How a layer blends when it is put on and taken off, which somebody set on the graph itself.
 	 *
 	 * Said after the rest, since the graphs it is said over are the ones an interface brought in.
@@ -777,7 +786,69 @@ void IAnimationBlueprintImporter::Unfold(const TSharedPtr<FJsonObject>& Nodes, c
 
 			if (!From.IsValidIndex(At)) continue;
 
-			(*Node)->SetField(One.Key, From[At]);
+			TSharedPtr<FJsonValue> Value = From[At];
+
+			/* An enum value said in terms of whichever enum got to the slot first.
+			 *
+			 * Folded values are shared by what they hold, not by what they mean: every byte that is
+			 * one is the one entry, whether it is a group role, a pose type or the second entry of
+			 * an enum nobody names. The slot is written out against the enum of the first property
+			 * that used it, so a reference pose that is additive reads "EAnimGroupRole::AlwaysFollower",
+			 * which its own enum has never heard of, and is left as the default instead. The number
+			 * is what was kept, so it is said again in the enum of the property reading it. */
+			if (FString Said; Value.IsValid() && Value->TryGetString(Said) && Said.Contains(TEXT("::"))) {
+				const UScriptStruct* Holder = FindFirstObject<UScriptStruct>(**Kind, EFindFirstObjectOptions::NativeFirst);
+				const FProperty* Reading = Holder != nullptr ? Holder->FindPropertyByName(FName(*One.Key)) : nullptr;
+
+				const UEnum* Wants = nullptr;
+
+				if (const FByteProperty* AsByte = CastField<FByteProperty>(Reading)) {
+					Wants = AsByte->Enum;
+				} else if (const FEnumProperty* AsEnum = CastField<FEnumProperty>(Reading)) {
+					Wants = AsEnum->GetEnum();
+				}
+
+				FString Owner;
+
+				Said.Split(TEXT("::"), &Owner, nullptr);
+
+				if (Wants != nullptr && Owner != Wants->GetName()) {
+					if (const UEnum* Has = FindFirstObject<UEnum>(*Owner, EFindFirstObjectOptions::NativeFirst)) {
+						const int64 Number = Has->GetValueByNameString(Said);
+
+						if (Number != INDEX_NONE && Wants->IsValidEnumValue(Number)) {
+							Value = MakeShared<FJsonValueString>(Wants->GetNameByValue(Number).ToString());
+						}
+					}
+				}
+			}
+
+			/* A layer's group, said under the name it had before the engine moved it.
+			 *
+			 * An output pose used to keep its group as Group, which was empty unless somebody named
+			 * one. This engine keeps it as LayerGroup, starting at a shared group nobody named, and
+			 * reads an old Group into it when an older node is loaded. Folded, the old name is put
+			 * back on a node that has no such property, so it is passed over and every output pose
+			 * comes back in the shared group. Said under the new name, as the engine itself would.
+			 *
+			 * Asked by name, the struct still answers to Group, with the deprecated property it keeps
+			 * the old value in for that load. That is the one the engine reads from once and never
+			 * again, so a property answering under that name is not a reason to leave it there. */
+			FString Called = One.Key;
+
+			if (Called == TEXT("Group")) {
+				if (const UScriptStruct* Holder = FindFirstObject<UScriptStruct>(**Kind, EFindFirstObjectOptions::NativeFirst); Holder != nullptr) {
+					const FProperty* Old = Holder->FindPropertyByName(TEXT("Group"));
+
+					const bool bMoved = Old == nullptr || Old->HasAnyPropertyFlags(CPF_Deprecated) || Old->GetName().EndsWith(TEXT("_DEPRECATED"));
+
+					if (bMoved && Holder->FindPropertyByName(TEXT("LayerGroup")) != nullptr) {
+						Called = TEXT("LayerGroup");
+					}
+				}
+			}
+
+			(*Node)->SetField(Called, Value);
 
 			Put++;
 		}
@@ -899,6 +970,34 @@ void IAnimationBlueprintImporter::ReadBindings(const TSharedPtr<FJsonObject>& No
 	 * for a copy that lands in the class's own keeping rather than on a node. */
 	TMap<int32, FString> Doing;
 	TMap<int32, int32> Whose;
+
+	/* Kept under each node's own name rather than in one list.
+	 *
+	 * A newer cook gives every node its handler as a constant of its own, named after the node,
+	 * and leaves the list on the extension empty. Read only from the list, nothing is known about
+	 * what any copy does on the way, and every rule somebody wrote as a Not comes back reading its
+	 * variable the right way up: the transition is taken exactly when it should not be. */
+	for (int32 Which = 0; Which < Keys.Num(); ++Which) {
+		const TSharedPtr<FJsonObject>* Handler = nullptr;
+
+		if (!SerializedSparseClassData->TryGetObjectField(StringToJsonKey(Keys[Which]), Handler)) continue;
+
+		const TArray<TSharedPtr<FJsonValue>>* Records = nullptr;
+
+		if (!(*Handler)->TryGetArrayField(TEXT("CopyRecords"), Records)) continue;
+
+		for (const TSharedPtr<FJsonValue>& Record : *Records) {
+			const TSharedPtr<FJsonObject> Says = Record.IsValid() ? Record->AsObject() : nullptr;
+
+			if (!Says.IsValid()) continue;
+
+			const int32 Index = Says->GetIntegerField(TEXT("CopyIndex"));
+
+			Whose.Add(Index, Which);
+
+			if (FString Done; Says->TryGetStringField(TEXT("PostCopyOperation"), Done)) Doing.Add(Index, Done);
+		}
+	}
 
 	if (const TSharedPtr<FJsonObject>* Base = nullptr; SerializedSparseClassData->TryGetObjectField(TEXT("AnimBlueprintExtension_Base"), Base)) {
 		const TArray<TSharedPtr<FJsonValue>>* Handlers = nullptr;
@@ -1033,9 +1132,10 @@ void IAnimationBlueprintImporter::ReadBindings(const TSharedPtr<FJsonObject>& No
 		 * class copies the variable and negates it as it goes, and there is no bytecode to read
 		 * back. Bound as it stands the node would read the variable the right way up, which is the
 		 * wrong answer every frame. So it is drawn instead the variable, then a Not which is
-		 * what somebody wrote to get a copy that negates in the first place. */
+		 * what somebody wrote to get a copy that negates in the first place. A member of a struct
+		 * the variable holds is drawn the same way, broken out of it on the way to the Not. */
 		if (const FString* Done = Doing.Find(Index); Done != nullptr && !Done->EndsWith(TEXT("::None"))) {
-			if (!Done->EndsWith(TEXT("::LogicalNegateBool")) || From.Num() != 1) {
+			if (!Done->EndsWith(TEXT("::LogicalNegateBool"))) {
 				FImportIssues::Report(
 					EImportIssue::Data,
 					TEXT("A binding that does something to the value on the way"),
@@ -1161,6 +1261,114 @@ void IAnimationBlueprintImporter::Hands(const FString& Key, const FName Member, 
 	Says.Add(FHandedOver{ Member, Path, bTurned });
 }
 
+/* A member of a struct the blueprint holds, turned round on its way into a pin.
+ *
+ * Bound, a way through a struct cannot say it is negated, and the node would read the member the
+ * right way up every frame. The compiler only makes a copy that negates from a graph it recognises:
+ * a read of the variable, broken down to the member, then a Not. That is what is drawn, one break
+ * for each struct along the way, and the compiler makes the one copy from it that the class has. */
+static bool DrawTurnedThrough(UAnimGraphNode_Base* Node, const FName Member, const TArray<FString>& Path, const int32 Row) {
+	UEdGraph* Into = Node->GetGraph();
+	UEdGraphPin* Onto = Node->FindPin(Member, EGPD_Input);
+
+	if (Into == nullptr || Onto == nullptr || Path.Num() < 2) return false;
+
+	/* Drawn once, the same as a single variable */
+	if (Onto->LinkedTo.Num() > 0) return true;
+
+	UK2Node_VariableGet* Reads = NewObject<UK2Node_VariableGet>(Into, UK2Node_VariableGet::StaticClass(), NAME_None, RF_Transactional);
+
+	Into->AddNode(Reads, false, false);
+
+	Reads->CreateNewGuid();
+	Reads->VariableReference.SetSelfMember(FName(*Path[0]));
+	Reads->AllocateDefaultPins();
+	Reads->PostPlacedNewNode();
+
+	UEdGraphPin* Held = Reads->FindPin(FName(*Path[0]), EGPD_Output);
+
+	int32 Across = 1;
+
+	for (int32 Step = 1; Held != nullptr && Step < Path.Num(); ++Step) {
+		UScriptStruct* Holds = Cast<UScriptStruct>(Held->PinType.PinSubCategoryObject.Get());
+
+		/* Only a struct is broken down; anything else along the way has no break to draw */
+		if (Held->PinType.PinCategory != UEdGraphSchema_K2::PC_Struct || Holds == nullptr) {
+			Held = nullptr;
+
+			break;
+		}
+
+		UK2Node_BreakStruct* Breaks = NewObject<UK2Node_BreakStruct>(Into, UK2Node_BreakStruct::StaticClass(), NAME_None, RF_Transactional);
+
+		Breaks->StructType = Holds;
+
+		Into->AddNode(Breaks, false, false);
+
+		Breaks->CreateNewGuid();
+		Breaks->AllocateDefaultPins();
+		Breaks->PostPlacedNewNode();
+
+		UEdGraphPin* Takes = nullptr;
+
+		for (UEdGraphPin* Pin : Breaks->Pins) {
+			if (Pin != nullptr && Pin->Direction == EGPD_Input) {
+				Takes = Pin;
+
+				break;
+			}
+		}
+
+		if (Takes == nullptr) {
+			Held = nullptr;
+
+			break;
+		}
+
+		Held->MakeLinkTo(Takes);
+
+		Breaks->NodePosX = Node->NodePosX - 220 * (Path.Num() - Step + 1);
+		Breaks->NodePosY = Node->NodePosY + Row * 90;
+
+		Held = Breaks->FindPin(FName(*Path[Step]), EGPD_Output);
+
+		Across++;
+	}
+
+	if (Held == nullptr) {
+		UE_LOG(LogReflection, Warning, TEXT("\"%s\" turned round for %s could not be broken down to"), *FString::Join(Path, TEXT(".")), *Member.ToString());
+
+		return false;
+	}
+
+	UK2Node_CallFunction* Turns = NewObject<UK2Node_CallFunction>(Into, UK2Node_CallFunction::StaticClass(), NAME_None, RF_Transactional);
+
+	Into->AddNode(Turns, false, false);
+
+	Turns->CreateNewGuid();
+	Turns->FunctionReference.SetExternalMember(GET_FUNCTION_NAME_CHECKED(UKismetMathLibrary, Not_PreBool), UKismetMathLibrary::StaticClass());
+	Turns->AllocateDefaultPins();
+	Turns->PostPlacedNewNode();
+
+	UEdGraphPin* Takes = Turns->FindPin(TEXT("A"), EGPD_Input);
+	UEdGraphPin* Gives = Turns->GetReturnValuePin();
+
+	if (Takes == nullptr || Gives == nullptr) return false;
+
+	Held->MakeLinkTo(Takes);
+	Gives->MakeLinkTo(Onto);
+
+	Turns->NodePosX = Node->NodePosX - 220;
+	Turns->NodePosY = Node->NodePosY + Row * 90;
+
+	Reads->NodePosX = Node->NodePosX - 220 * (Across + 1);
+	Reads->NodePosY = Turns->NodePosY;
+
+	Into->NotifyGraphChanged();
+
+	return true;
+}
+
 void IAnimationBlueprintImporter::ApplyBindings(const FString& Key, UAnimGraphNode_Base* Node) const {
 	if (Node == nullptr || Key.IsEmpty()) return;
 
@@ -1194,6 +1402,16 @@ void IAnimationBlueprintImporter::ApplyBindings(const FString& Key, UAnimGraphNo
 
 		if (One.Path.Num() == 1) {
 			Draw(Node, One.Member, One.Path[0], One.bTurned, Row++);
+
+			continue;
+		}
+
+		/* Turned round, which a binding has no way of saying, so drawn whatever the way to it */
+		if (One.bTurned) {
+			if (!DrawTurnedThrough(Node, One.Member, One.Path, Row++)) {
+				UE_LOG(LogReflection, Warning, TEXT("\"%s\" is handed to %s.%s turned round, and could not be drawn"),
+					*FString::Join(One.Path, TEXT(".")), *Node->GetName(), *One.Member.ToString());
+			}
 
 			continue;
 		}
@@ -1346,7 +1564,43 @@ void IAnimationBlueprintImporter::AnswerThrough(FUObjectExportContainer* Contain
 			/* A pose is drawn from node to node, and was never worked out anywhere */
 			if (UAnimationGraphSchema::IsPosePin(Pin->PinType)) continue;
 
-			Answers(NodeExport->GetName().ToString(), Pin->PinName, Pin);
+			const FString Key = NodeExport->GetName().ToString();
+
+			Answers(Key, Pin->PinName, Pin);
+
+			/* And under the slot it was folded into, where it was folded into one that changes.
+			 *
+			 * A value that changes at run time and was folded away is not written into the node at
+			 * all: the compiler gives it a slot in the class's mutables, and the working out ends by
+			 * writing that slot. Said only under the node's own name, the write names nothing here,
+			 * so the working out is thrown away with the compiler's own and the node is left reading
+			 * whatever the slot started as. */
+			const int32 Which = NodesKeys.IndexOfByKey(Key);
+			const TArray<uint32>* Entries = Folded.Find(Which);
+			const FString* Kind = Kinds.Find(Key);
+			const TMap<FString, int32>* Named = Kind != nullptr ? Slots.Find(*Kind) : nullptr;
+
+			if (Entries == nullptr || Named == nullptr) continue;
+
+			const int32* At = Named->Find(Pin->PinName.ToString());
+
+			if (At == nullptr || !Entries->IsValidIndex(*At)) continue;
+
+			const uint32 Entry = (*Entries)[*At];
+
+			if (Entry == MAX_uint32 || (Entry & 0x80000000u) == 0) continue;
+
+			const int32 Slot = static_cast<int32>(Entry & 0x7FFFFFFFu);
+
+			for (const TPair<FString, int32>& Held : MutableAt) {
+				if (Held.Value != Slot) continue;
+
+				/* Kept without the leading underscores, which the write itself is spelled with */
+				Answers(TEXT("__AnimBlueprintMutables"), FName(*(TEXT("__") + Held.Key)), Pin);
+				Answers(TEXT("__AnimBlueprintMutables"), FName(*Held.Key), Pin);
+
+				break;
+			}
 		}
 	}
 }
@@ -1456,18 +1710,13 @@ void IAnimationBlueprintImporter::CreateGraph(const TSharedPtr<FJsonObject>& Ani
 	AutoLayoutAnimGraphNodes(Container->Exports);
 	DrawBindings(Container);
 
-	/* An input worked out in the ubergraph is left where it was written.
+	/* Every pin of every node said as somewhere a stretch of the ubergraph can answer into.
 	 *
-	 * Saying every pin of every node as somewhere a stretch could answer into is what let those
-	 * stretches be recognised, and recognising them is only half of it: a stretch has to be bounded
-	 * before it can be moved, and a stretch that is jumped to cannot be bounded by reading forward
-	 * from where it begins. Taken anyway, hundreds of them each claimed most of the blueprint and
-	 * the graph they were laid into was buried.
-	 *
-	 * So it is not said, and those stretches stay among the events which is untidy, and is a
-	 * graph that still holds everything it held before. Following the jumps is what this needs, and
-	 * that is a different piece of work to the one that broke it. */
-	// AnswerThrough(Container);
+	 * This was left off while a stretch that is jumped to could not be bounded: read forward from a
+	 * handler that was only a jump, hundreds of them each claimed most of the blueprint. A stretch
+	 * now begins where its handler's jump lands and stops at the first jump inside it, so one that
+	 * cannot be bounded is left among the events rather than taking the graph with it. */
+	AnswerThrough(Container);
 
 	for (const FUObjectExport* ExportNode : Container->Exports) {
 		const TSharedPtr<FJsonObject> ExportJsonObject = ExportNode->JsonObject;
@@ -1591,12 +1840,19 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
 
 	TArray<TSharedPtr<FJsonValue>> EnumToPoseIndexArray = NodeJsonObject->GetArrayField(TEXT("EnumToPoseIndex"));
 
-	/* Create VisibleEnumEntries array using the enum */
+	/* Create VisibleEnumEntries array using the enum.
+	 *
+	 * In the order of the poses they choose, not the order of the enum. The compiler numbers each
+	 * entry's pose by where the entry stands in this list, so a list in enum order gives every
+	 * entry added out of order the pose of another: a blend somebody built as Back, Forward, Left
+	 * comes back choosing Forward's pose for Back. */
 	TArray<FName> VisibleEnumEntries;
+
+	TArray<TPair<int32, FName>> ByPose;
 
     for (int32 i = 0; i < EnumToPoseIndexArray.Num(); i++) {
         const int32 Value = static_cast<int32>(EnumToPoseIndexArray[i]->AsNumber());
-        
+
         if (Value != 0) {
             if (BoundEnum->NumEnums() > i) {
                 FString EnumEntryName = BoundEnum->GetNameByIndex(i).ToString();
@@ -1604,10 +1860,16 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
                     EnumEntryName.Split("::", nullptr, &EnumEntryName);
                 }
 
-                VisibleEnumEntries.Add(FName(*EnumEntryName));
+                ByPose.Add(TPair<int32, FName>(Value, FName(*EnumEntryName)));
             }
         }
     }
+
+	ByPose.StableSort([](const TPair<int32, FName>& A, const TPair<int32, FName>& B) { return A.Key < B.Key; });
+
+	for (const TPair<int32, FName>& One : ByPose) {
+		VisibleEnumEntries.Add(One.Value);
+	}
 	
     if (const FArrayProperty* VisEnumArrayProp = FindFProperty<FArrayProperty>(BlendListByEnum->GetClass(), TEXT("VisibleEnumEntries"))) {
         const void* ArrayPtr = VisEnumArrayProp->ContainerPtrToValuePtr<void>(BlendListByEnum);
@@ -1645,22 +1907,19 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
 		BlendPoseIndex++;
 	}
 
-	/* Map poses corresponding to the bound enum */
-	for (int32 EnumIndex = 0; EnumIndex < BoundEnum->NumEnums() - 1; ++EnumIndex) {
-		if (EnumIndex < EnumToPoseIndexArray.Num()) {
-			const int PoseIndex = EnumToPoseIndexArray[EnumIndex]->AsNumber();
+	/* Map poses corresponding to the bound enum. The entries are in pose order, so each pin past
+	 * the default takes the pose of the same number. */
+	for (const TPair<int32, FName>& One : ByPose) {
+		const int32 PoseIndex = One.Key;
 
-			if (PoseIndex == 0) continue;
+		if (PoseIndex < BlendPoseArray.Num()) {
+			FString LinkID = BlendPoseArray[PoseIndex]->AsObject()->GetStringField(TEXT("LinkID"));
+			const FString IndexedPinName = FString::Printf(TEXT("BlendPose_%d"), BlendPoseIndex);
 
-			if (PoseIndex < BlendPoseArray.Num()) {
-				FString LinkID = BlendPoseArray[PoseIndex]->AsObject()->GetStringField(TEXT("LinkID"));
-                const FString IndexedPinName = FString::Printf(TEXT("BlendPose_%d"), BlendPoseIndex);
+			FUObjectExport* TargetNodeExport = Container->Find(LinkID);
+			UAnimGraphNode_Base* TargetNode = Cast<UAnimGraphNode_Base>(TargetNodeExport->Object);
 
-				FUObjectExport* TargetNodeExport = Container->Find(LinkID);
-				UAnimGraphNode_Base* TargetNode = Cast<UAnimGraphNode_Base>(TargetNodeExport->Object);
-
-				LinkPoseInputPin(IndexedPinName, BlendListByEnum, TargetNode, AnimGraph);
-			}
+			LinkPoseInputPin(IndexedPinName, BlendListByEnum, TargetNode, AnimGraph);
 		}
 
 		BlendPoseIndex++;
@@ -1986,6 +2245,63 @@ void IAnimationBlueprintImporter::HandleNodeDeserialization(FUObjectExportContai
 		}
 
 		HandlePropertyBinding(NodeExport, GetContainer()->JsonObjects, Node, this, AnimBlueprint);
+
+		/* Which enum a blend by enum blends by, worked out from what drives it.
+		 *
+		 * The cook keeps no word of it on the node, and the older way of saying a binding is worked
+		 * back to it above. The newer way says it on the class, as a way through the instance to the
+		 * value, and nothing followed that way to the end: every blend by enum then reads as one by an
+		 * enum this build has not got, and is blended by number instead, enums this build has or not.
+		 * Followed step by step through what each step holds, the last one is the enum. Asked before
+		 * the bindings are put on, since the pin that takes the value is drawn as that enum. */
+		if (UAnimGraphNode_BlendListByEnum* ByEnum = Cast<UAnimGraphNode_BlendListByEnum>(Node); ByEnum != nullptr && ByEnum->GetEnum() == nullptr) {
+			if (const TArray<FHandedOver>* Says = Bindings.Find(NodeExport->GetName().ToString())) {
+				for (const FHandedOver& One : *Says) {
+					if (One.Member != TEXT("ActiveEnumValue")) continue;
+
+					const UStruct* Through = AnimBlueprint->SkeletonGeneratedClass != nullptr
+						? static_cast<UStruct*>(AnimBlueprint->SkeletonGeneratedClass)
+						: static_cast<UStruct*>(AnimBlueprint->ParentClass);
+
+					const FProperty* Reached = nullptr;
+
+					for (const FString& Step : One.Path) {
+						if (Through == nullptr) {
+							Reached = nullptr;
+
+							break;
+						}
+
+						Reached = Through->FindPropertyByName(FName(*Step));
+
+						if (const FStructProperty* AsStruct = CastField<FStructProperty>(Reached)) {
+							Through = AsStruct->Struct;
+						} else if (const FObjectPropertyBase* AsObject = CastField<FObjectPropertyBase>(Reached)) {
+							Through = AsObject->PropertyClass;
+						} else {
+							Through = nullptr;
+						}
+					}
+
+					UEnum* Blends = nullptr;
+
+					if (const FByteProperty* AsByte = CastField<FByteProperty>(Reached)) {
+						Blends = AsByte->Enum;
+					} else if (const FEnumProperty* AsEnum = CastField<FEnumProperty>(Reached)) {
+						Blends = AsEnum->GetEnum();
+					}
+
+					/* Set the way the older way sets it, since the node keeps it to itself */
+					if (Blends != nullptr) {
+						if (FObjectProperty* Bound = FindFProperty<FObjectProperty>(ByEnum->GetClass(), TEXT("BoundEnum"))) {
+							Bound->SetObjectPropertyValue_InContainer(ByEnum, Blends);
+						}
+					}
+
+					break;
+				}
+			}
+		}
 
 		/* And whatever the class hands it, which is said the way newer engines say it */
 		ApplyBindings(NodeExport->GetName().ToString(), Node);
@@ -2341,6 +2657,201 @@ void IAnimationBlueprintImporter::SettleCachedPoses() {
 	}
 
 	Borrowed.Empty();
+}
+
+void IAnimationBlueprintImporter::SettleAnimGetters() {
+	/* A getter is cooked as a plain call with the node it reads written in as a number.
+	 *
+	 * Which state machine, asset player, state or transition it asks about is not a pin anyone sets:
+	 * the compiler works it out from the node the getter was made for and writes the number in on
+	 * every compile. Brought back as a call, it keeps the number the original class had, and in the
+	 * class compiled here that number is some other node. The engine casts whatever it finds there to
+	 * a state machine without asking, and asks it for a state it has not got.
+	 *
+	 * So each call is put back as the getter, made for the node its number named in the original,
+	 * and the compiler numbers it again for the class it is in now. */
+	TArray<UK2Node_CallFunction*> Calls;
+	FBlueprintEditorUtils::GetAllNodesOfClass(AnimBlueprint, Calls);
+
+	/* The getters are the native instance's own, and a getter says which class it was made from */
+	UClass* NativeClass = AnimBlueprint->ParentClass;
+
+	while (NativeClass != nullptr && !NativeClass->HasAnyClassFlags(CLASS_Native)) {
+		NativeClass = NativeClass->GetSuperClass();
+	}
+
+	/* A node made for this run, by the name the class gave its property */
+	auto FindMade = [this](const FString& Key) -> FUObjectExport* {
+		for (FUObjectExportContainer* Held : AnimNodeContainers) {
+			if (Held == nullptr) continue;
+
+			FUObjectExport* Export = Held->Find(FName(*Key));
+
+			if (Export != nullptr && Export->IsJsonAndObjectValid()) return Export;
+		}
+
+		return nullptr;
+	};
+
+	int32 Settled = 0;
+
+	for (UK2Node_CallFunction* Call : Calls) {
+		/* Only a plain call, since a getter is one of these as well */
+		if (Call == nullptr || Call->GetClass() != UK2Node_CallFunction::StaticClass()) continue;
+
+		UFunction* Function = Call->GetTargetFunction();
+
+		if (Function == nullptr || !Function->HasMetaData(TEXT("AnimGetter"))) continue;
+
+		/* The number written into a pin, or none where nothing was */
+		auto Said = [Call](const TCHAR* Named) -> int32 {
+			const UEdGraphPin* Pin = Call->FindPin(Named);
+
+			if (Pin == nullptr || Pin->LinkedTo.Num() > 0 || Pin->DefaultValue.IsEmpty()) return INDEX_NONE;
+
+			return FCString::Atoi(*Pin->DefaultValue);
+		};
+
+		const bool bByNode = Call->FindPin(TEXT("MachineIndex")) != nullptr || Call->FindPin(TEXT("AssetPlayerIndex")) != nullptr;
+		const bool bByState = Call->FindPin(TEXT("StateIndex")) != nullptr;
+		const bool bByTransition = Call->FindPin(TEXT("TransitionIndex")) != nullptr;
+
+		UAnimGraphNode_Base* SourceNode = nullptr;
+		UAnimStateNodeBase* SourceStateNode = nullptr;
+
+		/* Numbered the way the class numbers its nodes, from the last property back */
+		if (bByNode) {
+			const int32 NodeIndex = FMath::Max(Said(TEXT("MachineIndex")), Said(TEXT("AssetPlayerIndex")));
+			const FUObjectExport* Made = ReversedNodesKeys.IsValidIndex(NodeIndex) ? FindMade(ReversedNodesKeys[NodeIndex]) : nullptr;
+
+			SourceNode = Made != nullptr ? Cast<UAnimGraphNode_Base>(Made->Object) : nullptr;
+
+			/* A state or transition is numbered within its machine, which the class lays out by name */
+			if (SourceNode != nullptr && (bByState || bByTransition)) {
+				UAnimGraphNode_StateMachine* StateMachine = Cast<UAnimGraphNode_StateMachine>(SourceNode);
+				int32 MachineIndex = INDEX_NONE;
+
+				if (Made->JsonObject.IsValid()) Made->JsonObject->TryGetNumberField(TEXT("StateMachineIndexInClass"), MachineIndex);
+
+				if (StateMachine != nullptr && StateMachine->EditorStateMachineGraph != nullptr && BakedStateMachines.IsValidIndex(MachineIndex)) {
+					const TSharedPtr<FJsonObject> Machine = BakedStateMachines[MachineIndex]->AsObject();
+					const TArray<TSharedPtr<FJsonValue>>& States = Machine->GetArrayField(TEXT("States"));
+
+					auto StateNamed = [&States](const int32 Index) {
+						return States.IsValidIndex(Index) ? States[Index]->AsObject()->GetStringField(TEXT("StateName")) : FString();
+					};
+
+					if (bByState) {
+						const FString Named = StateNamed(Said(TEXT("StateIndex")));
+
+						for (UEdGraphNode* Node : StateMachine->EditorStateMachineGraph->Nodes) {
+							UAnimStateNode* State = Cast<UAnimStateNode>(Node);
+
+							if (State != nullptr && !Named.IsEmpty() && State->GetStateName() == Named) {
+								SourceStateNode = State;
+
+								break;
+							}
+						}
+					} else {
+						/* A transition is known by the two states it runs between */
+						const TArray<TSharedPtr<FJsonValue>>* Transitions = nullptr;
+						const int32 TransitionIndex = Said(TEXT("TransitionIndex"));
+
+						if (Machine->TryGetArrayField(TEXT("Transitions"), Transitions) && Transitions->IsValidIndex(TransitionIndex)) {
+							const TSharedPtr<FJsonObject> Transition = (*Transitions)[TransitionIndex]->AsObject();
+							const FString From = StateNamed(Transition->GetIntegerField(TEXT("PreviousState")));
+							const FString To = StateNamed(Transition->GetIntegerField(TEXT("NextState")));
+
+							for (UEdGraphNode* Node : StateMachine->EditorStateMachineGraph->Nodes) {
+								UAnimStateTransitionNode* Between = Cast<UAnimStateTransitionNode>(Node);
+
+								if (Between == nullptr || Between->GetPreviousState() == nullptr || Between->GetNextState() == nullptr) continue;
+
+								if (Between->GetPreviousState()->GetStateName() == From && Between->GetNextState()->GetStateName() == To) {
+									SourceStateNode = Between;
+
+									break;
+								}
+							}
+						}
+					}
+				}
+			}
+		}
+
+		/* Left as the call where what it reads cannot be found, which is what it was before. Made
+		 * without its node, the getter fails the compile outright. */
+		if ((bByNode && SourceNode == nullptr) || ((bByState || bByTransition) && SourceStateNode == nullptr)) {
+			FImportIssues::Report(
+				EImportIssue::Data,
+				TEXT("A getter whose node could not be found"),
+				FString::Printf(TEXT("'%s' calls %s on a node or state this import did not make, so it keeps the number the original class gave it."), *GetAssetName(), *Function->GetName())
+			);
+
+			continue;
+		}
+
+		UEdGraph* Graph = Call->GetGraph();
+
+		UK2Node_AnimGetter* Getter = NewObject<UK2Node_AnimGetter>(Graph, UK2Node_AnimGetter::StaticClass(), NAME_None, RF_Transactional);
+		Getter->CreateNewGuid();
+		Getter->NodePosX = Call->NodePosX;
+		Getter->NodePosY = Call->NodePosY;
+
+		Getter->SourceNode = SourceNode;
+		Getter->SourceStateNode = SourceStateNode;
+		Getter->GetterClass = NativeClass;
+		Getter->SourceAnimBlueprint = AnimBlueprint;
+		Function->GetMetaData(TEXT("GetterContext")).ParseIntoArray(Getter->Contexts, TEXT("|"), true);
+		Getter->SetFromFunction(Function);
+
+		/* Titled the way the menu titles one, by what it reads */
+		const FText Title = Function->GetDisplayNameText();
+
+		if (SourceStateNode != nullptr) {
+			Getter->CachedTitle = FText::Format(INVTEXT("{0} ({1})"), Title, SourceStateNode->GetNodeTitle(ENodeTitleType::ListView));
+		} else if (SourceNode != nullptr && SourceNode->GetAnimationAsset() != nullptr) {
+			Getter->CachedTitle = FText::Format(INVTEXT("{0} ({1})"), Title, FText::FromString(SourceNode->GetAnimationAsset()->GetName()));
+		} else if (SourceNode != nullptr) {
+			Getter->CachedTitle = FText::Format(INVTEXT("{0} ({1})"), Title, SourceNode->GetNodeTitle(ENodeTitleType::ListView));
+		} else {
+			Getter->CachedTitle = Title;
+		}
+
+		Graph->AddNode(Getter, false, false);
+		Getter->AllocateDefaultPins();
+
+		/* Everything the call was wired to or set, carried across pin by pin */
+		const UEdGraphSchema* Schema = Graph->GetSchema();
+
+		for (UEdGraphPin* Old : Call->Pins) {
+			UEdGraphPin* New = Getter->FindPin(Old->PinName, Old->Direction);
+
+			if (New == nullptr) continue;
+
+			if (!New->bHidden && Old->LinkedTo.Num() == 0) {
+				New->DefaultValue = Old->DefaultValue;
+				New->DefaultObject = Old->DefaultObject;
+				New->DefaultTextValue = Old->DefaultTextValue;
+			}
+
+			if (Old->LinkedTo.Num() > 0) Schema->MovePinLinks(*Old, *New);
+		}
+
+		Call->BreakAllNodeLinks();
+		Graph->RemoveNode(Call);
+
+		Settled++;
+	}
+
+	if (Settled == 0) return;
+
+	UE_LOG(LogReflection, Display, TEXT("%d anim getter(s) put back as getters"), Settled);
+
+	/* The body was compiled before the calls were put back, so the class still holds the numbers
+	 * they came in with until it is compiled again */
+	CompileBlueprintGuarded(AnimBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
 }
 
 UEdGraph* IAnimationBlueprintImporter::FindAnimGraph(UAnimBlueprint* AnimBlueprint) {

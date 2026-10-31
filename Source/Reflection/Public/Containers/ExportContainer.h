@@ -286,17 +286,39 @@ public:
 
 		const FString ObjectPath = Object->GetStringField(TEXT("ObjectPath"));
 
+		FString PackagePart;
 		FString IndexString;
-		if (!ObjectPath.Split(TEXT("."), nullptr, &IndexString)) {
+		if (!ObjectPath.Split(TEXT("."), &PackagePart, &IndexString)) {
 			return FUObjectExport::EmptyExport();
 		}
 
 		const int32 Index = FCString::Atoi(*IndexString);
 
 		for (FUObjectExport* Export : Exports) {
-			if (Export->Position == Index) {
-				return Export;
+			if (Export->Position != Index) {
+				continue;
 			}
+
+			/* The number only counts through the package the path names. A reference into another
+			 * asset carries that asset's numbers, and taken here it lands on whatever this package
+			 * keeps at the same position: a borrowed widget tree's font pointed its outline material
+			 * at the widget's own UberGraphFrame, and the editor crashed drawing it. */
+			FString ExportPackage;
+			if (Export->IsJsonValid() && !Export->JsonObject->TryGetStringField(TEXT("Package"), ExportPackage)) {
+				/* Only the top of a package says which one it is; everything under it says through its outer */
+				const TSharedPtr<FJsonObject>* OuterObject = nullptr;
+				FString OuterPath;
+
+				if (Export->JsonObject->TryGetObjectField(TEXT("Outer"), OuterObject) && (*OuterObject)->TryGetStringField(TEXT("ObjectPath"), OuterPath)) {
+					OuterPath.Split(TEXT("."), &ExportPackage, nullptr);
+				}
+			}
+
+			if (!ExportPackage.IsEmpty() && ExportPackage != PackagePart) {
+				continue;
+			}
+
+			return Export;
 		}
 
 		return FUObjectExport::EmptyExport();

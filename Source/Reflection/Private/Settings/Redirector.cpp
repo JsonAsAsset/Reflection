@@ -65,6 +65,38 @@ void FRRedirects::Redirect(FString& Path) {
 	Pointers.Append(Points);
 }
 
+FRRedirectPreview FRRedirects::Preview(const FString& InPath) {
+	FRRedirectPreview Preview;
+	Preview.Path = InPath;
+
+	const UReflectionSettings* Settings = GetSettings();
+
+	if (Settings == nullptr) return Preview;
+
+	/* The same order Redirect goes in, since a point works on what the one before it left */
+	for (int32 At = 0; At < Settings->Redirectors.Num(); ++At) {
+		const FRRedirector& Redirect = Settings->Redirectors[At];
+
+		if (!Redirect.IsEnabled()) continue;
+
+		bool Matched = false;
+
+		for (const FRRedirectorPoint& Point : Redirect.Points) {
+			if (ReplaceFirst(Preview.Path, Point.From, Point.To)) {
+				Matched = true;
+			}
+		}
+
+		/* Named once however many of its points matched */
+		if (Matched) {
+			Preview.By.AddUnique(Redirect.GetName());
+			Preview.Indices.AddUnique(At);
+		}
+	}
+
+	return Preview;
+}
+
 void FRRedirects::Reverse(FString& Path) {
 	TArray<FRRedirectorPoint>* Points = History.Find(Path);
 	if (!Points) {

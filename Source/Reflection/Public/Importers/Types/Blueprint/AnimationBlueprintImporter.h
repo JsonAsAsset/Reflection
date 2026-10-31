@@ -109,6 +109,9 @@ protected:
 	/* Points each borrowed cached pose at the node that saved it, once every graph has been made */
 	void SettleCachedPoses();
 
+	/* Turns each call to an anim getter back into the getter node, once every graph has been made */
+	void SettleAnimGetters();
+
 	/* Tells each pose a layer takes in which of the layer's poses it stands for */
 	void SettleInputPoses(UEdGraph* Layer) const;
 

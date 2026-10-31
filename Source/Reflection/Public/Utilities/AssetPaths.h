@@ -6,8 +6,11 @@
 #include "Settings/ReflectionSettings.h"
 #include "Settings/Runtime.h"
 
-/* Turns a package path as Cloud knows it into the one the same asset takes in the editor. */
-inline FString ToEditorPackagePath(const FString& InPath) {
+/* The editor path for a Cloud one, with no redirect applied.
+ *
+ * Split out for anything that wants to say where a path would land without putting it through a
+ * redirect, which is a thing Redirect records as having happened. */
+inline FString ToEditorPackagePathDirect(const FString& InPath) {
 	FString Path = InPath;
 
 	const FString& ProjectName = GReflectionRuntime.Profile.ProjectName;
@@ -23,6 +26,13 @@ inline FString ToEditorPackagePath(const FString& InPath) {
 	if (!Path.StartsWith(TEXT("/"))) {
 		Path = "/" + Path;
 	}
+
+	return Path;
+}
+
+/* Turns a package path as Cloud knows it into the one the same asset takes in the editor. */
+inline FString ToEditorPackagePath(const FString& InPath) {
+	FString Path = ToEditorPackagePathDirect(InPath);
 
 	FRRedirects::Redirect(Path);
 

@@ -1599,9 +1599,10 @@ int32 IBlueprintImporter::ConstructGraphs() {
 	UE_LOG(LogReflection, Display, TEXT("%d stretch(es) of the ubergraph are entered by a handler, and %d node member(s) are answered through a pin"), Handlers.Num(), Decides.Num());
 
 	if (Ubergraph.IsValid() && Handlers.Num() > 0 && Decides.Num() > 0) {
-		for (const int32 From : Handlers) {
-			if (From < 0) continue;
+		for (const int32 Handler : Handlers) {
+			if (Handler < 0) continue;
 
+			int32 From = Handler;
 			int32 At = INDEX_NONE;
 
 			for (int32 Index = 0; Index < Ubergraphed.Num(); ++Index) {
@@ -1613,6 +1614,32 @@ int32 IBlueprintImporter::ConstructGraphs() {
 			}
 
 			if (At == INDEX_NONE) continue;
+
+			/* Where the handler's way in is only a jump, the stretch is wherever it lands.
+			 *
+			 * The compiler is as free to put a rule's working out ahead of its own way in as
+			 * anywhere else, and then the way in is nothing but a jump back to it. Read from the
+			 * jump, the stretch stops before it has begun and the rule is left among the events
+			 * with nothing to decide. A jump with nothing before it is no part of what the rule
+			 * works out, so the stretch begins where it goes. */
+			for (int32 Hops = 0; Hops < Ubergraphed.Num() && Ubergraphed[At].GetString(TEXT("Token")) == TEXT("EX_Jump"); ++Hops) {
+				const int32 Landing = Ubergraphed[At].GetInteger(TEXT("CodeOffset"), INDEX_NONE);
+
+				int32 Landed = INDEX_NONE;
+
+				for (int32 Index = 0; Index < Ubergraphed.Num(); ++Index) {
+					if (Ubergraphed[Index].GetInteger(TEXT("StatementIndex"), INDEX_NONE) == Landing) {
+						Landed = Index;
+
+						break;
+					}
+				}
+
+				if (Landed == INDEX_NONE) break;
+
+				At = Landed;
+				From = Landing;
+			}
 
 			/* How far the stretch runs, which is only knowable while it runs straight.
 			 *

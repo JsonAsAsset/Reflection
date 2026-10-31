@@ -72,6 +72,24 @@ inline FImporterFactoryDelegate* FindFactoryForAssetType(const FString& AssetTyp
 	return nullptr;
 }
 
+/* The importer of the nearest class this one derives from that has one.
+ *
+ * Importers are found by the exact type an export names, so a game class deriving from an engine
+ * asset (a sound cue template is a sound cue to everything that plays it) names a type nothing
+ * registered and is turned away, though the importer for what it derives from builds it fine. The
+ * class itself is left to the exact lookup; this only answers for its ancestors. */
+inline FImporterFactoryDelegate* FindFactoryForClassAncestor(const UClass* Class) {
+	if (Class == nullptr) return nullptr;
+
+	for (const UClass* Super = Class->GetSuperClass(); Super != nullptr; Super = Super->GetSuperClass()) {
+		if (FImporterFactoryDelegate* Factory = FindFactoryForAssetType(Super->GetName())) {
+			return Factory;
+		}
+	}
+
+	return nullptr;
+}
+
 template <typename T>
 IImporter* CreateImporter() {
 	return new T();

@@ -49,6 +49,14 @@ public:
 	 * under the folder; the rest leave it alone. */
 	static EReflectFolderChoice Open(TArray<FString>& OutPaths, TSet<FString>& OutAllowedTypes, const FString& InitialFolder = FString(), bool bUseClipboard = false, bool bCanGoBack = false);
 
+	/* What the last Find listed and what the run is allowed to build, for when this is a page of
+	 * another window rather than a window of its own. Its Reflect shuts whatever window it was
+	 * given, so the answer is read off the widget instead of coming back from Open. */
+	bool WasAccepted() const { return Accepted; }
+
+	const TArray<FString>& GetPaths() const { return Paths; }
+	const TSet<FString>& GetAllowedTypes() const { return AllowedTypes; }
+
 private:
 	FReply OnBackClicked();
 	FReply OnFindClicked();
