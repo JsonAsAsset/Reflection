@@ -69,31 +69,17 @@ If an asset type isn't listed below, **it's not currently supported by the plugi
 | 🟣 **Data** | DataAsset, CurveExpressionsDataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, FortBakedPropertyMetadataCache, UserDefinedEnum, UserDefinedStruct |
 | 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
 | 🟠 **Material** | Material, MaterialFunction, MaterialInstanceConstant, MaterialParameterCollection, SubsurfaceProfile |
-| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite, PaperSpriteAtlas. Pixels are fetched by a [Cloud Server](#cloud)! |
-| 🟦 **Mesh** | SkeletalMesh, StaticMesh. Geometry is fetched by a [Cloud Server](#cloud)! |
-| 🟡 **Sound** | SoundCue and most other sound classes are supported. SoundWave is fetched by a [Cloud Server](#cloud)! |
+| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite, PaperSpriteAtlas. |
+| 🟦 **Mesh** | SkeletalMesh, StaticMesh. |
+| 🟡 **Sound** | SoundCue and most other sound classes are supported |
 | 🔴 **Animation** | AnimSequence, AnimMontage, PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D, ControlRigBlueprintGeneratedClass |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
 | 🟤 **Sequencer** | CameraAnim, ForceFeedbackEffect |
-| ✨ **Effects** | ParticleSystem, VectorFieldStatic. Vector data is fetched by a [Cloud Server](#cloud)! |
+| ✨ **Effects** | ParticleSystem, VectorFieldStatic |
 | 💫 **Niagara** |  NiagaraParameterCollection, NiagaraParameterCollectionInstance, NiagaraParameterDefinitions, NiagaraEffectType, NiagaraDataChannelAsset, NiagaraAssetTagDefinitions, NiagaraValidationRuleSet, NiagaraSimCache, NiagaraSystemReadinessSettings |
 | 🟩 **Landscape** | LandscapeGrassType, FoliageType_InstancedStaticMesh, FoliageType_Actor |
 | 🧠 **AI** | BehaviorTree, BlackboardData |
 | 🔤 **UI** | Font, FontFace |
-
-#### Reflecting extra data onto an asset you already have
-| Tool | What it reflects |
-|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------|
-| **Animations** | Curve data, notifies and other properties |
-| **Clothing Assets** | Cloth data onto the selected mesh, bound to its sections |
-| **Fonts** | Font properties (not vectorized data) |
-| **Linear Colors** | Colors, if any changes were made |
-| **Mesh Geometry** | Rebuilds the selected mesh's LOD models from the cooked geometry |
-| **Skeletal Meshes** | Sockets and other properties |
-| **Static Meshes** | Collision and other properties |
-| **Widget Animations** | Widget animations |
-
-These are reached from **Cloud Tools** with the asset selected in your content browser, and need a [Cloud Server](#cloud).
 
 #### Blueprints and Levels (Experimental)
 Blueprints, Widget Blueprints and Animation Blueprints rebuild their components, variables and defaults, and their graphs are rebuilt from the bytecode where the parent class exists. Levels place the actors they hold, with settings for what to place and what to skip.
