@@ -20,6 +20,10 @@
 #include "Modules/Toolbar/Dropdowns/ValidationDropdownBuilder.h"
 #endif
 #include "Modules/Toolbar/Dropdowns/CloudToolsDropdownBuilder.h"
+#include "Modules/Tools/SelectedAssetsBase.h"
+#include "Modules/Tools/ToolRegistry.h"
+
+#include "Algo/Sort.h"
 #include "Settings/Runtime.h"
 #include "Modules/Toolbar/Dropdowns/GeneralDropdownBuilder.h"
 #include "Modules/Toolbar/Dropdowns/DonateDropdownBuilder.h"
@@ -220,6 +224,95 @@ void UReflectionToolbar::RegisterAssetContextMenu() {
 			TToolImportFolder().Execute(GetSelectedContentBrowserFolder());
 		}
 	);
+
+	/* And the tools, under the asset they read rather than behind the Cloud dropdown.
+	 *
+	 * Reflect above takes the whole asset and puts it in the project's place. These take one part
+	 * of it and leave the rest alone, which is what somebody who has already worked on the asset
+	 * is after, and right-clicking the asset is where they would look for it. */
+	if (UToolMenu* AssetMenu = ToolMenus->ExtendMenu("ContentBrowser.AssetContextMenu")) {
+		FToolMenuSection& Section = AssetMenu->FindOrAddSection(GReflectionName);
+
+		Section.AddSubMenu(
+			TEXT("ReflectionTools"),
+			FText::FromString("Reflect Part Of"),
+			FText::FromString("Reads one part of the selected asset out of the game's copy, leaving the rest of it as it is."),
+
+			FNewToolMenuDelegate::CreateStatic(&UReflectionToolbar::BuildToolsSubMenu),
+			false,
+			FSlateIcon(FReflectionStyle::Get().GetStyleSetName(), "Toolbar.Icon")
+		);
+	}
+}
+
+void UReflectionToolbar::BuildToolsSubMenu(UToolMenu* Menu) {
+	if (Menu == nullptr) return;
+
+	const FContentBrowserModule& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+
+	TArray<FAssetData> Selected;
+	ContentBrowser.Get().GetSelectedAssets(Selected);
+
+	TSet<FName> Classes;
+
+	for (const FAssetData& AssetData : Selected) {
+		if (AssetData.IsValid()) Classes.Add(GetAssetDataClass(AssetData));
+	}
+
+	TArray<TSelectedAssetsBase*> Tools;
+
+	for (const TPair<FName, FToolInstanceDelegate>& Registration : GetToolRegistry()) {
+		TSelectedAssetsBase* Tool = Registration.Value();
+
+		/* A tool with no name isn't meant to be reachable from a menu */
+		if (Tool == nullptr || Tool->GetDisplayName().IsEmpty()) continue;
+
+		/* One that takes anything is offered for anything, and the rest only where what was
+		 * clicked is what they read */
+		const FName Supported = Tool->GetSupportedClass();
+
+		if (!Supported.IsNone() && !Classes.Contains(Supported)) continue;
+
+		Tools.Add(Tool);
+	}
+
+	/* Registration order is the linker's business, so the menu sorts itself */
+	Algo::Sort(Tools, [](const TSelectedAssetsBase* A, const TSelectedAssetsBase* B) {
+		return A->GetDisplayName().CompareTo(B->GetDisplayName()) < 0;
+	});
+
+	FToolMenuSection& Section = Menu->AddSection(TEXT("ReflectionTools"), FText::FromString("Selected Assets"));
+
+	for (TSelectedAssetsBase* Tool : Tools) {
+		Section.AddMenuEntry(
+			FName(*Tool->GetDisplayName().ToString()),
+			Tool->GetDisplayName(),
+			Tool->GetTooltip(),
+			Tool->GetIcon(),
+
+			FUIAction(
+				FExecuteAction::CreateLambda([Tool] {
+					Tool->Execute();
+				}),
+
+				FCanExecuteAction::CreateLambda([Tool] {
+					return Cloud::Status::IsOpened() && !Tool->IsRunning();
+				})
+			)
+		);
+	}
+
+	/* Said rather than left as an empty menu, which reads as something being broken */
+	if (Tools.Num() == 0) {
+		Section.AddMenuEntry(
+			TEXT("ReflectionToolsNone"),
+			FText::FromString("Nothing for this asset"),
+			FText::FromString("No tool reads a part of this kind of asset."),
+			FSlateIcon(),
+
+			FUIAction(FExecuteAction(), FCanExecuteAction::CreateLambda([] { return false; }))
+		);
+	}
 }
 #endif
 

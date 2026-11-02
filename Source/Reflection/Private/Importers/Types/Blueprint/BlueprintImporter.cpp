@@ -230,6 +230,16 @@ bool IBlueprintImporter::Import() {
 	 * the package save says so every time. */
 	Blueprint->LastEditedDocuments.Empty();
 
+	/* A compile that failed said so and left the package transient, meaning to write nothing. This
+	 * is the other half of that: handing a half built class on calls PostEditChange on it, and the
+	 * first thing that does is ask the thumbnail renderer for a default object the class cannot
+	 * make, which takes the editor down with it. */
+	if (!IsBlueprintClassBuilt(Blueprint)) {
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" has no class to hand over, so nothing was written for it"), *GetAssetName());
+
+		return false;
+	}
+
 	return OnAssetCreation(Blueprint);
 }
 

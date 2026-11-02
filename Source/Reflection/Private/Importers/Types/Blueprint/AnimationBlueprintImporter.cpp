@@ -623,6 +623,14 @@ bool IAnimationBlueprintImporter::Import() {
 	/* Opened on whatever mesh the folder keeps, since the cook drops what it was previewed on */
 	FPreviewMesh::FromFolder(AnimBlueprint, AnimBlueprint->TargetSkeleton);
 
+	/* The same half built class the ordinary blueprint importer guards against, which an animation
+	 * blueprint reaches by its own road */
+	if (!IsBlueprintClassBuilt(AnimBlueprint)) {
+		UE_LOG(LogReflection, Error, TEXT("\"%s\" has no class to hand over, so nothing was written for it"), *GetAssetName());
+
+		return false;
+	}
+
 	return OnAssetCreation(AnimBlueprint);
 }
 

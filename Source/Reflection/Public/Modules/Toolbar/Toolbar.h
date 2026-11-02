@@ -48,6 +48,9 @@ public:
 	 * can be reflected without retyping its path. 4.26 is where both menus became tool menus */
 #if !UE4_25_BELOW
 	void RegisterAssetContextMenu();
+
+	/* Fills the right click submenu with the tools that read a part of whatever is selected */
+	static void BuildToolsSubMenu(class UToolMenu* Menu);
 #endif
 
 #if ENGINE_UE4

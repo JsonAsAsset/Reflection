@@ -159,6 +159,16 @@ bool CompileBlueprintGuarded(UBlueprint* Blueprint, const EBlueprintCompileOptio
 	return false;
 }
 
+bool IsBlueprintClassBuilt(const UBlueprint* Blueprint) {
+	if (Blueprint == nullptr) return false;
+
+	const UClass* Built = Blueprint->GeneratedClass;
+
+	/* The engine's own test, asked here rather than waited for: StaticAllocateObject asserts on
+	 * a class with neither of these the moment a default object is wanted for it */
+	return Built != nullptr && Built->ClassWithin != nullptr && Built->ClassConstructor != nullptr;
+}
+
 UBlueprint* CreateBlueprintGuarded(UClass* ParentClass, UObject* Outer, const FName Name,
 	const EBlueprintType BlueprintType, UClass* BlueprintClassType, UClass* BlueprintGeneratedClassType) {
 	const int32 Depth = SlowTasks();

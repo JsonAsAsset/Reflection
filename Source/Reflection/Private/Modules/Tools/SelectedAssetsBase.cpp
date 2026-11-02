@@ -2,6 +2,9 @@
 
 #include "Modules/Tools/SelectedAssetsBase.h"
 
+#include "ContentBrowserModule.h"
+#include "IContentBrowserSingleton.h"
+
 #include "Modules/Cloud/Cloud.h"
 #include "Modules/UI/StyleModule.h"
 #include "Engine/EngineUtilities.h"
@@ -25,12 +28,17 @@ void TSelectedAssetsBase::Execute() {
 	 * the exports get resolved against is fetched here */
 	Cloud::EnsureMetadataBlocking();
 
-	TArray<FAssetData> AssetDataList = GetAssetsInSelectedFolder();
+	/* What is selected is a more specific request than the folder it happens to sit in, and all
+	 * of it is the request. Reading one asset out of the selection and dropping the rest made
+	 * selecting three of them the same as selecting the first. */
+	TArray<FAssetData> AssetDataList;
 
-	/* One selected asset is a more specific request than the folder it happens to sit in */
-	if (const UObject* SelectedAsset = GetSelectedAsset<UObject>(true)) {
-		AssetDataList.Empty();
-		AssetDataList.Add(FAssetData(SelectedAsset));
+	const FContentBrowserModule& ContentBrowser = FModuleManager::LoadModuleChecked<FContentBrowserModule>("ContentBrowser");
+	ContentBrowser.Get().GetSelectedAssets(AssetDataList);
+
+	/* Nothing picked out, so the folder that is open is what was meant */
+	if (AssetDataList.Num() == 0) {
+		AssetDataList = GetAssetsInSelectedFolder();
 	}
 
 	const FName SupportedClass = GetSupportedClass();
