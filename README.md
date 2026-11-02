@@ -14,7 +14,7 @@
 
 <div align="center">
 
-Reflection is the standard for bringing game assets into Unreal Engine. Materials, meshes, data tables, physics assets and more, rebuilt in your project from a path copied out of [FModel](https://github.com/4sval/FModel).
+Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
 [![Tutorial](https://img.shields.io/badge/Setup-Tutorial-000000?style=for-the-badge)](https://www.youtube.com/watch?v=M28If8DOUXk)
 
