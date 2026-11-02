@@ -33,10 +33,9 @@ Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts
 
 ### **Table of Contents**
 
-> 1. [Supported Versions](#supported-versions)  
-> 2. [Asset Types](#asset-types)  
-> 3. [Installation](#installation)  
-> 4. [→ Workflow](#workflow)
+> 1. [Asset Types](#asset-types)  
+> 2. [Installation](#installation)  
+> 3. [→ Workflow](#workflow)
 
 -----------------
 
@@ -47,15 +46,6 @@ Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts
 * Automating asset porting workflows
 
 This project aims to streamline the porting and modding experience, making it easier to bring game assets into Unreal Engine.
-
------------------
-
-<a name="supported-versions"></a>
-## Supported Versions
-* **Unreal Engine 5:** 5.0.1-5.7.1
-* **Unreal Engine 4:** 4.22.3, 4.23.1, 4.24.3, 4.25.4, 4.26.2, 4.27.2
-
-All of them build from the same source. There are no per-engine branches.
 
 -----------------
 
@@ -170,7 +160,7 @@ Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platfo
 ### Cloud ☁️
 The Cloud app is **Mirror**. [Set up an instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
 
-Once running, Reflection **fetches references automatically** instead of asking you for each one, and a **Cloud Tools** menu lets you reflect extra data (collision, animation curves, sockets, fonts, and more) onto assets you've already imported.
+Once running, Reflection **fetches references automatically** instead of asking you for each one.
 
 -----------------
 
