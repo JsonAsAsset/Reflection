@@ -113,7 +113,7 @@ UnrealBuildTool=Engine/Binaries/DotNet/UnrealBuildTool.exe
 ## Cloud ☁️
 The Cloud app is **Mirror**. It reads the game's files and hands Reflection each asset as it's asked for, over `localhost:1500`. [Set up an instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
 
-<img width="1000" alt="Mirror running and ready" src="Resources/Readme/mirror.png"/>
+<a href="#cloud"><img width="1000" alt="Mirror running and ready" src="Resources/Readme/mirror.png"/></a>
 
 With Mirror running, Reflection:
 - **Fetches references automatically** instead of asking you for each one.
@@ -131,11 +131,11 @@ Reflection works off **asset paths**. With [Cloud](#cloud) running, nothing has 
 
 2. **Press the Reflection button** on the content browser toolbar. Paths already on your clipboard are queued for you.
 
-   <img width="560" alt="The Reflection button on the content browser toolbar" src="Resources/Readme/toolbar.png"/>
+   <a href="#workflow"><img width="560" alt="The Reflection button on the content browser toolbar" src="Resources/Readme/toolbar.png"/></a>
 
 3. **Queue as many as you want.** Type or paste a path and press `Enter`. Several pasted at once queue one per line, and `X` takes one back out.
 
-   <img width="582" alt="The Reflection dialog" src="Resources/Readme/reflect-dialog.png"/>
+   <a href="#workflow"><img width="582" alt="The Reflection dialog" src="Resources/Readme/reflect-dialog.png"/></a>
 
 4. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you want.
 
