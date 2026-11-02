@@ -1,5 +1,5 @@
 <br/>
-<div align="left">
+<div align="center">
   <!--
   Also popularly known as "JAA", standing for Json As Asset.
   Now known as Reflection, can be used in a way like "Reflect that asset!"
@@ -7,85 +7,139 @@
   
   <a href="https://github.com/JsonAsAsset/Reflection">
     <p>
-      <img width="350" alt="backgorund" src="https://github.com/user-attachments/assets/bcb83183-9c37-4c4f-9994-4e0e71482b36" />
+      <img width="500" alt="backgorund" src="https://github.com/user-attachments/assets/bcb83183-9c37-4c4f-9994-4e0e71482b36" />
     </p>
   </a>
 </div>
 
-<div align="left">
+<div align="center">
 
-Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
+Reflection is the standard for bringing game assets into Unreal Engine. Materials, meshes, data tables, physics assets and more, rebuilt in your project from a path copied out of [FModel](https://github.com/4sval/FModel).
+
+[![Tutorial](https://img.shields.io/badge/Setup-Tutorial-000000?style=for-the-badge)](https://www.youtube.com/watch?v=M28If8DOUXk)
 
 [![GitHub Repo stars](https://img.shields.io/github/stars/JsonAsAsset/Reflection?style=for-the-badge&logo=&color=fcca03)](/../../stargazers)
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE)
-
 [![GitHub Downloads Total Count (all assets, all releases)](https://img.shields.io/github/downloads/JsonAsAsset/Reflection/total?style=for-the-badge&label=DOWNLOADS&color=05c1ff)](/../../releases)
 [![Discord](https://img.shields.io/discord/1110083898043551835.svg?style=for-the-badge&color=0363ff&logo=discord)](https://discord.gg/xXEw4jc2UT)
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
+[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg?style=for-the-badge)](https://github.com/JsonAsAsset/Reflection/blob/main/LICENSE)
 
 </div>
 
-### [Tutorial](https://www.youtube.com/watch?v=M28If8DOUXk)
-
 <a href="#"><img width="1000" alt="image" src="https://github.com/user-attachments/assets/c27df423-eeb1-4025-9c69-3231e59b646a"/></a>
 
------------------
+**[Uses](#uses)** · **[Asset Types](#asset-types)** · **[Installation](#installation)** · **[Cloud](#cloud)** · **[Workflow](#workflow)** · **[Contributors](#contributors)**
 
-### **Table of Contents**
-
-> 1. [Asset Types](#asset-types)  
-> 2. [Installation](#installation)  
-> 3. [→ Workflow](#workflow)
-
------------------
-
-### Uses
-* Importing **materials**, data assets, and data tables — [see more](#asset-types)
-* Porting **physics assets** for skeletal meshes
-* Porting **sound effects** to Unreal Engine
-* Automating asset porting workflows
+<a name="uses"></a>
+## Uses 🧩
+<table>
+  <tr>
+    <td width="50%" valign="top"><b>Materials</b><br/>Materials, functions and instances, with data assets and data tables. <a href="#asset-types">See every type</a></td>
+    <td width="50%" valign="top"><b>Meshes and physics</b><br/>Skeletal and static meshes, with the physics assets behind them.</td>
+  </tr>
+  <tr>
+    <td width="50%" valign="top"><b>Sound</b><br/>Sound cues and most other sound classes, ready to play.</td>
+    <td width="50%" valign="top"><b>Whole workflows</b><br/>Name one asset and everything it references comes with it.</td>
+  </tr>
+</table>
 
 This project aims to streamline the porting and modding experience, making it easier to bring game assets into Unreal Engine.
 
------------------
-
 <a name="asset-types"></a>
-## Asset Types
-If an asset type isn't listed below, **it's not currently supported by the plugin**.
+## Asset Types 📦
+Anything not listed here isn't supported yet.
 
-|  | Asset Types |
-|--------------------------------|------------------------------------------------------------------------------------------------------------------------|
-| 🟢 **Curve** | CurveFloat, CurveVector, CurveLinearColor, CurveLinearColorAtlas |
-| 🟣 **Data** | DataAsset, CurveExpressionsDataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, FortBakedPropertyMetadataCache, UserDefinedEnum, UserDefinedStruct |
-| 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
+| Category | Types |
+|:--|:--|
 | 🟠 **Material** | Material, MaterialFunction, MaterialInstanceConstant, MaterialParameterCollection, SubsurfaceProfile |
-| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite, PaperSpriteAtlas. |
-| 🟦 **Mesh** | SkeletalMesh, StaticMesh. |
-| 🟡 **Sound** | SoundCue and most other sound classes are supported |
-| 🔴 **Animation** | AnimSequence, AnimMontage, PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D, ControlRigBlueprintGeneratedClass |
+| 🟧 **Texture** | Texture2D, TextureCube, Texture2DArray, VolumeTexture, TextureRenderTarget2D, TextureLightProfile, RuntimeVirtualTexture, PaperSprite, PaperSpriteAtlas |
+| 🟦 **Mesh** | SkeletalMesh, StaticMesh |
 | ⚪ **Physics** | PhysicsAsset, PhysicalMaterial |
-| 🟤 **Sequencer** | CameraAnim, ForceFeedbackEffect |
+| 🔴 **Animation** | AnimSequence, AnimMontage, PoseAsset, Skeleton, SkeletalMeshLODSettings, BlendSpace, BlendSpace1D, AimOffsetBlendSpace, AimOffsetBlendSpace1D, ControlRigBlueprintGeneratedClass |
+| 🟡 **Sound** | SoundCue and most other sound classes |
+| 🟢 **Curve** | CurveFloat, CurveVector, CurveLinearColor, CurveLinearColorAtlas |
+| 🔵 **Table** | CurveTable, DataTable, MirrorDataTable, StringTable |
+| 🟣 **Data** | DataAsset, CurveExpressionsDataAsset, SlateBrushAsset, SlateWidgetStyleAsset, LandscapeLayerInfoObject, HLODProxy, AnimBoneCompressionSettings, AnimCurveCompressionSettings, FortBakedPropertyMetadataCache, UserDefinedEnum, UserDefinedStruct |
 | ✨ **Effects** | ParticleSystem, VectorFieldStatic |
-| 💫 **Niagara** |  NiagaraParameterCollection, NiagaraParameterCollectionInstance, NiagaraParameterDefinitions, NiagaraEffectType, NiagaraDataChannelAsset, NiagaraAssetTagDefinitions, NiagaraValidationRuleSet, NiagaraSimCache, NiagaraSystemReadinessSettings |
+| 💫 **Niagara** | NiagaraParameterCollection, NiagaraParameterCollectionInstance, NiagaraParameterDefinitions, NiagaraEffectType, NiagaraDataChannelAsset, NiagaraAssetTagDefinitions, NiagaraValidationRuleSet, NiagaraSimCache, NiagaraSystemReadinessSettings |
 | 🟩 **Landscape** | LandscapeGrassType, FoliageType_InstancedStaticMesh, FoliageType_Actor |
+| 🟤 **Sequencer** | CameraAnim, ForceFeedbackEffect |
 | 🧠 **AI** | BehaviorTree, BlackboardData |
 | 🔤 **UI** | Font, FontFace |
 
-#### Blueprints and Levels (Experimental)
+### Blueprints and Levels
+> [!WARNING]
+> **Experimental.** Both need **Enable Experiments** in Plugin Settings.
+
 Blueprints, Widget Blueprints and Animation Blueprints rebuild their components, variables and defaults, and their graphs are rebuilt from the bytecode where the parent class exists. Levels place the actors they hold, with settings for what to place and what to skip.
 
-Both need **Enable Experiments** in Plugin Settings.
-
 <a name="material-data-prerequisites"></a>
-#### 🟠 Material Data Prerequisites
-Unreal Engine games made below 4.12 (a guess) will have material data. *Games made above that version will most definitely not have any material data*, and therefore the actual data will be stripped and cannot be imported. **Unless you are using a User Generated Content editor**, then it's possible material data will be there.
+> [!NOTE]
+> **Material data.** Unreal Engine games made below 4.12 (a guess) will have material data. *Games made above that version will most definitely not have any material data*, and therefore the actual data will be stripped and cannot be imported. **Unless you are using a User Generated Content editor**, then it's possible material data will be there.
 
-#### 🟣 C++ Classes Prerequisites
-If your game uses custom C++ classes or structures, **you need to define them**.
+> [!TIP]
+> **C++ classes.** If your game uses custom C++ classes or structures, **you need to define them**. See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/UE-Modding-Tools?tab=readme-ov-file#game-specific-template-projects) for game-specific template projects.
 
-See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/UE-Modding-Tools?tab=readme-ov-file#game-specific-template-projects) for game-specific template projects.
+<a name="installation"></a>
+## Installation ⚙️
+> [!IMPORTANT]
+> Install [FModel](https://fmodel.app) and set it up before going any further.
 
------------------
+1. **Add the plugin to your project.** From your project root, where the `.uproject` is:
+
+   ```sh
+   git submodule add https://github.com/JsonAsAsset/Reflection.git Plugins/Reflection
+   git submodule update --init --recursive
+   ```
+
+   This tracks every commit, so fixes for new Unreal versions reach you first, though it may occasionally need a manual fix. For a stable release instead, download **Source code (zip)** from the [Releases page](/../../releases) and extract it to `Project/Plugins/Reflection/`.
+
+2. **Build it** for your engine version, following [Epic's guide](https://dev.epicgames.com/community/learning/tutorials/qz93/unreal-engine-building-plugins).
+
+3. **Open your project.** The Reflection button appears on the content browser toolbar.
+
+<details>
+  <summary>Build failing on <b>Unreal Engine 4</b> with <b>UnrealBuildTool.exe</b> not found?</summary>
+  <br>
+
+Some UE4 builds are missing a platform path. Add this to the bottom of `UE_[VERSION]/Engine/Config/BaseEngine.ini` and save:
+
+```ini
+[PlatformPaths]
+UnrealBuildTool=Engine/Binaries/DotNet/UnrealBuildTool.exe
+```
+</details>
+
+<a name="cloud"></a>
+## Cloud ☁️
+The Cloud app is **Mirror**. It reads the game's files and hands Reflection each asset as it's asked for, over `localhost:1500`. [Set up an instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
+
+<img width="1000" alt="Mirror running and ready" src="Resources/Readme/mirror.png"/>
+
+With Mirror running, Reflection:
+- **Fetches references automatically** instead of asking you for each one.
+- **Pulls data a json export doesn't carry**, like mesh geometry, skin weights and morph targets.
+- **Reads from the profile you pick**, one per game build, from the **Profile** tab of the Reflection dialog.
+
+> [!TIP]
+> No Cloud? Turn on **Use Local Json instead of Cloud** in Plugin Settings, and the Reflection button imports a json you exported from FModel yourself. References aren't fetched for you that way.
+
+<a name="workflow"></a>
+## Workflow 🔁
+Reflection works off **asset paths**. With [Cloud](#cloud) running, nothing has to be saved out of FModel first.
+
+1. **Copy an asset's path** in FModel, like `/Game/Asset.uasset`. A reference copied straight out of FModel works too.
+
+2. **Press the Reflection button** on the content browser toolbar. Paths already on your clipboard are queued for you.
+
+   <img width="560" alt="The Reflection button on the content browser toolbar" src="Resources/Readme/toolbar.png"/>
+
+3. **Queue as many as you want.** Type or paste a path and press `Enter`. Several pasted at once queue one per line, and `X` takes one back out.
+
+   <img width="582" alt="The Reflection dialog" src="Resources/Readme/reflect-dialog.png"/>
+
+4. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you want.
+
+Anything that couldn't be rebuilt is listed in the **Errors** window at the end.
 
 > [!CAUTION]
 > Please note that this plugin is intended solely for **personal and educational use**.
@@ -94,98 +148,8 @@ See [Unreal Engine Modding Projects](https://github.com/Buckminsterfullerene02/U
 >
 > We **do not assume any responsibility** for the way the created content is used.
 
------------------
-
-<a name="installation"></a>
-## Installation
-[<img align="left" width="150" src="https://github.com/user-attachments/assets/d8e4f9c9-1268-4aee-ab1a-dabee31b3069?raw=true">](https://fmodel.app)
-
-> [!IMPORTANT]
-> If you haven't already, **install [FModel](https://fmodel.app) and set it up correctly, then proceed with the setup**.
-
-We strongly recommend using the latest **commit** of Reflection to ensure compatibility with recent Unreal updates and access to the newest features.
-
-Follow these steps to install **Reflection**:
-
-1. **Download Reflection:**   
-   There are two ways you can download Reflection. You can either stay up-to-date with the latest development changes (recommended if you want the newest features and fixes, but may occasionally require manual fixing), or download stable releases.
-
-   1. **Up-to-date (Git Submodule)**   
-      Open a terminal in your Unreal project root (where your `.uproject` file is located), then run:
-
-      ```sh
-      git submodule add https://github.com/JsonAsAsset/Reflection.git Plugins/Reflection
-      git submodule update --init --recursive
-      ```
-
-   2. **Stable Releases (Manual Download)**   
-      Go to the [Releases page](/../../releases) for the plugin.
-      Download the **Source code (zip)**, extract it into your project's `Plugins` folder (create it if it doesn't exist), so the final path looks like:
-
-      ```
-      Project/Plugins/Reflection/
-      ```
-3. **Compile:**   
-   Follow [**this tutorial**](https://dev.epicgames.com/community/learning/tutorials/qz93/unreal-engine-building-plugins) to build the plugin for your Unreal Engine version.
-4. **Launch Your Project:**   
-   Open your Unreal Engine project.
-
-<details>
-  <summary>Compile step failing on <b>Unreal Engine 4</b>? (<b>UnrealBuildTool.exe</b> not found)</summary>
-  <br>
-
-Some UE4 builds may fail to locate **UnrealBuildTool.exe** due to missing platform path definitions. You can fix this by manually adding a `PlatformPaths` entry to `BaseEngine.ini`.
-
-#### Steps
-
-1. Go to your Unreal Engine install directory:
-   ```
-   UE_[VERSION]/Engine/Config/
-   ```
-2. Open:
-   ```
-   BaseEngine.ini
-   ```
-3. Scroll to the very bottom of the file and add:
-   ```ini
-   [PlatformPaths]
-   UnrealBuildTool=Engine/Binaries/DotNet/UnrealBuildTool.exe
-   ```
-4. Save the file.
-</details>
-
------------------
-
-<a name="cloud"></a>
-### Cloud ☁️
-The Cloud app is **Mirror**. [Set up an instance](https://github.com/JsonAsAsset/Mirror/releases) and start it.
-
-Once running, Reflection **fetches references automatically** instead of asking you for each one.
-
------------------
-
-<a name="workflow"></a>
-## Workflow
-Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the exports behind them. Nothing has to be saved out of FModel first.
-
-1. **Start your Cloud instance.**
-
-2. **Copy the path of an asset.** Either form works, so a reference copied straight out of FModel is fine:
-   ```
-   /Game/Asset.uasset
-   ```
-3. **Press the Reflection button** on your content browser toolbar. A dialog opens, and anything path-like already on your clipboard is queued for you.
-
-4. **Queue as many as you want.** Type or paste a path and press `Enter` (or `Add`), several pasted at once queue one per line. `X` takes one back out.
-
-5. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you actually want.
-
-Anything that couldn't be rebuilt is collected into a **Errors** window at the end.
-
------------------
-
 <a name="contributors"></a>
-### Contributors
+## Contributors ❤️
 
 Thanks go to these wonderful people:
 
@@ -198,15 +162,8 @@ Thanks go to these wonderful people:
   </tr>
 </table>
 
-[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20Me%20a%20Coffee-Ko--fi?color=ff0de7&logo=ko-fi&logoColor=white&style=for-the-badge)](https://ko-fi.com/tectory)
-
 <a href="https://github.com/JsonAsAsset/Reflection/graphs/contributors">
   <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
 </a>
 
-Special thanks to:
-- [@NathanFelipeRH](https://github.com/NathanFelipeRH)
-- [@ZyloxMods](https://github.com/ZyloxMods)
-- [@Tajgames](#contributors)
-
-Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)! They have helped a lot. And to the contributors of [Advanced Locomotion System V4](https://www.fab.com/listings/ef9651a4-fb55-4866-a2d9-1b38b028f9c7)!
+Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)!
