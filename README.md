@@ -166,4 +166,8 @@ Thanks go to these wonderful people:
   <img src="https://contrib.rocks/image?repo=JsonAsAsset/Reflection" />
 </a>
 
+Special thanks to:
+- [@NathanFelipeRH](https://github.com/NathanFelipeRH)
+- [@ZyloxMods](https://github.com/ZyloxMods)
+
 Thanks to the people who contributed to [UEAssetToolkit](https://github.com/Buckminsterfullerene02/UEAssetToolkit-Fixes)!
