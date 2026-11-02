@@ -178,7 +178,7 @@ Once running, Reflection **fetches references automatically** instead of asking 
 ## Workflow
 Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the exports behind them. Nothing has to be saved out of FModel first.
 
-1. **Start your Cloud instance.** The button next to Reflection in the content browser toolbar reads `On` once it's up.
+1. **Start your Cloud instance.**
 
 2. **Copy the path of an asset.** Either form works, so a reference copied straight out of FModel is fine:
    ```
@@ -191,11 +191,6 @@ Reflection works off **asset paths**, and a [Cloud](#cloud) instance fetches the
 5. **Press Reflect.** Every reference each asset needs is fetched as it goes, so you only ever name the one you actually want.
 
 Anything that couldn't be rebuilt is collected into a **Errors** window at the end.
-
-#### Other ways in
-| | |
-|---|---|
-| **A whole folder of the game files** | **Folder**, under the Reflection dropdown. Reflects everything under a game path, not one in your project. |
 
 -----------------
 
