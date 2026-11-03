@@ -18,7 +18,9 @@
 #include "K2Node_ClassDynamicCast.h"
 #include "K2Node_DynamicCast.h"
 #include "K2Node_FormatText.h"
+#include "AnimGraphNode_Base.h"
 #include "K2Node_FunctionEntry.h"
+#include "K2Node_VariableSetRef.h"
 #include "K2Node_GetClassDefaults.h"
 #include "K2Node_FunctionResult.h"
 #include "K2Node_Event.h"
@@ -3930,6 +3932,33 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 			return true;
 		}
 
+		/* Written into a parameter the function was handed by reference.
+		 *
+		 * The script writes one the same way it writes what the function hands back, but a parameter
+		 * taken by reference is a pin on the entry node, not on a Return, and the graph writes it with
+		 * a Set by-ref Var on that pin. Read as an answer, there is no Return pin to put it on and the
+		 * write is lost: Debug Cloth Teleport Threshold Function hands its InVector back this way. */
+		if (MacroReading::TokenOf(Variable) == TEXT("EX_LocalOutVariable") && !Name.IsEmpty() && !Answered.Contains(Name)) {
+			UEdGraphPin** ByReference = Locals.Find(Name);
+
+			if (ByReference != nullptr && *ByReference != nullptr && (*ByReference)->PinType.bIsReference && (*ByReference)->GetOwningNode()->IsA<UK2Node_FunctionEntry>()) {
+				UK2Node_VariableSetRef* Node = AddNode<UK2Node_VariableSetRef>();
+				Node->AllocateDefaultPins();
+
+				Connect(*ByReference, Node->GetTargetPin());
+				/* The node takes its type from whatever its target is connected to, and works that out when told */
+				Node->NotifyPinConnectionListChanged(Node->GetTargetPin());
+
+				Give(Expression, Node->GetValuePin());
+
+				ChainExecution(Node);
+
+				Placed++;
+
+				return true;
+			}
+		}
+
 		/* Written straight into what the function hands back, which is a Return */
 		if (MacroReading::TokenOf(Variable) == TEXT("EX_LocalOutVariable") && !Name.IsEmpty() && !Answered.Contains(Name)) {
 			return AnswerHere(Name, Expression);
@@ -6210,6 +6239,15 @@ int32 FBytecodeGraph::Build() {
 
 			if (One == nullptr || !One->CanUserDeleteNode()) continue;
 			if (One->IsA<UK2Node_Event>() || One->IsA<UK2Node_FunctionEntry>() || One->IsA<UK2Node_FunctionResult>() || One->IsA<UK2Node_Timeline>()) continue;
+
+			/* Nor a pose node, where a rule is laid into an animation graph.
+			 *
+			 * The graph was laid out before the rule came to it, and its pose nodes are not the rule's to
+			 * judge. A Save Cached Pose hands its pose to nobody by design, since it is borrowed by name,
+			 * so read as working something out for nobody it went, and everything feeding it went after
+			 * it: F_MED_GraphShook_FaceAcc_AnimBP lost 59 of its 84 nodes that way, and every borrower of
+			 * those poses was left with nothing to borrow. */
+			if (One->IsA<UAnimGraphNode_Base>()) continue;
 
 			bool bRuns = false;
 			bool bRead = false;

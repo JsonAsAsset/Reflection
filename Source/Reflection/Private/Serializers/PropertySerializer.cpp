@@ -24,6 +24,7 @@
 #include "Engine/FontFace.h"
 #include "Importers/Types/Cascade/ParticleSystemDecooking.h"
 #include "Serializers/Structs/DateTimeSerializer.h"
+#include "Serializers/Structs/BitArrayWrapperSerializer.h"
 #include "Serializers/Structs/FallbackStructSerializer.h"
 #include "Serializers/Structs/ConnectivityCubeSerializer.h"
 #include "Serializers/Structs/NiagaraVariableSerializer.h"
@@ -312,6 +313,13 @@ UPropertySerializer::UPropertySerializer() {
 	 * module has no cubes to read. */
 	if (UScriptStruct* ConnectivityCubeStruct = FindObject<UScriptStruct>(nullptr, TEXT("/Script/FortniteGame.ConnectivityCube"))) {
 		StructSerializers.Add(ConnectivityCubeStruct, MakeShared<FConnectivityCubeSerializer>());
+	}
+
+	/* Put down against the bit array wrapper character dynamics decision trees keep their masks in, which is a
+	 * bit array with no reflection data to write through, the same as a cube face. Asked for rather than checked,
+	 * since a build without the module has no decision trees to read. */
+	if (UScriptStruct* BitArrayWrapperStruct = FindObject<UScriptStruct>(nullptr, TEXT("/Script/CharacterDynamicsControlCore.BitArrayWrapper"))) {
+		StructSerializers.Add(BitArrayWrapperStruct, MakeShared<FBitArrayWrapperSerializer>());
 	}
 }
 

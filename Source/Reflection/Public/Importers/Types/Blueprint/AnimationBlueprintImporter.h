@@ -23,6 +23,15 @@ private:
 
 	/* Says over each graph how it blends in and out, and answers how many were said over */
 	int32 ConstructBlendOptions();
+
+	/* Says which of the parent's nodes play something of this blueprint's own, and answers how many.
+	 *
+	 * A blueprint built on another animation blueprint draws no graph: the parent's graph is the one
+	 * that runs, and all the child says is that this node there plays this asset here. The engine
+	 * keeps that as a list against the parent's node ids, and rebuilds the class from the parent's
+	 * every time it compiles, so anything written straight onto the class lasts until the next
+	 * compile and no longer. */
+	int32 ConstructParentAssetOverrides();
 	
 	void ProcessEvaluateGraphExposedInputs(const TSharedPtr<FJsonObject>& AnimNodeProperties) const;
 

@@ -34,6 +34,8 @@
 #include "AnimGraphNode_StateResult.h"
 #include "AnimGraphNode_UseCachedPose.h"
 #include "Animation/AnimBlueprint.h"
+#include "Animation/AnimBlueprintGeneratedClass.h"
+#include "Animation/AnimationAsset.h"
 #include "Importers/Types/Animation/PreviewMesh.h"
 #include "Kismet2/BlueprintEditorUtils.h"
 
@@ -89,6 +91,118 @@ int32 IAnimationBlueprintImporter::ConstructBlendOptions() {
 	}
 
 	return Said;
+}
+
+int32 IAnimationBlueprintImporter::ConstructParentAssetOverrides() {
+	UAnimBlueprintGeneratedClass* Class = Cast<UAnimBlueprintGeneratedClass>(AnimBlueprint->GeneratedClass);
+
+	if (Class == nullptr || !RootAnimNodeProperties.IsValid()) return 0;
+
+	/* Every node of every class up the chain, which for a blueprint built on another is the parent's
+	 * graph entire. The engine numbers them backwards against this array, and the id of each is kept
+	 * only where it was compiled, so the parent has to have been built in this session. */
+	const TArray<FStructProperty*>& Properties = Class->GetAnimNodeProperties();
+
+	if (Properties.Num() == 0) return 0;
+
+	if (UAnimBlueprint* Parent = UAnimBlueprint::GetParentAnimBlueprint(AnimBlueprint); Parent != nullptr) {
+		UAnimBlueprintGeneratedClass* Built = Cast<UAnimBlueprintGeneratedClass>(Parent->GeneratedClass);
+
+		/* Loaded off disk the parent knows which node each of its properties is, and not the other
+		 * way round: what says so is written while it compiles and never saved. So it is built once
+		 * here, which is what the editor does anyway the moment anybody opens the child. */
+		if (Built == nullptr || Built->GetAnimBlueprintDebugData().NodePropertyIndexToNodeMap.Num() == 0) {
+			CompileBlueprintGuarded(Parent, EBlueprintCompileOptions::SkipGarbageCollection);
+		}
+	}
+
+	/* Where each of them sits, by the name the class gave it */
+	TMap<FString, int32> Where;
+
+	for (int32 At = 0; At < Properties.Num(); ++At) {
+		if (Properties[At] != nullptr) Where.Add(Properties[At]->GetName(), Properties.Num() - 1 - At);
+	}
+
+	TArray<FAnimParentNodeAssetOverride> Overrides;
+
+	for (const TPair<FString, TSharedPtr<FJsonValue>>& Pair : RootAnimNodeProperties->Values) {
+		const FString Key = JsonKeyToString(Pair.Key);
+
+		const TSharedPtr<FJsonObject> Node = Pair.Value.IsValid() && Pair.Value->Type == EJson::Object ? Pair.Value->AsObject() : nullptr;
+
+		if (!Node.IsValid()) continue;
+
+		const int32* At = Where.Find(Key);
+
+		if (At == nullptr) {
+			FImportIssues::Report(
+				EImportIssue::Data,
+				TEXT("A node the parent hasn't got"),
+				FString::Printf(TEXT("'%s' plays something of its own at \"%s\", and no node of that name is anywhere in what it is built on."), *GetAssetName(), *Key)
+			);
+
+			continue;
+		}
+
+		const FStructProperty* Held = Properties[Properties.Num() - 1 - *At];
+
+		/* Whichever of the node's own properties holds what it plays, asked of the node rather than
+		 * named here: a sequence player keeps a sequence, a pose node a pose asset, a blend space a
+		 * blend space, and each under a name of its own */
+		FObjectPropertyBase* Plays = nullptr;
+
+		for (TFieldIterator<FObjectPropertyBase> It(Held->Struct); It; ++It) {
+			if (It->PropertyClass != nullptr && It->PropertyClass->IsChildOf(UAnimationAsset::StaticClass())) {
+				Plays = *It;
+
+				break;
+			}
+		}
+
+		if (Plays == nullptr) continue;
+
+		const TSharedPtr<FJsonValue>* Said = Node->Values.Find(StringToJsonKey(Plays->GetName()));
+
+		if (Said == nullptr || !(*Said).IsValid() || (*Said)->IsNull()) continue;
+
+		const UAnimGraphNode_Base* Drawn = Cast<UAnimGraphNode_Base>(Class->GetVisualNodeFromNodePropertyIndex(*At, EPropertySearchMode::Hierarchy));
+
+		if (Drawn == nullptr) {
+			FImportIssues::Report(
+				EImportIssue::Data,
+				TEXT("A node with no id to say it by"),
+				FString::Printf(TEXT("'%s' plays something of its own at \"%s\", and the blueprint it is built on does not say which of its nodes that is."), *GetAssetName(), *Key)
+			);
+
+			continue;
+		}
+
+		/* Read the way any property is read, so a reference that moved is followed and one the build
+		 * hasn't got comes back as nothing rather than as a path */
+		void* Into = FMemory::Malloc(Plays->GetSize(), Plays->GetMinAlignment());
+
+		Plays->InitializeValue(Into);
+		GetObjectSerializer()->GetPropertySerializer()->DeserializePropertyValue(Plays, (*Said).ToSharedRef(), Into);
+
+		UAnimationAsset* Asset = Cast<UAnimationAsset>(Plays->GetObjectPropertyValue(Into));
+
+		Plays->DestroyValue(Into);
+		FMemory::Free(Into);
+
+		if (Asset == nullptr) continue;
+
+		Overrides.Add(FAnimParentNodeAssetOverride(Drawn->NodeGuid, Asset));
+	}
+
+	if (Overrides.Num() == 0) return 0;
+
+	AnimBlueprint->ParentAssetOverrides = Overrides;
+
+	/* The class is built from the parent's every time, and these are put back over it afterwards, so
+	 * it only holds them once it has been built again */
+	CompileBlueprintGuarded(AnimBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+	return Overrides.Num();
 }
 
 bool IAnimationBlueprintImporter::Import() {
@@ -511,6 +625,52 @@ bool IAnimationBlueprintImporter::Import() {
 		}
 	};
 
+	/* A blueprint built on another animation blueprint has no graph of its own.
+	 *
+	 * The parent's graph is the one that runs, and the compiler never looks at a child's: what the
+	 * child says is which of the parent's nodes plays something else, and that is kept as a list
+	 * against the parent's node ids rather than drawn anywhere.
+	 *
+	 * So the handful of nodes the cook wrote onto the class are not a graph to lay out. Laid out
+	 * they become a graph nothing reads, with an output pose fed by one node out of the parent's
+	 * seventy, and the asset they were there to say is said nowhere the next compile would keep. */
+	if (UAnimBlueprint::FindRootAnimBlueprint(AnimBlueprint) != nullptr) {
+		/* One an earlier run drew, which is the same graph nothing reads */
+		if (UEdGraph* Drawn = FindAnimGraph(AnimBlueprint)) {
+			Drawn->bAllowDeletion = true;
+
+			FBlueprintEditorUtils::RemoveGraph(AnimBlueprint, Drawn, EGraphRemoveFlags::None);
+
+			/* Built again before anything is read off the class.
+			 *
+			 * A node that was in that graph is a property of the class under the same name as the
+			 * parent's node it stood for, so until the class is made again the parent's nodes are
+			 * one short of where the class says they are, and each is looked up as its neighbour. */
+			CompileBlueprintGuarded(AnimBlueprint, EBlueprintCompileOptions::SkipGarbageCollection);
+
+			UE_LOG(LogReflection, Display, TEXT("\"%s\" is built on another animation blueprint, so the graph it had been given was taken back out"), *GetAssetName());
+		}
+
+		if (const int32 Plays = ConstructParentAssetOverrides(); Plays > 0) {
+			UE_LOG(LogReflection, Display, TEXT("%d of the parent's node(s) play something of \"%s\"'s own"), Plays, *GetAssetName());
+		}
+
+		Blueprint = AnimBlueprint;
+
+		ConstructBody();
+		SettleAnimGetters();
+
+		FPreviewMesh::FromFolder(AnimBlueprint, AnimBlueprint->TargetSkeleton);
+
+		if (!IsBlueprintClassBuilt(AnimBlueprint)) {
+			UE_LOG(LogReflection, Error, TEXT("\"%s\" has no class to hand over, so nothing was written for it"), *GetAssetName());
+
+			return false;
+		}
+
+		return OnAssetCreation(AnimBlueprint);
+	}
+
 	UEdGraph* AnimGraph = FindAnimGraph(AnimBlueprint);
 
 	/* Made where the blueprint hasn't got one.
@@ -743,7 +903,8 @@ void IAnimationBlueprintImporter::ReadFolded(const TSharedPtr<FJsonObject>& Node
 
 		Key.Split(TEXT("_"), &NodeType, &Rest, ESearchCase::IgnoreCase, ESearchDir::FromEnd);
 
-		if (NodeType == TEXT("AnimGraphNode") || NodeType.IsEmpty()) NodeType = Key;
+		/* An unnumbered key splits into its class prefix alone; game nodes prefix theirs too. */
+		if (NodeType.EndsWith(TEXT("AnimGraphNode")) || NodeType.IsEmpty()) NodeType = Key;
 
 		UClass* Class = FindClassByType(NodeType);
 
@@ -1809,6 +1970,12 @@ void IAnimationBlueprintImporter::CreateGraph(const TSharedPtr<FJsonObject>& Ani
 }
 
 void inline LinkPoseInputPin(const FString& PinName, UAnimGraphNode_Base* Node, UAnimGraphNode_Base* TargetNode, UEdGraph* AnimGraph) {
+	/* A link to a node that was never made (its kind has no editor node here) leaves nothing to feed the pin. */
+	if (!TargetNode) {
+		UE_LOG(LogReflection, Warning, TEXT("%s.%s was to be fed by a node that was not made"), *Node->GetName(), *PinName);
+		return;
+	}
+
 	UEdGraphPin* InputPin = Node->FindPin(PinName, EGPD_Input);
 	UEdGraphPin* OutputPin = GetFirstOutputPin(TargetNode);
 	
@@ -1908,7 +2075,7 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
 		const FString IndexedPinName = FString::Printf(TEXT("BlendPose_%d"), 0);
 
 		FUObjectExport* TargetNodeExport = Container->Find(LinkID);
-		UAnimGraphNode_Base* TargetNode = Cast<UAnimGraphNode_Base>(TargetNodeExport->Object);
+		UAnimGraphNode_Base* TargetNode = TargetNodeExport ? Cast<UAnimGraphNode_Base>(TargetNodeExport->Object) : nullptr;
 
 		LinkPoseInputPin(IndexedPinName, BlendListByEnum, TargetNode, AnimGraph);
 
@@ -1925,7 +2092,7 @@ void IAnimationBlueprintImporter::UpdateBlendListByEnumVisibleEntries(FUObjectEx
 			const FString IndexedPinName = FString::Printf(TEXT("BlendPose_%d"), BlendPoseIndex);
 
 			FUObjectExport* TargetNodeExport = Container->Find(LinkID);
-			UAnimGraphNode_Base* TargetNode = Cast<UAnimGraphNode_Base>(TargetNodeExport->Object);
+			UAnimGraphNode_Base* TargetNode = TargetNodeExport ? Cast<UAnimGraphNode_Base>(TargetNodeExport->Object) : nullptr;
 
 			LinkPoseInputPin(IndexedPinName, BlendListByEnum, TargetNode, AnimGraph);
 		}
@@ -1957,7 +2124,8 @@ void IAnimationBlueprintImporter::CreateAnimGraphNodes(UEdGraph* AnimGraph, cons
 			}
 		}
 
-		if (NodeType == "AnimGraphNode") {
+		/* An unnumbered key splits into its class prefix alone; game nodes prefix theirs too ("FortAnimGraphNode_BlendFacialCurves"). */
+		if (NodeType.EndsWith(TEXT("AnimGraphNode"))) {
 			NodeType = Key;
 		}
 

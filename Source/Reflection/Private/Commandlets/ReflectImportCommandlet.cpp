@@ -278,6 +278,11 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 			Loose, LoosePins, LooseLinks);
 	}
 
+	/* What was asked for is written whether or not its importer remembered to dirty it; the rig importer does not */
+	if (Package != nullptr) {
+		Package->MarkPackageDirty();
+	}
+
 	SaveDirtyPackages();
 
 	return 0;
