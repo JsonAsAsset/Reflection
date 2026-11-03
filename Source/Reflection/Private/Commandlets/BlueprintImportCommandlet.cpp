@@ -42,6 +42,14 @@ DECLARE_LOG_CATEGORY_CLASS(LogBlueprintImport, All, All);
 int32 UBlueprintImportCommandlet::Main(const FString& Params) {
 	UE_LOG(LogBlueprintImport, Display, TEXT("asked for: %s"), *Params);
 
+	/* A profile Mirror has mounted but is not showing, named by its file id. Every request this run makes is
+	 * pinned to it, the way picking it in the profiles panel pins the editor's */
+	if (FString Pinned; FParse::Value(*Params, TEXT("build="), Pinned) && !Pinned.IsEmpty()) {
+		Cloud::Build = Pinned;
+
+		UE_LOG(LogBlueprintImport, Display, TEXT("reading from profile %s"), *Pinned);
+	}
+
 	/* What a macro means, read out of the engine's own statement of it.
 	 *
 	 * A macro is copied into whatever used it before anything is compiled, so what comes back is

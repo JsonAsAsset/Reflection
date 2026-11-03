@@ -217,6 +217,13 @@ private:
 	/* Points a delegate node at the delegate it is about, and answers what it is asked against */
 	UEdGraphPin* PointAtDelegate(class UK2Node_BaseMCDelegate* Node, const FUObjectJsonValueExport& Named);
 
+	/* Asks the delegate node it pointed against, or, when that is a local only written further down,
+	 * ties its self pin up at the end with the other values written later */
+	void AimDelegate(class UK2Node_BaseMCDelegate* Node, UEdGraphPin* Against);
+
+	/* The local a delegate was reached through when nothing had written it yet */
+	FString DelegateTargetWanted;
+
 	/* The pin a function answers through, by the name of the answer. Nothing where the function
 	 * gives nothing back, or where the name is not one of its answers. */
 	UEdGraphPin* FindAnswer(const FString& Name) const;

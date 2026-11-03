@@ -83,6 +83,14 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 		return 1;
 	}
 
+	/* A profile Mirror has mounted but is not showing, named by its file id. Every request this run makes is
+	 * pinned to it, the way picking it in the profiles panel pins the editor's */
+	if (FString Pinned; FParse::Value(*Params, TEXT("build="), Pinned) && !Pinned.IsEmpty()) {
+		Cloud::Build = Pinned;
+
+		UE_LOG(LogReflectImport, Display, TEXT("reading from profile %s"), *Pinned);
+	}
+
 	/* Who the exports belong to, which every path read out of them is said in terms of.
 	 *
 	 * The editor asks for this when it connects, so anything importing there already knows it. A

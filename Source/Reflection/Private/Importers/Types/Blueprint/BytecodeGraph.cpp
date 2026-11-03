@@ -379,6 +379,17 @@ UFunction* FBytecodeGraph::FindFunctionOn(const UClass* Class, const FString& Me
 
 	if (UFunction* Found = Class->FindFunctionByName(*Member)) return Found;
 
+	/* Called by name on something whose class only has the function through an interface it
+	 * implements, as a pawn has HasMatchingGameplayTag from IGameplayTagAssetInterface. The script
+	 * spells that call the same way as one of the class's own, and the function is on the interface */
+	for (const UClass* Up = Class; Up != nullptr; Up = Up->GetSuperClass()) {
+		for (const FImplementedInterface& Implemented : Up->Interfaces) {
+			if (Implemented.Class == nullptr) continue;
+
+			if (UFunction* Found = Implemented.Class->FindFunctionByName(*Member)) return Found;
+		}
+	}
+
 	/* Called by a name the engine has since moved on from. What a float math node was called is
 	 * what a double one is called now, and the engine is the one that knows which became which,
 	 * so it is asked rather than guessed at. */
@@ -1128,8 +1139,24 @@ namespace {
 	}
 }
 
+void FBytecodeGraph::AimDelegate(UK2Node_BaseMCDelegate* Node, UEdGraphPin* Against) {
+	UEdGraphPin* Self = Node != nullptr ? Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input) : nullptr;
+
+	if (Self == nullptr) return;
+
+	if (Against != nullptr) {
+		Connect(Against, Self);
+	} else if (!DelegateTargetWanted.IsEmpty()) {
+		/* Bound on a local an event's entry jumps ahead to write, as a cast's result is. Left unwired the
+		 * node is asked of the blueprint itself, which is not the class the delegate is on */
+		Later.Add(TPair<UEdGraphPin*, FString>(Self, DelegateTargetWanted));
+	}
+}
+
 UEdGraphPin* FBytecodeGraph::PointAtDelegate(UK2Node_BaseMCDelegate* Node, const FUObjectJsonValueExport& Named) {
 	if (Node == nullptr) return nullptr;
+
+	DelegateTargetWanted.Reset();
 
 	/* Stretch by something else, which the run says by reaching it through that thing. What is named
 	 * is the delegate; what it is reached through is the target the node is asked against. */
@@ -1204,6 +1231,8 @@ UEdGraphPin* FBytecodeGraph::PointAtDelegate(UK2Node_BaseMCDelegate* Node, const
 			if (Owner != nullptr) Node->DelegateReference.SetExternalMember(DispatcherOn(Owner, Called), Owner);
 			else Node->DelegateReference.SetSelfMember(FName(*Called));
 		}
+
+		if (On.Pin == nullptr) DelegateTargetWanted = On.Wanted;
 
 		return On.Pin;
 	}
@@ -1442,6 +1471,11 @@ FBytecodeGraph::FValue FBytecodeGraph::ReadVariable(const FUObjectJsonValueExpor
 }
 
 const UClass* FBytecodeGraph::DeclaredClassOf(const FUObjectJsonValueExport& Expression) {
+	/* Reached through an interface, which only wraps the local the call is really made against */
+	if (MacroReading::TokenOf(Expression) == TEXT("EX_InterfaceContext")) {
+		return DeclaredClassOf(Inner(Expression));
+	}
+
 	const FUObjectJsonValueExport Variable = Expression.GetObject(TEXT("Variable"));
 	const FUObjectJsonValueExport Property = Variable.GetObject(TEXT("Property"));
 
@@ -2901,6 +2935,7 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 	if (!Expression.Has(TEXT("Function"))) return nullptr;
 
 	UFunction* Function = nullptr;
+	const UClass* LookedOn = nullptr;
 
 	/* A call spells its function either as a reference that carries the class it is on, or as a
 	 * bare name, which only means anything against whatever the call is made on */
@@ -2921,6 +2956,7 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 		}
 
 		Function = FindFunctionOn(On, Named);
+		LookedOn = On;
 
 		/* Called on nothing from a graph that overrides a native event, which hands the native class in as
 		 * what the call is against. The blueprint's own functions are not on that class, so a call to one
@@ -2956,9 +2992,10 @@ UK2Node* FBytecodeGraph::PlaceCall(const FUObjectJsonValueExport& Expression, UE
 			? Expression.GetString(TEXT("Function"))
 			: Expression.GetObject(TEXT("Function")).GetString(TEXT("ObjectName"));
 
-		Unhandled.AddUnique(FString::Printf(TEXT("%s calls %s, which this build has not got"),
+		Unhandled.AddUnique(FString::Printf(TEXT("%s calls %s, which this build has not got%s"),
 			*Expression.GetString(TEXT("Token")),
-			Names.IsEmpty() ? TEXT("a function it does not name") : *Names));
+			Names.IsEmpty() ? TEXT("a function it does not name") : *Names,
+			LookedOn != nullptr ? *FString::Printf(TEXT(" (looked for on %s)"), *LookedOn->GetName()) : TEXT("")));
 
 		return nullptr;
 	}
@@ -4330,9 +4367,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 
 		Node->AllocateDefaultPins();
 
-		if (Against != nullptr && Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input) != nullptr) {
-			Connect(Against, Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input));
-		}
+		AimDelegate(Node, Against);
 
 		if (Statement.Has(TEXT("Delegate"))) {
 			const FValue Bound = Read(Statement.GetObject(TEXT("Delegate")));
@@ -4355,9 +4390,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 
 		Node->AllocateDefaultPins();
 
-		if (Against != nullptr && Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input) != nullptr) {
-			Connect(Against, Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input));
-		}
+		AimDelegate(Node, Against);
 
 		ChainExecution(Node);
 
@@ -4374,9 +4407,7 @@ bool FBytecodeGraph::Place(const FUObjectJsonValueExport& Statement) {
 
 		Node->AllocateDefaultPins();
 
-		if (Against != nullptr && Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input) != nullptr) {
-			Connect(Against, Node->FindPin(UEdGraphSchema_K2::PN_Self, EGPD_Input));
-		}
+		AimDelegate(Node, Against);
 
 		/* What it hands each of them, in the order the signature takes them */
 		const TArray<FUObjectJsonValueExport> Given = Statement.Has(TEXT("Parameters")) ? Statement.GetArray(TEXT("Parameters")) : TArray<FUObjectJsonValueExport>();
