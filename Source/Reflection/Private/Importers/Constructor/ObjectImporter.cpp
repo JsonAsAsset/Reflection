@@ -14,6 +14,8 @@ bool IObjectImporter::Import() {
 
 	auto _ = Asset->MarkPackageDirty();
 
+	Prepare(Asset);
+
 	/* Subobjects first: a property that points at one has nothing to point at until it exists */
 	DeserializeExports(Asset);
 	GetObjectSerializer()->DeserializeObjectProperties(GetAssetData(), Asset);

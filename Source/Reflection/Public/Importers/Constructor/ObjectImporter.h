@@ -1,4 +1,4 @@
-/* Copyright Reflection Contributors 2024-2026 */
+﻿/* Copyright Reflection Contributors 2024-2026 */
 
 #pragma once
 
@@ -18,6 +18,10 @@ class REFLECTION_API IObjectImporter : public IImporter {
 public:
 	virtual UObject* CreateAsset(UObject* CreatedAsset = nullptr) override;
 	virtual bool Import() override;
+
+	/* Runs once the asset exists and before anything is read into it, which is the only point at
+	 * which an importer can say what is not to be built. Nothing by default. */
+	virtual void Prepare(UObject* Asset) const {}
 
 	/* Puts right anything the export left in a state the engine will not take, and nothing by
 	 * default.

@@ -1,4 +1,4 @@
-/* Copyright Reflection Contributors 2024-2026 */
+﻿/* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/ObjectSerializer.h"
 
@@ -203,6 +203,21 @@ namespace {
 
 UObject* UObjectSerializer::SpawnExport(FUObjectExport* Export, const bool bOnlySerialize) {
 	if (Export == nullptr) return nullptr;
+
+	/* Said not to be built. DeserializeExport honours this and this did not, so a reference naming
+	 * such an export built it anyway. Answered with whatever there is instead.
+	 *
+	 * Unless the caller only wants it read into, which is how the templated importer fills the asset
+	 * it just made. */
+	if (!bOnlySerialize && ExportsToNotDeserialize.Contains(Export->GetName().ToString())) {
+		if (Export->Object == nullptr) {
+			if (UObject** Standing = ConstructedObjects.Find(Export->GetName().ToString())) {
+				Export->Object = *Standing;
+			}
+		}
+
+		return Export->Object;
+	}
 
 	/* Already being made further up the stack, so what there is of it is all there is to give.
 	 *

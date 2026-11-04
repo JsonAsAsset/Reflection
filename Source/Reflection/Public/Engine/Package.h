@@ -1,4 +1,4 @@
-/* Copyright Reflection Contributors 2024-2026 */
+﻿/* Copyright Reflection Contributors 2024-2026 */
 
 #pragma once
 
@@ -178,7 +178,10 @@ inline bool HandleAssetCreation(UObject* Asset, UPackage* Package, const bool bB
 	}
 
 	FAssetRegistryModule::AssetCreated(Asset);
-	if (!Asset->MarkPackageDirty()) return false;
+
+	/* Answers no while the editor is playing, loading, undoing or reloading, which says nothing
+	 * about the asset. Taken as a failure it threw away every import made during PIE. */
+	Asset->MarkPackageDirty();
 
 	Package->SetDirtyFlag(true);
 

@@ -1,4 +1,4 @@
-/* Copyright Reflection Contributors 2024-2026 */
+﻿/* Copyright Reflection Contributors 2024-2026 */
 
 #include "Serializers/PropertySerializer.h"
 
@@ -225,10 +225,44 @@ namespace {
 	}
 }
 
+/* The property where it points at an object, held outright or through an interface. Both are read
+ * the same way; only writing the answer back differs. */
+static const FProperty* PointsAtObject(const FProperty* Property) {
+	if (Property->IsA<FObjectPropertyBase>() || Property->IsA<FInterfaceProperty>()) return Property;
+
+	return nullptr;
+}
+
+/* What it holds now. An interface keeps the object beside a pointer into the part answering for it. */
+static UObject* PointedObject(const FProperty* Property, const void* Value) {
+	if (const FObjectPropertyBase* AsObject = CastField<const FObjectPropertyBase>(Property)) {
+		return AsObject->GetObjectPropertyValue(Value);
+	}
+
+	if (CastField<const FInterfaceProperty>(Property) != nullptr) {
+		return static_cast<const FScriptInterface*>(Value)->GetObject();
+	}
+
+	return nullptr;
+}
+
+/* And what it will take, which is a class either way */
+static UClass* PointedClass(const FProperty* Property) {
+	if (const FObjectPropertyBase* AsObject = CastField<const FObjectPropertyBase>(Property)) {
+		return AsObject->PropertyClass;
+	}
+
+	if (const FInterfaceProperty* AsInterface = CastField<const FInterfaceProperty>(Property)) {
+		return AsInterface->InterfaceClass;
+	}
+
+	return nullptr;
+}
+
 /* An object property takes whatever pointer it is handed without checking the type, so anything
  * that resolves to the wrong class lands in the property and is only discovered when something
  * calls through it, by which point the editor is already gone. */
-static void SetObjectPropertyValueChecked(const FObjectPropertyBase* ObjectProperty, void* OutValue, UObject* Object) {
+static void SetObjectPropertyValueChecked(const FProperty* Property, void* OutValue, UObject* Object) {
 	/* A subobject the class made for itself is part of what the object is, and plenty of the engine
 	 * reaches through one without checking: a material function asked for its expressions casts
 	 * onto whatever is in EditorOnlyData and takes nothing for an answer. A reference that came
@@ -238,21 +272,43 @@ static void SetObjectPropertyValueChecked(const FObjectPropertyBase* ObjectPrope
 	 * was made. A material function makes its editor data in PostInitProperties rather than as a
 	 * default subobject, and it is no less part of the function for that. */
 	if (Object == nullptr) {
-		const UObject* Current = ObjectProperty->GetObjectPropertyValue(OutValue);
+		const UObject* Current = PointedObject(Property, OutValue);
 
 		if (Current != nullptr && Current->GetOuter() != nullptr && !Current->GetOuter()->IsA<UPackage>()) {
 			return;
 		}
 	}
 
-	if (Object != nullptr && ObjectProperty->PropertyClass != nullptr && !Object->IsA(ObjectProperty->PropertyClass)) {
-		UE_LOG(LogReflectionPropertySerializer, Warning, TEXT("Skipped '%s': '%s' is a %s, not a %s."),
-			*ObjectProperty->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *ObjectProperty->PropertyClass->GetName());
+	const FInterfaceProperty* AsInterface = CastField<const FInterfaceProperty>(Property);
+
+	if (const UClass* Wanted = PointedClass(Property); Object != nullptr && Wanted != nullptr) {
+		/* An interface is implemented, not derived from */
+		const bool bTakes = AsInterface != nullptr
+			? Object->GetClass()->ImplementsInterface(Wanted)
+			: Object->IsA(Wanted);
+
+		if (!bTakes) {
+			UE_LOG(LogReflectionPropertySerializer, Warning, TEXT("Skipped '%s': '%s' is a %s, not a %s."),
+				*Property->GetName(), *Object->GetPathName(), *Object->GetClass()->GetName(), *Wanted->GetName());
+
+			return;
+		}
+	}
+
+	if (AsInterface != nullptr) {
+		FScriptInterface* Holds = static_cast<FScriptInterface*>(OutValue);
+
+		Holds->SetObject(Object);
+		Holds->SetInterface(Object != nullptr && AsInterface->InterfaceClass != nullptr
+			? Object->GetClass()->GetInterfaceAddress(AsInterface->InterfaceClass)
+			: nullptr);
 
 		return;
 	}
 
-	ObjectProperty->SetObjectPropertyValue(OutValue, Object);
+	if (const FObjectPropertyBase* AsObject = CastField<const FObjectPropertyBase>(Property)) {
+		AsObject->SetObjectPropertyValue(OutValue, Object);
+	}
 }
 
 void UPropertySerializer::RemapConvertOutput(const UStruct* Struct, void* StructValue) const {
@@ -455,7 +511,6 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 	}
 	else if (Property->IsA<FMulticastDelegateProperty>()) {
 	} else if (Property->IsA<FDelegateProperty>()) {
-	} else if (CastField<const FInterfaceProperty>(Property)) {
 	}
 	else if (FSoftObjectProperty* SoftObjectProperty = CastField<FSoftObjectProperty>(Property)) {
 		TSharedPtr<FJsonObject> SoftJsonObjectProperty;
@@ -519,7 +574,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 		}
 	}
-	else if (const FObjectPropertyBase* ObjectProperty = CastField<const FObjectPropertyBase>(Property)) {
+	else if (const FProperty* ObjectProperty = PointsAtObject(Property)) {
 		/* Need to serialize full UObject for object property */
 		TObjectPtr<UObject> Object = nullptr;
 
@@ -572,7 +627,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 				FString AssetName;
 
 				if (Named.Split(TEXT("."), &PackagePath, &AssetName)) {
-					IImporter::DownloadWrapper(Points, Kind.IsEmpty() ? ObjectProperty->PropertyClass->GetName() : Kind, AssetName, PackagePath);
+					IImporter::DownloadWrapper(Points, Kind.IsEmpty() ? GetNameSafe(PointedClass(ObjectProperty)) : Kind, AssetName, PackagePath);
 				}
 
 				if (Points == nullptr) Points = LoadObjectByPath<UObject>(Where);
@@ -647,7 +702,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 
 			/* Whatever it holds may point at something taken apart since, which answers a null check and then crashes */
-			UObject* CurrentObject = ObjectProperty->GetObjectPropertyValue(OutValue);
+			UObject* CurrentObject = PointedObject(ObjectProperty, OutValue);
 
 			if (CurrentObject != nullptr && (!CurrentObject->IsValidLowLevelFast() || !IsValid(CurrentObject))) {
 				CurrentObject = nullptr;
@@ -792,7 +847,7 @@ void UPropertySerializer::DeserializePropertyValue(FProperty* Property, const TS
 			}
 
 			/* Named something and came back with nothing. */
-			if (ObjectProperty->GetObjectPropertyValue(OutValue) == nullptr) {
+			if (PointedObject(ObjectProperty, OutValue) == nullptr) {
 				FString Named;
 
 				JsonValueAsObject->TryGetStringField(TEXT("ObjectName"), Named);

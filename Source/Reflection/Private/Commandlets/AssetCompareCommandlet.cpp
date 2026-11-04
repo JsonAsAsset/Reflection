@@ -1,4 +1,4 @@
-/* Copyright Reflection Contributors 2024-2026 */
+﻿/* Copyright Reflection Contributors 2024-2026 */
 
 #include "AssetCompareCommandlet.h"
 
@@ -157,6 +157,33 @@ int32 UAssetCompareCommandlet::Main(const FString& Params) {
 	if (FParse::Param(*Params, TEXT("exports"))) {
 		UPackage* Package = Asset->GetOutermost();
 
+		/* Everything the package holds, however deep: a subobject lives under the asset, not under
+		 * the package, so asking the package alone found none of them. Kept under its name and under
+		 * its outer's name too, since a sequence holds a MovieSceneFloatSection_0 per float track. */
+		TMap<FString, UObject*> Held;
+		TArray<FString> Twice;
+
+		{
+			TArray<UObject*> Inside;
+			GetObjectsWithOuter(Package, Inside, true);
+
+			for (UObject* One : Inside) {
+				if (One == nullptr) continue;
+
+				const FString Named = One->GetName();
+
+				if (One->GetOuter() != nullptr) {
+					Held.Add(One->GetOuter()->GetName() + TEXT(".") + Named, One);
+				}
+
+				/* A shared name is disowned, so a reference that cannot say which it means gets neither */
+				if (Held.Contains(Named)) Twice.AddUnique(Named);
+				else Held.Add(Named, One);
+			}
+
+			for (const FString& One : Twice) Held.Remove(One);
+		}
+
 		int32 Compared = 0;
 		int32 Unmatched = 0;
 
@@ -171,9 +198,17 @@ int32 UAssetCompareCommandlet::Main(const FString& Params) {
 
 			if (!Export->TryGetStringField(TEXT("Name"), Named) || Named.IsEmpty()) continue;
 
-			UObject* Inside = FindObject<UObject>(Package, *Named);
+			/* With its outer where the export names one, which is what tells two of a name apart */
+			const FString Outer = GetOuterFromObjectOuter(Export->TryGetField(TEXT("Outer")));
+
+			UObject* Inside = Outer.IsEmpty() ? nullptr : Held.FindRef(Outer + TEXT(".") + Named);
+
+			if (Inside == nullptr) Inside = Held.FindRef(Named);
 
 			if (Inside == nullptr) {
+				UE_LOG(LogAssetCompare, Display, TEXT("  nothing in the package stands for %s%s"),
+					Outer.IsEmpty() ? TEXT("") : *(Outer + TEXT(".")), *Named);
+
 				Unmatched++;
 
 				continue;
