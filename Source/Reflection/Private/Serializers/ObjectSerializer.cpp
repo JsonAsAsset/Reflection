@@ -40,6 +40,8 @@
 #include "StaticMeshAttributes.h"
 #endif
 #include "StaticMeshResources.h"
+#include "Components/SplineMeshComponent.h"
+#include "AssetRegistry/AssetRegistryModule.h"
 #include "Misc/Parse.h"
 #include "Settings/Runtime.h"
 
@@ -697,6 +699,116 @@ static TArray<FColor> RepaintOverrideColors(UStaticMesh* StaticMesh, const int32
 	return Repainted;
 }
 
+/* A spline mesh's own override colours, put into a copy of its mesh instead.
+ *
+ * 5.4 draws a spline mesh with override colours white: the spline vertex factory binds its own
+ * uniform buffer, which only carries the default colour stream, where the static mesh path binds
+ * the one built for the component. Painting one by hand comes out white the same way. A spline
+ * mesh does draw its mesh's own colours, so each distinct set of painted colours becomes a copy
+ * of the mesh holding them, kept in the SplineMeshes plugin, and the component is pointed at it
+ * with no override of its own.
+ *
+ * The cooked colours are indexed by the game's vertices, which the mesh importer laid the mesh
+ * description out in, so a vertex's colour goes to every instance of it. A LOD whose vertex count
+ * says otherwise keeps the mesh's own colours. */
+static bool BakeSplineMeshColors(USplineMeshComponent* SplineMesh, const TArray<TSharedPtr<FJsonValue>>& LodValues) {
+	UStaticMesh* Source = SplineMesh->GetStaticMesh();
+
+	if (Source == nullptr) return false;
+
+	TArray<TArray<FColor>> LodColors;
+	LodColors.SetNum(LodValues.Num());
+
+	uint32 Hash = GetTypeHash(Source->GetPathName());
+	bool bAnyColors = false;
+
+	for (int32 Lod = 0; Lod < LodValues.Num(); ++Lod) {
+		const TSharedPtr<FJsonObject> LodObject = LodValues[Lod]->AsObject();
+
+		if (!LodObject.IsValid() || !LodObject->HasField(TEXT("OverrideVertexColors"))) continue;
+
+		const TSharedPtr<FJsonObject> Override = LodObject->GetObjectField(TEXT("OverrideVertexColors"));
+
+		if (!Override->HasField(TEXT("Data"))) continue;
+
+		for (const TSharedPtr<FJsonValue>& Value : Override->GetArrayField(TEXT("Data"))) {
+			const FString Color = Value->AsString();
+
+			if (Color.Len() < 8) return false;
+
+			/* ARGB, as the colour buffer reads the same string */
+			auto Channel = [&Color](const int32 Offset) {
+				return static_cast<uint8>(FParse::HexDigit(Color[Offset]) * 16 + FParse::HexDigit(Color[Offset + 1]));
+			};
+
+			LodColors[Lod].Add(FColor(Channel(2), Channel(4), Channel(6), Channel(0)));
+		}
+
+		if (LodColors[Lod].Num() > 0) {
+			bAnyColors = true;
+			Hash = HashCombine(Hash, FCrc::MemCrc32(LodColors[Lod].GetData(), LodColors[Lod].Num() * sizeof(FColor)));
+		}
+	}
+
+	if (!bAnyColors) return false;
+
+	const FString Name = FString::Printf(TEXT("%s_Painted_%08X"), *Source->GetName(), Hash);
+	/* Kept in the SplineMeshes plugin, a folder per level and below it the mesh's own path less its
+	 * mount point, so none of it is mistaken for the game's own content and each copy says where it came from */
+	FString SourcePath;
+	FPaths::GetPath(Source->GetOutermost()->GetName()).RightChop(1).Split(TEXT("/"), nullptr, &SourcePath);
+
+	const FString PackageName = TEXT("/SplineMeshes/") + FPackageName::GetShortName(SplineMesh->GetOutermost()) + (SourcePath.IsEmpty() ? TEXT("") : TEXT("/") + SourcePath) + TEXT("/") + Name;
+
+	/* Another segment with the same paint on the same mesh made it already, in this run or an earlier one */
+	UStaticMesh* Baked = FindObject<UStaticMesh>(nullptr, *(PackageName + TEXT(".") + Name));
+
+	if (Baked == nullptr && FPackageName::DoesPackageExist(PackageName)) {
+		Baked = LoadObject<UStaticMesh>(nullptr, *(PackageName + TEXT(".") + Name), nullptr, LOAD_NoWarn | LOAD_Quiet);
+	}
+
+	if (Baked == nullptr) {
+		UPackage* Package = CreatePackage(*PackageName);
+
+		Baked = DuplicateObject<UStaticMesh>(Source, Package, *Name);
+		Baked->SetFlags(RF_Public | RF_Standalone);
+
+		for (int32 Lod = 0; Lod < LodColors.Num(); ++Lod) {
+			const TArray<FColor>& Colors = LodColors[Lod];
+
+			if (Colors.Num() == 0 || !Baked->IsMeshDescriptionValid(Lod)) continue;
+
+			FMeshDescription* Description = Baked->GetMeshDescription(Lod);
+
+			if (Description == nullptr || Description->Vertices().Num() != Colors.Num()) {
+				UE_LOG(LogReflectionObjectSerializer, Warning, TEXT("\"%s\" LOD%d describes %d vertices and the game painted %d, so that LOD keeps the mesh's own colours"), *Source->GetName(), Lod, Description != nullptr ? Description->Vertices().Num() : 0, Colors.Num());
+
+				continue;
+			}
+
+			TVertexInstanceAttributesRef<FVector4f> InstanceColors = FStaticMeshAttributes(*Description).GetVertexInstanceColors();
+
+			for (const FVertexInstanceID InstanceID : Description->VertexInstances().GetElementIDs()) {
+				InstanceColors[InstanceID] = FVector4f(FLinearColor(Colors[Description->GetVertexInstanceVertex(InstanceID).GetValue()]));
+			}
+
+			Baked->CommitMeshDescription(Lod);
+		}
+
+		Baked->Build(false);
+		Baked->PostEditChange();
+		Baked->MarkPackageDirty();
+
+		FAssetRegistryModule::AssetCreated(Baked);
+
+		UE_LOG(LogReflectionObjectSerializer, Display, TEXT("\"%s\" got its own copy of \"%s\" as \"%s\", since a spline mesh draws override colours white"), *SplineMesh->GetOuter()->GetName(), *Source->GetName(), *PackageName);
+	}
+
+	SplineMesh->SetStaticMesh(Baked);
+
+	return true;
+}
+
 void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject>& Properties, UObject* Object) const {
 	if (Object == nullptr) return;
 
@@ -934,6 +1046,12 @@ void UObjectSerializer::DeserializeObjectProperties(const TSharedPtr<FJsonObject
 		if (!StaticMeshComponent) return;
 		
 		TArray<TSharedPtr<FJsonValue>> ObjectLODData = Properties->GetArrayField(TEXT("LODData"));
+
+		/* An override on a spline mesh would draw white, so its colours go into a copy of the mesh */
+		if (USplineMeshComponent* SplineMesh = Cast<USplineMeshComponent>(StaticMeshComponent); SplineMesh != nullptr && BakeSplineMeshColors(SplineMesh, ObjectLODData)) {
+			return;
+		}
+
 		int CurrentLOD = -1;
 
 		int32 ColouredLods = 0;

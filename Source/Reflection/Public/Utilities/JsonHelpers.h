@@ -49,10 +49,40 @@ inline FLinearColor ObjectToLinearColor(const FJsonObject* Object) {
 	return FLinearColor(Object->GetNumberField(TEXT("R")), Object->GetNumberField(TEXT("G")), Object->GetNumberField(TEXT("B")), Object->GetNumberField(TEXT("A")));
 }
 
+/* Reads an enum written out by name, falling back where the export does not say */
+template <typename TEnum>
+TEnum NamedEnumField(const TSharedPtr<FJsonObject>& Object, const FString& Field, const TEnum Fallback) {
+	FString Named;
+
+	if (!Object->TryGetStringField(Field, Named)) {
+		return Fallback;
+	}
+
+	const int64 Value = StaticEnum<TEnum>()->GetValueByNameString(Named);
+
+	return Value == INDEX_NONE ? Fallback : static_cast<TEnum>(Value);
+}
+
 inline FRichCurveKey ObjectToRichCurveKey(const TSharedPtr<FJsonObject>& Object) {
-	const FString InterpMode = Object->GetStringField(TEXT("InterpMode"));
-	
-	return FRichCurveKey(Object->GetNumberField(TEXT("Time")), Object->GetNumberField(TEXT("Value")), Object->GetNumberField(TEXT("ArriveTangent")), Object->GetNumberField(TEXT("LeaveTangent")), static_cast<ERichCurveInterpMode>(StaticEnum<ERichCurveInterpMode>()->GetValueByNameString(InterpMode)));
+	FRichCurveKey Key(Object->GetNumberField(TEXT("Time")), Object->GetNumberField(TEXT("Value")),
+		Object->GetNumberField(TEXT("ArriveTangent")), Object->GetNumberField(TEXT("LeaveTangent")),
+		NamedEnumField(Object, TEXT("InterpMode"), RCIM_Linear));
+
+	/* Says whether the tangents above were set by hand or are to be worked out again */
+	Key.TangentMode = NamedEnumField(Object, TEXT("TangentMode"), RCTM_Auto);
+	Key.TangentWeightMode = NamedEnumField(Object, TEXT("TangentWeightMode"), RCTWM_WeightedNone);
+
+	double Weight = 0.0;
+
+	if (Object->TryGetNumberField(TEXT("ArriveTangentWeight"), Weight)) {
+		Key.ArriveTangentWeight = Weight;
+	}
+
+	if (Object->TryGetNumberField(TEXT("LeaveTangentWeight"), Weight)) {
+		Key.LeaveTangentWeight = Weight;
+	}
+
+	return Key;
 }
 
 /* Filter to remove */

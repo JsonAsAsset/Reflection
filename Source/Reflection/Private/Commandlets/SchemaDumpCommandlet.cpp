@@ -96,6 +96,18 @@ int32 USchemaDumpCommandlet::Main(const FString& Params) {
 
 	const TSharedPtr<FJsonObject> Root = MakeShared<FJsonObject>();
 
+	/* Which engine this describes. A dump read against another one counts the same number of
+	 * properties in a different order, so it is refused on this rather than used. */
+	{
+		const TSharedPtr<FJsonObject> Engine = MakeShared<FJsonObject>();
+
+		Engine->SetNumberField(TEXT("Major"), ENGINE_MAJOR_VERSION);
+		Engine->SetNumberField(TEXT("Minor"), ENGINE_MINOR_VERSION);
+		Engine->SetNumberField(TEXT("Patch"), ENGINE_PATCH_VERSION);
+
+		Root->SetObjectField(TEXT("$Engine"), Engine);
+	}
+
 	int32 Classes = 0;
 	int32 Structs = 0;
 

@@ -8,11 +8,35 @@
 #include "Utilities/JsonHelpers.h"
 
 UObject* IMaterialInstanceConstantImporter::CreateAsset(UObject* CreatedAsset) {
+	/* Reused when the editor already holds it. NewObject over a loaded instance destroys it in place,
+	 * which frees the render resource that primitives drawing with it still point at */
+	if (UMaterialInstanceConstant* Standing = FindObject<UMaterialInstanceConstant>(GetPackage(), *GetAssetName())) {
+		return IImporter::CreateAsset(Standing);
+	}
+
 	return IImporter::CreateAsset(NewObject<UMaterialInstanceConstant>(GetPackage(), UMaterialInstanceConstant::StaticClass(), *GetAssetName(), RF_Public | RF_Standalone));
 }
 
 bool IMaterialInstanceConstantImporter::Import() {
+	/* An instance the editor already has may be drawn with right now. Rewritten under an update that
+	 * takes every render state down first and builds them again once it is whole, or the render thread
+	 * caches draw commands against parameters and a permutation that are part way through changing */
+	const bool bStanding = FindObject<UMaterialInstanceConstant>(GetPackage(), *GetAssetName()) != nullptr;
+
+	TOptional<FMaterialUpdateContext> StandingUpdate;
+
+	if (bStanding) {
+		StandingUpdate.Emplace();
+	}
+
 	UMaterialInstanceConstant* MaterialInstanceConstant = Create<UMaterialInstanceConstant>();
+
+	if (StandingUpdate.IsSet()) {
+		StandingUpdate->AddMaterialInstance(MaterialInstanceConstant);
+
+		/* What an earlier import set and this export does not name would otherwise survive it */
+		MaterialInstanceConstant->ClearParameterValuesEditorOnly();
+	}
 
 	/* Specific fix for 4.16 engines */
 	const TArray<FString> ParameterFields = {
@@ -195,9 +219,11 @@ bool IMaterialInstanceConstantImporter::Import() {
 	}
 
 #if !MIC_STATICS_VIA_EDITOR_ONLY
+	/* A new instance has nothing drawing with it, so its render states are left alone. A standing one
+	 * goes through the update already holding them down */
 	FMaterialUpdateContext MaterialUpdateContext(FMaterialUpdateContext::EOptions::Default & ~FMaterialUpdateContext::EOptions::RecreateRenderStates);
 
-	MaterialInstanceConstant->UpdateStaticPermutation(NewStaticParameterSet, &MaterialUpdateContext);
+	MaterialInstanceConstant->UpdateStaticPermutation(NewStaticParameterSet, StandingUpdate.IsSet() ? &StandingUpdate.GetValue() : &MaterialUpdateContext);
 	MaterialInstanceConstant->InitStaticPermutation();
 #endif
 

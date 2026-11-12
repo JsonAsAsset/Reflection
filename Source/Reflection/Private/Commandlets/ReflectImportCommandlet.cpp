@@ -2,6 +2,7 @@
 
 #include "ReflectImportCommandlet.h"
 
+#include "Engine/World.h"
 #include "FileHelpers.h"
 #include "Misc/FileHelper.h"
 #include "Serialization/JsonSerializer.h"
@@ -32,7 +33,9 @@ static int32 SaveDirtyPackages() {
 	int32 Saved = 0;
 
 	for (UPackage* One : Dirty) {
-		const FString FileName = FPackageName::LongPackageNameToFilename(One->GetName(), FPackageName::GetAssetPackageExtension());
+		/* A package holding a world is a map, and the engine only opens a map from a .umap */
+		const FString& Extension = UWorld::FindWorldInPackage(One) != nullptr ? FPackageName::GetMapPackageExtension() : FPackageName::GetAssetPackageExtension();
+		const FString FileName = FPackageName::LongPackageNameToFilename(One->GetName(), Extension);
 
 #if ENGINE_UE5
 		/* A package saved empty once keeps PKG_ContainsNoAsset through every later save, which only ever
@@ -178,6 +181,10 @@ int32 UReflectImportCommandlet::Main(const FString& Params) {
 					Issue->Detail.IsEmpty() ? TEXT("") : *(TEXT(": ") + Issue->Detail));
 			}
 		}
+
+		/* The level and every blueprint fetched to place its actors are left dirty when Save Assets is off,
+		 * and a commandlet has no editor to save them later */
+		SaveDirtyPackages();
 
 		return 0;
 	}

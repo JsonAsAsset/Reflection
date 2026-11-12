@@ -168,19 +168,21 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 		/* Keys of the track */
 		TArray<TSharedPtr<FJsonValue>> Keys = FloatCurveObject->AsObject()->GetObjectField(TEXT("FloatCurve"))->GetArrayField(TEXT("Keys"));
 
+		TArray<FRichCurveKey> RichKeys;
+		RichKeys.Reserve(Keys.Num());
+
 		for (const auto& JsonKey : Keys) {
 			TSharedPtr<FJsonObject> Key = JsonKey->AsObject();
 
 			FRichCurveKey RichKey = ObjectToRichCurveKey(Key);
+
+			RichKeys.Add(RichKey);
 
 			/* Unreal Engine 5 and Unreal Engine 4
 			 * have different ways of adding curves
 			 *
 			 * Unreal Engine 4: Simply adding curves to RawCurveData
 			 * Unreal Engine 5: Using a AnimDataController to handle adding curves */
-#if UE5_2_BEYOND
-			Controller.SetCurveKey(CurveId, RichKey);
-#endif
 #if ENGINE_UE4
 			FRawCurveTracks& Tracks = AnimSequenceBase->RawCurveData;
 #endif
@@ -196,15 +198,20 @@ inline bool ReadAnimationCurves(USerializerContainer* Container, UAnimSequenceBa
 				}
 			}
 #endif
-#if UE5_1_BELOW
-			/* 5.0 and 5.1 reach the controller off the sequence rather than through the one held
-			 * above, which those versions are not given. Without this the curve is added and left
-			 * with no keys at all, so it shows on the sequence and drives nothing. */
-			AnimSequenceBase->GetController().SetCurveKey(
-				FAnimationCurveIdentifier(NewTrackName, ERawCurveTrackTypes::RCT_Float), RichKey, false);
-#endif
 		}
+
+		/* The whole array in one go. SetCurveKey carries nothing but the time and the value, so a
+		 * key at a time leaves every one of them linear with no tangents. */
 #if UE5_2_BEYOND
+		Controller.SetCurveKeys(CurveId, RichKeys);
+#endif
+#if UE5_1_BELOW
+		/* 5.0 and 5.1 reach the controller off the sequence rather than through the one held above,
+		 * which those versions are not given. */
+		AnimSequenceBase->GetController().SetCurveKeys(
+			FAnimationCurveIdentifier(NewTrackName, ERawCurveTrackTypes::RCT_Float), RichKeys, false);
+#endif
+#if UE5_4_BEYOND
 		Controller.CloseBracket();
 #endif
 	}
