@@ -9,12 +9,22 @@
 #include "RigVMCore/RigVMDispatchFactory.h"
 #include "RigVMCore/RigVMRegistry.h"
 #include "RigVMCore/RigVMTemplate.h"
+#include "RigVMCore/RigVMExecuteContext.h"
+#include "RigVMCore/RigVMStruct.h"
+#include "RigVMTypeUtils.h"
+#include "EdGraph/RigVMEdGraph.h"
 #include "RigVMModel/RigVMController.h"
+#include "RigVMModel/RigVMFunctionLibrary.h"
+#include "RigVMModel/Nodes/RigVMFunctionEntryNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionReferenceNode.h"
+#include "RigVMModel/Nodes/RigVMFunctionReturnNode.h"
+#include "RigVMModel/Nodes/RigVMLibraryNode.h"
 #include "RigVMModel/Nodes/RigVMTemplateNode.h"
 #include "RigVMModel/Nodes/RigVMVariableNode.h"
 
 #include "Engine/Log.h"
 #include "Serializers/PropertySerializer.h"
+#include "Utilities/AssetPaths.h"
 
 namespace {
 	/* The registry grew a read and a write half in 5.5, but the half it hands out keeps the
@@ -59,6 +69,10 @@ namespace {
 
 	/* 5.4 grew a say over whether a pin linked to this one takes the value too */
 	bool RigSetPinDefault(URigVMController* Controller, const FString& PinPath, const FString& Value) {
+		if (Controller == nullptr) {
+			return false;
+		}
+
 #if UE5_4_BEYOND
 		return Controller->SetPinDefaultValue(PinPath, Value, true, false, false, false, false);
 #else
@@ -80,6 +94,7 @@ namespace {
 	constexpr int32 OpCodeCopy = 68;
 	constexpr int32 OpCodeExecute = 101;
 	constexpr int32 OpCodeRunInstructions = 102;
+	constexpr int32 OpCodeInvokeCallable = 104;
 
 	/* What a register operand says when it names no sub property */
 	constexpr int32 NoRegisterOffset = 65535;
@@ -177,6 +192,22 @@ bool FRigVMGraphReconstruction::Build(const FUObjectJsonValueExport& VirtualMach
 		return false;
 	}
 
+	/* An editor graph draws what it is told about rather than what the model holds, and one that came
+	 * back with the asset is no longer listening to it. Binding it again puts it back in step. */
+	for (UEdGraph* Page : Blueprint->UbergraphPages) {
+		if (URigVMEdGraph* Editor = Cast<URigVMEdGraph>(Page)) {
+			Editor->InitializeFromBlueprint(Blueprint);
+		}
+	}
+
+	/* The rig's own graph is always the first scope, and the one an instruction belongs to when no
+	 * callable claims it */
+	FScope Root;
+	Root.Graph = Graph;
+	Root.Controller = Controller;
+
+	Scopes.Add(Root);
+
 	const FUObjectJsonValueExport ByteCode = VirtualMachine.GetObject(TEXT("ByteCodeStorage"));
 
 	if (!ByteCode.JsonObject.IsValid() || !ByteCode.Has(TEXT("Instructions"))) {
@@ -196,6 +227,7 @@ bool FRigVMGraphReconstruction::Build(const FUObjectJsonValueExport& VirtualMach
 	Stats.Instructions = Instructions.Num();
 
 	ReadMemory(VirtualMachine);
+	ReadCallables(ByteCode);
 
 	/* The graph a new rig comes with holds the event it was created around, and a rig reflected
 	 * over an earlier run holds that run's nodes. Both are cleared before this one puts the rig's
@@ -206,12 +238,24 @@ bool FRigVMGraphReconstruction::Build(const FUObjectJsonValueExport& VirtualMach
 	 * half of the previous run's graph behind, unlinked, on top of the new one. */
 	Controller->RemoveNodes(Graph->GetNodes(), false, false);
 
+	/* The functions a previous run left behind go with them: a new one makes its own, and a name
+	 * already taken comes back with a number on the end rather than replacing what is there */
+	if (URigVMFunctionLibrary* Library = Blueprint->GetLocalFunctionLibrary()) {
+		if (URigVMController* LibraryController = Blueprint->GetOrCreateController(Library)) {
+			LibraryController->RemoveNodes(Library->GetNodes(), false, false);
+		}
+	}
+
 	/* Auto recompilation is what would make this slow: a rig of any size is a few hundred nodes,
 	 * and every one of them would otherwise recompile the VM on its way in */
 	Blueprint->SetAutoVMRecompile(false);
 
+	CreateFunctions(Instructions, FunctionNames);
+
 	CollectNodes(Instructions, FunctionNames);
 	CreateNodes();
+	ExposeFunctionArguments();
+	CreateInvokeNodes();
 	ApplyDefaults();
 	CreateLinks(Instructions);
 	CreateExecution(Instructions, ByteCode);
@@ -228,14 +272,102 @@ bool FRigVMGraphReconstruction::Build(const FUObjectJsonValueExport& VirtualMach
 		}
 
 		if (GetterLinks == 0) {
-			Controller->RemoveNode(Getter.Value, false, false);
+			if (URigVMController* GetterController = Blueprint->GetOrCreateController(Getter.Value->GetGraph())) {
+				GetterController->RemoveNode(Getter.Value, false, false);
+			}
 
 			Stats.VariableNodes--;
 		}
 	}
 
+	/* Which steps the solve actually arrives at, walked the way the compiler walks it: from the
+	 * events and the entry, forwards along the execution. A node holding a link from something
+	 * the run never reaches is no more run than one holding none. */
+	for (const FScope& Scope : Scopes) {
+		if (Scope.Graph == nullptr) continue;
+
+		TArray<URigVMNode*> Open;
+		TSet<URigVMNode*> Reached;
+
+		Open.Add(Scope.Graph->GetEntryNode());
+
+		for (URigVMNode* GraphNode : Scope.Graph->GetNodes()) {
+			/* An event is a start: execution leaves it without arriving */
+			if (FindExecuteInput(GraphNode) == nullptr && FindExecuteOutput(GraphNode, FString()) != nullptr) {
+				Open.Add(GraphNode);
+			}
+		}
+
+		while (Open.Num() > 0) {
+			URigVMNode* Current = Open.Pop();
+
+			if (Current == nullptr || Reached.Contains(Current)) continue;
+
+			Reached.Add(Current);
+
+			for (URigVMPin* Pin : Current->GetPins()) {
+				if (!Pin->IsExecuteContext()) continue;
+
+				for (const URigVMLink* Onwards : Pin->GetTargetLinks(true)) {
+					if (Onwards->GetTargetPin() != nullptr) {
+						Open.Add(Onwards->GetTargetPin()->GetNode());
+					}
+				}
+			}
+		}
+
+		for (URigVMNode* GraphNode : Scope.Graph->GetNodes()) {
+			if (FindExecuteInput(GraphNode) == nullptr || Reached.Contains(GraphNode)) continue;
+
+			Stats.UnchainedNodes++;
+
+			UE_LOG(LogReflection, Verbose, TEXT("the run never reaches \"%s\" in \"%s\""),
+				*GraphNode->GetName(), Scope.Name.IsEmpty() ? TEXT("the rig's own graph") : *Scope.Name);
+		}
+	}
+
 	ConsolidateDefaults();
-	UpdateLayout();
+
+	/* What a constraint or a getter actually points at. A pin naming no element is one the rig
+	 * will run straight past, and nothing else about the graph says so. */
+	{
+		TFunction<void(URigVMPin*, const FScope&)> ReadKey = [&](URigVMPin* Pin, const FScope& Scope) {
+			if (Pin->GetCPPType() == TEXT("FRigElementKey")) {
+				Stats.ElementKeys++;
+
+				const URigVMPin* NamePin = Pin->FindSubPin(TEXT("Name"));
+				const FString Named = NamePin != nullptr ? NamePin->GetDefaultValue() : FString();
+
+				/* One fed by a link carries no default and is not missing anything */
+				if ((Named.IsEmpty() || Named == TEXT("None")) && Pin->GetSourceLinks(true).Num() == 0) {
+					Stats.EmptyElementKeys++;
+
+					UE_LOG(LogReflection, Verbose, TEXT("\"%s\" names no element, on \"%s\" in \"%s\""),
+						*Pin->GetPinPath(), *Pin->GetNode()->GetName(),
+						Scope.Name.IsEmpty() ? TEXT("the rig's own graph") : *Scope.Name);
+				}
+			}
+
+			for (URigVMPin* SubPin : Pin->GetSubPins()) {
+				ReadKey(SubPin, Scope);
+			}
+		};
+
+		for (const FScope& Scope : Scopes) {
+			if (Scope.Graph == nullptr) continue;
+
+			for (URigVMNode* GraphNode : Scope.Graph->GetNodes()) {
+				for (URigVMPin* Pin : GraphNode->GetPins()) {
+					ReadKey(Pin, Scope);
+				}
+			}
+		}
+	}
+
+	for (const FScope& Scope : Scopes) {
+		UpdateLayout(Scope.Graph, Scope.Controller);
+	}
+
 	PromoteLocalVariables();
 
 	Blueprint->SetAutoVMRecompile(true);
@@ -253,6 +385,53 @@ void FRigVMGraphReconstruction::ReadMemory(const FUObjectJsonValueExport& Virtua
 			for (const FUObjectJsonValueExport& PropertyPath : Storage.GetArray(TEXT("PropertyPathDescriptions"))) {
 				OutPropertyPaths.Add(PropertyPath.Has(TEXT("SegmentPath")) ? PropertyPath.GetString(TEXT("SegmentPath")) : FString());
 			}
+		}
+
+		/* A storage written as a property bag names its registers in a schema and keeps their
+		 * values in one object beside it, keyed by the same names */
+		if (Storage.Has(TEXT("PropertyDescs"))) {
+			const TSharedPtr<FJsonObject>* Values = nullptr;
+			Storage.JsonObject->TryGetObjectField(TEXT("Value"), Values);
+
+			for (const FUObjectJsonValueExport& Description : Storage.GetArray(TEXT("PropertyDescs"))) {
+				FRegister Register;
+
+				if (Description.Has(TEXT("Name"))) {
+					Register.Name = Description.GetString(TEXT("Name"));
+				}
+
+				if (Values != nullptr && !Register.Name.IsEmpty()) {
+					Register.Value = (*Values)->TryGetField(Register.Name);
+				}
+
+				/* Said as the object and the package holding it: UserDefinedStruct'Part_Bool' in
+				 * /Game/.../Part_Bool.0, which together name the struct the pin wants */
+				const FUObjectJsonValueExport TypeObject = Description.GetObject(TEXT("ValueTypeObject"));
+
+				if (TypeObject.JsonObject.IsValid() && TypeObject.Has(TEXT("ObjectName"))) {
+					FString ObjectName = TypeObject.GetString(TEXT("ObjectName"));
+
+					ObjectName.Split(TEXT("'"), nullptr, &ObjectName);
+					ObjectName.Split(TEXT("'"), &ObjectName, nullptr);
+
+					FString Package = TypeObject.Has(TEXT("ObjectPath")) ? TypeObject.GetString(TEXT("ObjectPath")) : FString();
+
+					/* An export index on the end names which object in the package, not a path */
+					FString Tail;
+
+					if (Package.Split(TEXT("."), nullptr, &Tail, ESearchCase::CaseSensitive, ESearchDir::FromEnd) && Tail.IsNumeric()) {
+						Package.LeftChopInline(Tail.Len() + 1);
+					}
+
+					if (!ObjectName.IsEmpty() && !Package.IsEmpty()) {
+						Register.TypeObjectPath = ToEditorPackagePath(Package) + TEXT(".") + ObjectName;
+					}
+				}
+
+				OutRegisters.Add(Register);
+			}
+
+			return;
 		}
 
 		if (!Storage.Has(TEXT("Properties"))) {
@@ -276,6 +455,211 @@ void FRigVMGraphReconstruction::ReadMemory(const FUObjectJsonValueExport& Virtua
 
 	ReadStorage(VirtualMachine.GetObject(TEXT("DefaultWorkMemoryStorage")), Work, WorkPropertyPaths);
 	ReadStorage(VirtualMachine.GetObject(TEXT("LiteralMemoryStorage")), Literals, LiteralPropertyPaths);
+}
+
+void FRigVMGraphReconstruction::ReadCallables(const FUObjectJsonValueExport& ByteCode) {
+	if (!ByteCode.Has(TEXT("CallableInfos"))) {
+		return;
+	}
+
+	for (const FUObjectJsonValueExport& Callable : ByteCode.GetArray(TEXT("CallableInfos"))) {
+		FScope Scope;
+
+		Scope.First = Callable.GetInteger(TEXT("FirstInstruction"), INDEX_NONE);
+		Scope.Last = Callable.GetInteger(TEXT("LastInstruction"), INDEX_NONE);
+
+		/* The callable is named by the path of the library it came from, the function itself after the colon. */
+		const FString Qualified = Callable.Has(TEXT("Name")) ? Callable.GetString(TEXT("Name")) : FString();
+
+		if (!Qualified.Split(TEXT(":"), nullptr, &Scope.Name, ESearchCase::CaseSensitive, ESearchDir::FromEnd)) {
+			Scope.Name = Qualified;
+		}
+
+		if (Scope.Name.IsEmpty()) {
+			Scope.Name = FString::Printf(TEXT("Function_%d"), Scopes.Num());
+		}
+
+		if (Callable.Has(TEXT("Arguments"))) {
+			for (const FUObjectJsonValueExport& Argument : Callable.GetArray(TEXT("Arguments"))) {
+				const FUObjectJsonValueExport Interface = Argument.GetObject(TEXT("InterfaceOperand"));
+				const FUObjectJsonValueExport Forwarded = Argument.GetObject(TEXT("ForwardedOperand"));
+
+				Scope.ArgumentNames.Add(Argument.Has(TEXT("Name")) ? Argument.GetString(TEXT("Name")) : FString());
+				Scope.ArgumentDirections.Add(Argument.GetInteger(TEXT("Direction"), 0));
+				Scope.ArgumentTypes.Add(Argument.Has(TEXT("TypeString")) ? Argument.GetString(TEXT("TypeString")) : FString());
+
+				Scope.ArgumentRegisters.Add(Interface.JsonObject.IsValid()
+					? Interface.GetInteger(TEXT("RegisterIndex"), INDEX_NONE)
+					: INDEX_NONE);
+
+				Scope.ArgumentForwarded.Add(Forwarded.JsonObject.IsValid()
+					? Forwarded.GetInteger(TEXT("RegisterIndex"), INDEX_NONE)
+					: INDEX_NONE);
+			}
+		}
+
+		Scopes.Add(Scope);
+	}
+}
+
+void FRigVMGraphReconstruction::CreateFunctions(const TArray<FUObjectJsonValueExport>& Instructions, const TArray<FString>& FunctionNames) {
+	const auto& Registry = GetRigVMRegistry();
+
+	/* A function runs as part of the solve when anything inside it does, which is what tells a
+	 * constraint apart from a value its caller reads. Both hand something back, so the arguments
+	 * cannot say it: the body has to. */
+	auto RunsExecution = [](const FRigVMFunction* Function) -> bool {
+		if (Function == nullptr) {
+			return false;
+		}
+
+		if (Function->Struct != nullptr) {
+			for (TFieldIterator<FStructProperty> Property(Function->Struct); Property; ++Property) {
+				if (Property->Struct != nullptr && Property->Struct->IsChildOf(FRigVMExecuteContext::StaticStruct())) {
+					return true;
+				}
+			}
+
+			return false;
+		}
+
+		if (Function->Factory != nullptr) {
+			for (const FDispatchArgument& Info : GetFactoryArgumentInfos(Function->Factory)) {
+				if (Info.Name == FRigVMStruct::ExecuteContextName) {
+					return true;
+				}
+			}
+		}
+
+		return false;
+	};
+
+	/* The callable an instruction sits in, before any of them have a graph to be found by */
+	auto RangeOf = [this](const int32 Instruction) -> int32 {
+		int32 Innermost = 0;
+
+		for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+			const FScope& Scope = Scopes[ScopeIndex];
+
+			if (Scope.First == INDEX_NONE || Instruction < Scope.First || Instruction > Scope.Last) continue;
+
+			if (Innermost == 0 || (Scope.Last - Scope.First) < (Scopes[Innermost].Last - Scopes[Innermost].First)) {
+				Innermost = ScopeIndex;
+			}
+		}
+
+		return Innermost;
+	};
+
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		FScope& Scope = Scopes[ScopeIndex];
+
+		Scope.bMutable = false;
+
+		if (Scope.First == INDEX_NONE || Scope.Last < Scope.First) continue;
+
+		for (int32 Index = Scope.First; Index <= Scope.Last && !Scope.bMutable; ++Index) {
+			if (!Instructions.IsValidIndex(Index)) break;
+			if (Instructions[Index].GetInteger(TEXT("OpCode"), -1) != OpCodeExecute) continue;
+
+			const int32 FunctionIndex = Instructions[Index].GetInteger(TEXT("FunctionIndex"), INDEX_NONE);
+
+			if (!FunctionNames.IsValidIndex(FunctionIndex)) continue;
+
+			Scope.bMutable = RunsExecution(Registry.FindFunction(*FunctionNames[FunctionIndex]));
+		}
+	}
+
+	/* And so does one that calls a function that runs, however deep the call sits */
+	for (bool bChanged = true; bChanged;) {
+		bChanged = false;
+
+		for (int32 Index = 0; Index < Instructions.Num(); ++Index) {
+			if (Instructions[Index].GetInteger(TEXT("OpCode"), -1) != OpCodeInvokeCallable) continue;
+
+			const int32 Called = Instructions[Index].GetInteger(TEXT("CallableIndex"), INDEX_NONE) + 1;
+			const int32 Caller = RangeOf(Index);
+
+			if (Called <= 0 || !Scopes.IsValidIndex(Called) || !Scopes[Called].bMutable) continue;
+			if (Caller <= 0 || Scopes[Caller].bMutable) continue;
+
+			Scopes[Caller].bMutable = true;
+			bChanged = true;
+		}
+	}
+
+	/* A function definition only goes in the library graph, and the schema refuses one offered to
+	 * any other, so it is the library's own controller that is asked */
+	URigVMFunctionLibrary* FunctionLibrary = Blueprint->GetLocalFunctionLibrary();
+
+	URigVMController* LibraryController = FunctionLibrary != nullptr
+		? Blueprint->GetOrCreateController(FunctionLibrary)
+		: nullptr;
+
+	if (LibraryController == nullptr) {
+		return;
+	}
+
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		FScope& Scope = Scopes[ScopeIndex];
+
+		/* A call names its function by position, so one with nothing to build keeps its place in
+		 * the list rather than moving every function after it */
+		if (Scope.First == INDEX_NONE || Scope.Last < Scope.First) continue;
+
+		Scope.Library = LibraryController->AddFunctionToLibrary(FName(*Scope.Name), Scope.bMutable, FVector2D::ZeroVector, false, false);
+
+		if (Scope.Library == nullptr) continue;
+
+		Scope.Graph = Scope.Library->GetContainedGraph();
+		Scope.Controller = Scope.Graph != nullptr ? Blueprint->GetOrCreateController(Scope.Graph) : nullptr;
+
+		if (Scope.Controller == nullptr) {
+			Scope.Graph = nullptr;
+			Scope.Library = nullptr;
+
+			continue;
+		}
+
+		Stats.Functions++;
+	}
+}
+
+int32 FRigVMGraphReconstruction::FindScope(const int32 Instruction) const {
+	int32 Innermost = 0;
+
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		const FScope& Scope = Scopes[ScopeIndex];
+
+		if (Scope.Graph == nullptr) continue;
+		if (Instruction < Scope.First || Instruction > Scope.Last) continue;
+
+		if (Innermost == 0 || (Scope.Last - Scope.First) < (Scopes[Innermost].Last - Scopes[Innermost].First)) {
+			Innermost = ScopeIndex;
+		}
+	}
+
+	return Innermost;
+}
+
+URigVMController* FRigVMGraphReconstruction::ControllerForScope(const int32 ScopeIndex) const {
+	return Scopes.IsValidIndex(ScopeIndex) ? Scopes[ScopeIndex].Controller : nullptr;
+}
+
+URigVMController* FRigVMGraphReconstruction::ControllerForPin(const URigVMPin* Pin) const {
+	if (Pin == nullptr) {
+		return nullptr;
+	}
+
+	URigVMGraph* PinGraph = Pin->GetGraph();
+
+	for (const FScope& Scope : Scopes) {
+		if (Scope.Graph == PinGraph) {
+			return Scope.Controller;
+		}
+	}
+
+	return nullptr;
 }
 
 /* One field out of a value, named the way a register offset names it: dot separated, an object's
@@ -382,6 +766,11 @@ static FString StripRegisterSuffix(const FString& RegisterName) {
 		LeftInline(Body, Body.Len() - 4);
 	}
 
+	/* What a function's own body calls the argument it was handed */
+	if (Body.EndsWith(TEXT("_ForwardedHandle"))) {
+		LeftInline(Body, Body.Len() - 16);
+	}
+
 	return Body;
 }
 
@@ -486,6 +875,7 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 		FNode Node;
 		Node.Instruction = Index;
 		Node.Function = Function;
+		Node.Scope = FindScope(Index);
 
 		const TArray<FUObjectJsonValueExport> Arguments = Instruction.Has(TEXT("Arguments"))
 			? Instruction.GetArray(TEXT("Arguments"))
@@ -717,6 +1107,118 @@ void FRigVMGraphReconstruction::CollectNodes(const TArray<FUObjectJsonValueExpor
 		InstructionToNode.Add(Index, NodeIndex);
 	}
 
+	/* A function's arguments are registers its body shares with every call to it. The entry and
+	 * return nodes already in the function's graph are what owns them there, so they go in as
+	 * nodes of their own and the links either side of them are built like any other. */
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		const FScope& Scope = Scopes[ScopeIndex];
+
+		if (Scope.Graph == nullptr) continue;
+
+		URigVMNode* Interfaces[] = { Scope.Graph->GetEntryNode(), Scope.Graph->GetReturnNode() };
+		const TCHAR* Labels[] = { TEXT("Entry"), TEXT("Return") };
+
+		for (int32 Side = 0; Side < 2; ++Side) {
+			if (Interfaces[Side] == nullptr) continue;
+
+			FNode Interface;
+			Interface.Scope = ScopeIndex;
+			/* Either side of the body, so the value flows out of the entry and into the return
+			 * whatever order the instructions between them touch the register in */
+			Interface.Instruction = Side == 0 ? Scope.First - 1 : Scope.Last + 1;
+			Interface.Node = Interfaces[Side];
+			Interface.Name = Interfaces[Side]->GetName();
+			Interface.DerivedName = FString::Printf(TEXT("%s_%s"), *Scope.Name, Labels[Side]);
+
+			for (int32 ArgumentIndex = 0; ArgumentIndex < Scope.ArgumentNames.Num(); ++ArgumentIndex) {
+				/* An input arrives on the entry node and leaves it, and an output is the other way
+				 * round: each side only carries the arguments it is an end of */
+				const bool bIsInput = Scope.ArgumentDirections[ArgumentIndex] != 1;
+
+				if (bIsInput != (Side == 0)) continue;
+
+				/* The body reads the argument through the handle it was forwarded, which is the
+				 * register its own pins are named after */
+				const int32 Register = Scope.ArgumentForwarded[ArgumentIndex] != INDEX_NONE
+					? Scope.ArgumentForwarded[ArgumentIndex]
+					: Scope.ArgumentRegisters[ArgumentIndex];
+
+				Interface.Operands.Add(TPair<int32, int32>(MemoryTypeWork, Register));
+				Interface.Arguments.Add(Scope.ArgumentNames[ArgumentIndex]);
+				Interface.ArgumentIsOutput.Add(Side == 0);
+			}
+
+			if (Interface.Operands.Num() == 0) continue;
+
+			NodeNames.Add(Interface.DerivedName);
+
+			Nodes.Add(Interface);
+		}
+	}
+
+	/* A call to one of them. The operands are the arguments in the function's own order, so the
+	 * node reads back the same way a unit's does. */
+	for (int32 Index = 0; Index < Instructions.Num(); ++Index) {
+		const FUObjectJsonValueExport& Instruction = Instructions[Index];
+
+		if (Instruction.GetInteger(TEXT("OpCode"), -1) != OpCodeInvokeCallable) continue;
+
+		const int32 CallableIndex = Instruction.GetInteger(TEXT("CallableIndex"), INDEX_NONE) + 1;
+
+		if (!Scopes.IsValidIndex(CallableIndex) || CallableIndex == 0) continue;
+		if (Scopes[CallableIndex].Graph == nullptr) continue;
+
+		const FScope& Called = Scopes[CallableIndex];
+
+		FNode Node;
+		Node.Instruction = Index;
+		Node.Scope = FindScope(Index);
+		Node.Callable = CallableIndex;
+
+		if (Instruction.Has(TEXT("Arguments"))) {
+			for (const FUObjectJsonValueExport& Argument : Instruction.GetArray(TEXT("Arguments"))) {
+				Node.Operands.Add(TPair<int32, int32>(
+					Argument.GetInteger(TEXT("MemoryType"), INDEX_NONE),
+					Argument.GetInteger(TEXT("RegisterIndex"), INDEX_NONE)
+				));
+			}
+		}
+
+		if (Node.Operands.Num() != Called.ArgumentNames.Num()) continue;
+
+		for (int32 ArgumentIndex = 0; ArgumentIndex < Called.ArgumentNames.Num(); ++ArgumentIndex) {
+			Node.Arguments.Add(Called.ArgumentNames[ArgumentIndex]);
+			Node.ArgumentIsOutput.Add(Called.ArgumentDirections[ArgumentIndex] == 1);
+		}
+
+		/* Named the way its own registers name it, so the call and the pins feeding it agree */
+		FString NodeName;
+
+		for (int32 OperandIndex = 0; OperandIndex < Node.Operands.Num() && NodeName.IsEmpty(); ++OperandIndex) {
+			if (const FRegister* Register = FindRegister(Node.Operands[OperandIndex].Key, Node.Operands[OperandIndex].Value)) {
+				SplitRegisterName(Register->Name, Node.Arguments[OperandIndex], NodeName);
+			}
+		}
+
+		if (NodeName.IsEmpty()) {
+			NodeName = Called.Name;
+		}
+
+		FString UniqueName = NodeName;
+
+		for (int32 Suffix = 1; NodeNames.Contains(UniqueName); ++Suffix) {
+			UniqueName = FString::Printf(TEXT("%s_%d"), *NodeName, Suffix);
+		}
+
+		NodeNames.Add(UniqueName);
+
+		Node.Name = UniqueName;
+		Node.DerivedName = NodeName;
+
+		const int32 NodeIndex = Nodes.Add(Node);
+		InstructionToNode.Add(Index, NodeIndex);
+	}
+
 	ClaimRegisters();
 }
 
@@ -804,6 +1306,14 @@ void FRigVMGraphReconstruction::CreateNodes() {
 	for (int32 Index = 0; Index < Nodes.Num(); ++Index) {
 		FNode& Node = Nodes[Index];
 
+		/* A function's entry and return came with the graph, and a call to one is made once the
+		 * function it names has its pins */
+		if (Node.Node != nullptr || Node.Function == nullptr) continue;
+
+		URigVMController* NodeController = ControllerForScope(Node.Scope);
+
+		if (NodeController == nullptr) continue;
+
 		/* Laid out in the order the VM runs them, which is the only order a cooked rig still has */
 		const FVector2D Position(400.0f * static_cast<float>(Index / 12), 260.0f * static_cast<float>(Index % 12));
 
@@ -811,7 +1321,7 @@ void FRigVMGraphReconstruction::CreateNodes() {
 			FString MethodName = Node.Function->Name;
 			MethodName.Split(TEXT("::"), nullptr, &MethodName);
 
-			Node.Node = Controller->AddUnitNode(
+			Node.Node = NodeController->AddUnitNode(
 				Node.Function->Struct,
 				MethodName.IsEmpty() ? FName(TEXT("Execute")) : FName(*MethodName),
 				Position,
@@ -820,7 +1330,7 @@ void FRigVMGraphReconstruction::CreateNodes() {
 				false
 			);
 		} else if (Node.Function->Factory != nullptr) {
-			Node.Node = Controller->AddTemplateNode(
+			Node.Node = NodeController->AddTemplateNode(
 				Node.Function->Factory->GetTemplateNotation(),
 				Position,
 				Node.Name,
@@ -851,7 +1361,7 @@ void FRigVMGraphReconstruction::CreateNodes() {
 
 				if (Pin == nullptr || !Pin->IsWildCard()) continue;
 
-				Controller->ResolveWildCardPin(Pin, Registry.GetType(TypeIndices[ArgumentIndex]), false, false);
+				NodeController->ResolveWildCardPin(Pin, Registry.GetType(TypeIndices[ArgumentIndex]), false, false);
 			}
 		}
 
@@ -874,9 +1384,129 @@ void FRigVMGraphReconstruction::CreateNodes() {
 
 		for (const TPair<FString, int32>& ArraySize : ArraySizes) {
 			if (const URigVMPin* ArrayPin = Node.Node->FindPin(ArraySize.Key)) {
-				Controller->SetArrayPinSize(ArrayPin->GetPinPath(), ArraySize.Value, FString(), false, false);
+				NodeController->SetArrayPinSize(ArrayPin->GetPinPath(), ArraySize.Value, FString(), false, false);
 			}
 		}
+	}
+}
+
+void FRigVMGraphReconstruction::ExposeFunctionArguments() {
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		FScope& Scope = Scopes[ScopeIndex];
+
+		if (Scope.Controller == nullptr) continue;
+
+		for (int32 ArgumentIndex = 0; ArgumentIndex < Scope.ArgumentNames.Num(); ++ArgumentIndex) {
+			const FString& ArgumentName = Scope.ArgumentNames[ArgumentIndex];
+
+			if (ArgumentName.IsEmpty()) continue;
+
+			const ERigVMPinDirection Direction = Scope.ArgumentDirections[ArgumentIndex] == 1
+				? ERigVMPinDirection::Output
+				: ERigVMPinDirection::Input;
+
+			/* The callable says what the argument is, and the memory schema says which struct or
+			 * enum that name stands for. A user defined struct is spelled as a hash of itself
+			 * either way, so the two have to be read together. */
+			FString CPPType = Scope.ArgumentTypes[ArgumentIndex];
+			FString TypeObjectPath;
+
+			/* The declared register carries the type. The one the body reads it through is a
+			 * handle standing in for it, and says so rather than naming the struct. */
+			for (const int32 Register : { Scope.ArgumentRegisters[ArgumentIndex], Scope.ArgumentForwarded[ArgumentIndex] }) {
+				const FRegister* Found = FindRegister(MemoryTypeWork, Register);
+
+				if (Found == nullptr || Found->TypeObjectPath.IsEmpty()) continue;
+				if (Found->TypeObjectPath.EndsWith(TEXT("RigVMForwardedMemoryHandle"))) continue;
+
+				TypeObjectPath = Found->TypeObjectPath;
+
+				break;
+			}
+
+			/* Failing that, whatever pin inside the body shares the register is already the type */
+			if (CPPType.IsEmpty()) {
+				for (const FNode& Node : Nodes) {
+					if (Node.Scope != ScopeIndex || Node.Node == nullptr || Node.Function == nullptr) continue;
+
+					for (int32 OperandIndex = 0; OperandIndex < Node.Operands.Num(); ++OperandIndex) {
+						if (Node.Operands[OperandIndex].Key != MemoryTypeWork) continue;
+						if (Node.Operands[OperandIndex].Value != Scope.ArgumentForwarded[ArgumentIndex]) continue;
+						if (!Node.Arguments.IsValidIndex(OperandIndex) || Node.Arguments[OperandIndex].IsEmpty()) continue;
+
+						if (const URigVMPin* Typed = Node.Node->FindPin(Node.Arguments[OperandIndex])) {
+							CPPType = Typed->GetCPPType();
+
+							if (const UObject* TypeObject = Typed->GetCPPTypeObject()) {
+								TypeObjectPath = TypeObject->GetPathName();
+							}
+
+							break;
+						}
+					}
+
+					if (!CPPType.IsEmpty()) break;
+				}
+			}
+
+			if (CPPType.IsEmpty()) continue;
+
+			/* The pin resolves its type by looking the path up rather than loading it, so a struct
+			 * this project has but has not opened comes back as nothing and the pin is refused */
+			if (!TypeObjectPath.IsEmpty()) {
+				if (const UObject* TypeObject = FSoftObjectPath(TypeObjectPath).TryLoad()) {
+					TypeObjectPath = TypeObject->GetPathName();
+
+					/* A user struct is named after a guid of its own, and the copy this project
+					 * holds may carry another. Only that name is replaced: what the callable said
+					 * is otherwise the whole type, an array of them included. */
+					if (const UScriptStruct* Struct = Cast<UScriptStruct>(TypeObject)) {
+						const FString Unique = RigVMTypeUtils::GetUniqueStructTypeName(Struct);
+
+						if (CPPType.IsEmpty()) {
+							CPPType = Unique;
+						} else if (CPPType.StartsWith(TEXT("FUserDefinedStruct_"))) {
+							CPPType = Unique;
+						} else if (CPPType.StartsWith(TEXT("TArray<FUserDefinedStruct_"))) {
+							CPPType = FString::Printf(TEXT("TArray<%s>"), *Unique);
+						}
+					}
+				}
+			}
+
+			if (Scope.Controller->AddExposedPin(FName(*ArgumentName), Direction, CPPType,
+				TypeObjectPath.IsEmpty() ? NAME_None : FName(*TypeObjectPath), FString(), false, false).IsNone()) {
+				UE_LOG(LogReflection, Verbose, TEXT("\"%s\" wouldn't take a \"%s\" pin named \"%s\""),
+					*Scope.Name, *CPPType, *ArgumentName);
+			}
+		}
+	}
+}
+
+void FRigVMGraphReconstruction::CreateInvokeNodes() {
+	for (int32 Index = 0; Index < Nodes.Num(); ++Index) {
+		FNode& Node = Nodes[Index];
+
+		if (Node.Callable == INDEX_NONE || Node.Node != nullptr) continue;
+		if (!Scopes.IsValidIndex(Node.Callable)) continue;
+
+		URigVMController* NodeController = ControllerForScope(Node.Scope);
+		URigVMLibraryNode* Library = Scopes[Node.Callable].Library;
+
+		if (NodeController == nullptr || Library == nullptr) continue;
+
+		const FVector2D Position(400.0f * static_cast<float>(Index / 12), 260.0f * static_cast<float>(Index % 12));
+
+		Node.Node = NodeController->AddFunctionReferenceNode(Library, Position, Node.Name, false, false);
+
+		if (Node.Node == nullptr) {
+			Stats.FailedNodes++;
+
+			continue;
+		}
+
+		Stats.Nodes++;
+		Stats.FunctionCalls++;
 	}
 }
 
@@ -885,10 +1515,28 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 		return false;
 	}
 
+	URigVMController* PinController = ControllerForPin(Pin);
+
+	if (PinController == nullptr) {
+		return false;
+	}
+
 	if (Value->Type == EJson::Array) {
+		/* A register holding a list for a pin that is not one is the node's own work data, which
+		 * the compiler sized and the pin never declared. Growing the pin is refused, loudly. */
+		if (!Pin->IsArray()) {
+			return false;
+		}
+
 		const TArray<TSharedPtr<FJsonValue>>& Elements = Value->AsArray();
 
-		if (!Controller->SetArrayPinSize(Pin->GetPinPath(), Elements.Num(), FString(), false, false)) {
+		/* Asked for the size it already has, the pin reports that it did nothing rather than that
+		 * it is the right size. What it holds afterwards is what says whether the values fit. */
+		if (Pin->GetSubPins().Num() != Elements.Num()) {
+			PinController->SetArrayPinSize(Pin->GetPinPath(), Elements.Num(), FString(), false, false);
+		}
+
+		if (Pin->GetSubPins().Num() < Elements.Num()) {
 			return false;
 		}
 
@@ -906,10 +1554,12 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 	if (Value->Type == EJson::Object) {
 		const TSharedPtr<FJsonObject> Object = Value->AsObject();
 
-		/* The maths types draw as one widget rather than a tree: a quaternion or a vector pin has
-		 * no sub pins to walk, and the whole value has to arrive as one string. The struct itself
-		 * knows how to read the json and how to write that string, so it does both. */
-		if (Pin->GetSubPins().Num() == 0) {
+		/* The whole struct as one string, which the struct itself knows how to read out of the
+		 * json and how to write back. The maths types need it because they draw as one widget and
+		 * have no sub pins to walk; an element key needs it because it is one value rather than a
+		 * name and a type, and written a leaf at a time it spends a moment naming an element of a
+		 * type it has not been given yet. */
+		auto WriteWhole = [this, &Object, Pin, PinController]() -> bool {
 			UScriptStruct* Struct = Cast<UScriptStruct>(Pin->GetCPPTypeObject());
 
 			if (Struct == nullptr) {
@@ -932,7 +1582,15 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 				return false;
 			}
 
-			return RigSetPinDefault(Controller, Pin->GetPinPath(), Exported);
+			return RigSetPinDefault(PinController, Pin->GetPinPath(), Exported);
+		};
+
+		if (Pin->GetSubPins().Num() == 0) {
+			return WriteWhole();
+		}
+
+		if (Pin->GetCPPType() == TEXT("FRigElementKey") && WriteWhole()) {
+			return true;
 		}
 
 		/* Walked pin first rather than field first: an exporter writes what it read off the struct,
@@ -957,11 +1615,15 @@ bool FRigVMGraphReconstruction::SetPinDefault(URigVMPin* Pin, const TSharedPtr<F
 		return false;
 	}
 
-	return RigSetPinDefault(Controller, Pin->GetPinPath(), DefaultValue);
+	return RigSetPinDefault(PinController, Pin->GetPinPath(), DefaultValue);
 }
 
-void FRigVMGraphReconstruction::UpdateLayout() {
-	const TArray<URigVMNode*> GraphNodes = Graph->GetNodes();
+void FRigVMGraphReconstruction::UpdateLayout(URigVMGraph* InGraph, URigVMController* InController) {
+	if (InGraph == nullptr || InController == nullptr) {
+		return;
+	}
+
+	const TArray<URigVMNode*> GraphNodes = InGraph->GetNodes();
 
 	/* Left to right: a node sits one column right of everything feeding it, so values flow the way
 	 * the editor reads and the execution spine runs across the page */
@@ -972,7 +1634,7 @@ void FRigVMGraphReconstruction::UpdateLayout() {
 		PendingSources.Add(Node, 0);
 	}
 
-	for (const URigVMLink* GraphLink : Graph->GetLinks()) {
+	for (const URigVMLink* GraphLink : InGraph->GetLinks()) {
 		if (GraphLink->GetSourcePin() == nullptr || GraphLink->GetTargetPin() == nullptr) continue;
 
 		URigVMNode* Source = GraphLink->GetSourcePin()->GetNode();
@@ -1094,7 +1756,7 @@ void FRigVMGraphReconstruction::UpdateLayout() {
 		float Row = 0.0f;
 
 		for (URigVMNode* Node : *ColumnNodes) {
-			Controller->SetNodePosition(Node, FVector2D(480.0f * static_cast<float>(Column), Row), false, false, false);
+			InController->SetNodePosition(Node, FVector2D(480.0f * static_cast<float>(Column), Row), false, false, false);
 
 			Rows.Add(Node, Row);
 
@@ -1191,7 +1853,11 @@ void FRigVMGraphReconstruction::PromoteLocalVariables() {
 
 		const FVector2D Position = Loose.Pin->GetNode()->GetPosition() + FVector2D(-480.0f, 40.0f);
 
-		URigVMNode* Getter = Controller->AddVariableNode(
+		URigVMController* PinController = ControllerForPin(Loose.Pin);
+
+		if (PinController == nullptr) continue;
+
+		URigVMNode* Getter = PinController->AddVariableNode(
 			FName(*Loose.VariableName),
 			Loose.Pin->GetCPPType(),
 			Loose.Pin->GetCPPTypeObject(),
@@ -1207,12 +1873,12 @@ void FRigVMGraphReconstruction::PromoteLocalVariables() {
 
 		URigVMPin* ValuePin = Getter->FindPin(TEXT("Value"));
 
-		if (ValuePin != nullptr && Controller->AddLink(ValuePin->GetPinPath(), Loose.Pin->GetPinPath(), false, false)) {
+		if (ValuePin != nullptr && PinController->AddLink(ValuePin->GetPinPath(), Loose.Pin->GetPinPath(), false, false)) {
 			Stats.Links++;
 			Stats.VariableNodes++;
 		} else {
 			/* No variable node without its wire */
-			Controller->RemoveNode(Getter, false, false);
+			PinController->RemoveNode(Getter, false, false);
 		}
 	}
 }
@@ -1233,7 +1899,7 @@ void FRigVMGraphReconstruction::ConsolidateDefaults() {
 
 			if (Composed.IsEmpty() || Composed == TEXT("()")) continue;
 
-			RigSetPinDefault(Controller, Pin->GetPinPath(), Composed);
+			RigSetPinDefault(ControllerForPin(Pin), Pin->GetPinPath(), Composed);
 		}
 	}
 }
@@ -1242,7 +1908,7 @@ void FRigVMGraphReconstruction::ApplyDefaults() {
 	for (int32 NodeIndex = 0; NodeIndex < Nodes.Num(); ++NodeIndex) {
 		FNode& Node = Nodes[NodeIndex];
 
-		if (Node.Node == nullptr || Node.Function == nullptr) continue;
+		if (Node.Node == nullptr) continue;
 
 		for (int32 OperandIndex = 0; OperandIndex < Node.Operands.Num(); ++OperandIndex) {
 			if (!Node.Arguments.IsValidIndex(OperandIndex)) continue;
@@ -1342,6 +2008,15 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 		return false;
 	}
 
+	/* A register shared across a function boundary names a pin in each of the two graphs, and a
+	 * link only exists inside one of them. The entry and return nodes are what carries the value
+	 * across, and they are linked from inside the function like anything else. */
+	URigVMController* LinkController = ControllerForPin(OutputPin);
+
+	if (LinkController == nullptr || LinkController != ControllerForPin(InputPin)) {
+		return false;
+	}
+
 	/* Already linked, which happens when the same value reaches a pin twice: once as the register
 	 * the instruction reads and once as the copy the compiler wrote to fill it */
 	for (const URigVMLink* ExistingLink : InputPin->GetSourceLinks()) {
@@ -1350,7 +2025,7 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 		}
 	}
 
-	if (Controller->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+	if (LinkController->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
 		Stats.Links++;
 
 		return true;
@@ -1358,7 +2033,7 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 
 	/* Both ends can name a pin the same way, and a register only says which pins share a value
 	 * rather than which way it flows. Refused one way round, the graph is asked the other. */
-	if (Controller->AddLink(InputPin->GetPinPath(), OutputPin->GetPinPath(), false, false)) {
+	if (LinkController->AddLink(InputPin->GetPinPath(), OutputPin->GetPinPath(), false, false)) {
 		Stats.Links++;
 
 		return true;
@@ -1368,13 +2043,13 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 	 * not always the truth: an export can carry one entry for every instantiation of the dispatch,
 	 * bool arrays standing in for transform ones. The registers know better, so a template whose
 	 * types refuse the link goes back to wildcards and takes its types from the link instead. */
-	auto RetryUnresolved = [this, OutputPin, InputPin](URigVMNode* TemplateNode, const URigVMPin* TemplatePin, const URigVMPin* OtherPin) -> bool {
+	auto RetryUnresolved = [this, LinkController, OutputPin, InputPin](URigVMNode* TemplateNode, const URigVMPin* TemplatePin, const URigVMPin* OtherPin) -> bool {
 		if (Cast<URigVMTemplateNode>(TemplateNode) == nullptr) return false;
 		if (TemplatePin->GetCPPType() == OtherPin->GetCPPType()) return false;
 
-		if (!Controller->UnresolveTemplateNodes(TArray<URigVMNode*>{ TemplateNode }, false)) return false;
+		if (!LinkController->UnresolveTemplateNodes(TArray<URigVMNode*>{ TemplateNode }, false)) return false;
 
-		if (Controller->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+		if (LinkController->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
 			Stats.Links++;
 
 			return true;
@@ -1427,7 +2102,15 @@ URigVMNode* FRigVMGraphReconstruction::FindOrAddVariableGetter(const FString& Va
 		return nullptr;
 	}
 
-	URigVMNode* Getter = Controller->AddVariableNode(
+	URigVMController* GetterController = Nodes.IsValidIndex(ConsumerNode)
+		? ControllerForScope(Nodes[ConsumerNode].Scope)
+		: Controller;
+
+	if (GetterController == nullptr) {
+		return nullptr;
+	}
+
+	URigVMNode* Getter = GetterController->AddVariableNode(
 		Variable->Name,
 		Variable->CPPType,
 		Variable->CPPTypeObject,
@@ -1514,8 +2197,10 @@ void FRigVMGraphReconstruction::CreateLinks(const TArray<FUObjectJsonValueExport
 				URigVMPin* ValuePin = Getter->FindPin(TEXT("Value"));
 				URigVMPin* TargetPin = Node.Node->FindPin(PinName);
 
-				if (ValuePin != nullptr && TargetPin != nullptr) {
-					if (Controller->AddLink(ValuePin->GetPinPath(), TargetPin->GetPinPath(), false, false)) {
+				URigVMController* GetterController = ControllerForScope(Node.Scope);
+
+				if (ValuePin != nullptr && TargetPin != nullptr && GetterController != nullptr) {
+					if (GetterController->AddLink(ValuePin->GetPinPath(), TargetPin->GetPinPath(), false, false)) {
 						Stats.Links++;
 					} else {
 						Stats.FailedLinks++;
@@ -1639,7 +2324,14 @@ void FRigVMGraphReconstruction::CreateLinks(const TArray<FUObjectJsonValueExport
 
 			if (Variable == nullptr) continue;
 
-			URigVMNode* Setter = Controller->AddVariableNode(
+			/* In the graph the value came from, which for a function's own body is that function */
+			const int32 SetterScope = Nodes[SourceRegister->Owner].Scope;
+
+			URigVMController* SetterController = ControllerForScope(SetterScope);
+
+			if (SetterController == nullptr) continue;
+
+			URigVMNode* Setter = SetterController->AddVariableNode(
 				Variable->Name,
 				Variable->CPPType,
 				Variable->CPPTypeObject,
@@ -1657,6 +2349,7 @@ void FRigVMGraphReconstruction::CreateLinks(const TArray<FUObjectJsonValueExport
 
 			FNode SetterNode;
 			SetterNode.Instruction = Index;
+			SetterNode.Scope = SetterScope;
 			SetterNode.Name = Setter->GetName();
 			SetterNode.Node = Setter;
 
@@ -1681,8 +2374,10 @@ void FRigVMGraphReconstruction::CreateLinks(const TArray<FUObjectJsonValueExport
 				? Nodes[TargetRegister->Owner].Node->FindPin(WithSegment(TargetRegister->OwnerPin, TargetSegment))
 				: nullptr;
 
-			if (ValuePin != nullptr && TargetPin != nullptr) {
-				if (Controller->AddLink(ValuePin->GetPinPath(), TargetPin->GetPinPath(), false, false)) {
+			URigVMController* GetterController = ControllerForPin(TargetPin);
+
+			if (ValuePin != nullptr && TargetPin != nullptr && GetterController != nullptr) {
+				if (GetterController->AddLink(ValuePin->GetPinPath(), TargetPin->GetPinPath(), false, false)) {
 					Stats.Links++;
 				} else {
 					Stats.FailedLinks++;
@@ -1795,7 +2490,10 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 	/* Chained per block, in the order the VM runs them: the first node of a block hangs off the pin
 	 * the block belongs to, and everything after it off the node before it */
 	TMap<const FBlock*, int32> Previous;
-	TMap<FString, int32> RootPrevious;
+
+	/* Kept per graph: a function's body runs on its own spine rather than carrying on from the
+	 * instruction that happened to be compiled before it */
+	TMap<int32, int32> RootPrevious;
 
 	TArray<int32> SortedInstructions;
 	InstructionToNode.GetKeys(SortedInstructions);
@@ -1828,6 +2526,12 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 
 		if (Block != nullptr && Block->bLazy) continue;
 
+		const int32 ScopeIndex = Nodes[NodeIndex].Scope;
+
+		URigVMController* ScopeController = ControllerForScope(ScopeIndex);
+
+		if (ScopeController == nullptr) continue;
+
 		int32 PreviousNode = INDEX_NONE;
 
 		if (Block != nullptr) {
@@ -1837,9 +2541,23 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 		} else {
 			/* An entry starts its own chain rather than carrying on from the run before it */
 			if (EntryInstructions.Contains(Instruction)) {
-				RootPrevious.Remove(TEXT("Root"));
-			} else if (const int32* Found = RootPrevious.Find(TEXT("Root"))) {
+				RootPrevious.Remove(ScopeIndex);
+			} else if (const int32* Found = RootPrevious.Find(ScopeIndex)) {
 				PreviousNode = *Found;
+			}
+		}
+
+		/* A function's body runs from its entry node, which is where the graph starts */
+		if (PreviousNode == INDEX_NONE && Block == nullptr && ScopeIndex > 0 && bTakesExecution) {
+			URigVMPin* EntryPin = FindExecuteOutput(Scopes[ScopeIndex].Graph->GetEntryNode(), FString());
+			URigVMPin* InputPin = FindExecuteInput(Node);
+
+			if (EntryPin != nullptr && InputPin != nullptr) {
+				if (ScopeController->AddLink(EntryPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+					Stats.Links++;
+				} else {
+					Stats.FailedLinks++;
+				}
 			}
 		}
 
@@ -1852,7 +2570,7 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 				URigVMPin* InputPin = FindExecuteInput(Node);
 
 				if (OutputPin != nullptr && InputPin != nullptr) {
-					if (Controller->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+					if (ScopeController->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
 						Stats.Links++;
 					} else {
 						Stats.FailedLinks++;
@@ -1864,7 +2582,7 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 			URigVMPin* InputPin = FindExecuteInput(Node);
 
 			if (OutputPin != nullptr && InputPin != nullptr) {
-				if (Controller->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+				if (ScopeController->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
 					Stats.Links++;
 				} else {
 					Stats.FailedLinks++;
@@ -1877,7 +2595,29 @@ void FRigVMGraphReconstruction::CreateExecution(const TArray<FUObjectJsonValueEx
 		if (Block != nullptr) {
 			Previous.Add(Block, NodeIndex);
 		} else {
-			RootPrevious.Add(TEXT("Root"), NodeIndex);
+			RootPrevious.Add(ScopeIndex, NodeIndex);
+		}
+	}
+
+	/* And back out through the return node, so the function has a run from one end to the other */
+	for (int32 ScopeIndex = 1; ScopeIndex < Scopes.Num(); ++ScopeIndex) {
+		const FScope& Scope = Scopes[ScopeIndex];
+
+		if (Scope.Controller == nullptr || Scope.Graph == nullptr) continue;
+
+		const int32* LastNode = RootPrevious.Find(ScopeIndex);
+
+		if (LastNode == nullptr) continue;
+
+		URigVMPin* OutputPin = FindExecuteOutput(Nodes[*LastNode].Node, FString());
+		URigVMPin* ReturnPin = FindExecuteInput(Scope.Graph->GetReturnNode());
+
+		if (OutputPin == nullptr || ReturnPin == nullptr) continue;
+
+		if (Scope.Controller->AddLink(OutputPin->GetPinPath(), ReturnPin->GetPinPath(), false, false)) {
+			Stats.Links++;
+		} else {
+			Stats.FailedLinks++;
 		}
 	}
 }

@@ -279,6 +279,14 @@ IImporter* IImportReader::ReadExportAndImport(FUObjectExportContainer* Container
 	}
 #endif
 
+#if REFLECTION_RIGVM && REFLECTION_CONTROL_RIG
+	/* A rig cooked to a runtime asset is one of a class engines before it never had. What it is
+	 * rebuilt into is the blueprint a rig is authored as, so that class stands in for it. */
+	if (Class == nullptr && Type == TEXT("ControlRigRuntimeAsset")) {
+		Class = UControlRigBlueprint::StaticClass();
+	}
+#endif
+
 	if (Class == nullptr) return nullptr;
 
 	/* The one named after the file is the asset; anything else in it is a part of it */

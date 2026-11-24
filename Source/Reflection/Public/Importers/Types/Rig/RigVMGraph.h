@@ -13,6 +13,7 @@ class UControlRigBlueprint;
 class UPropertySerializer;
 class URigVMController;
 class URigVMGraph;
+class URigVMLibraryNode;
 class URigVMNode;
 class URigVMPin;
 
@@ -28,6 +29,10 @@ struct FRigVMGraphStats {
 	int32 Defaults = 0;
 	int32 VariableNodes = 0;
 
+	/* Functions the bytecode carries a callable for, and the calls made to them */
+	int32 Functions = 0;
+	int32 FunctionCalls = 0;
+
 	/* Functions this engine build doesn't have, so their nodes could not be made */
 	TArray<FString> MissingFunctions;
 
@@ -39,6 +44,13 @@ struct FRigVMGraphStats {
 	/* Nodes the graph refused to take, and links it refused to make */
 	int32 FailedNodes = 0;
 	int32 FailedLinks = 0;
+
+	/* Steps the branch table couldn't place, left with nothing running into them */
+	int32 UnchainedNodes = 0;
+
+	/* Pins naming an element of the hierarchy, and the ones that came back naming nothing */
+	int32 ElementKeys = 0;
+	int32 EmptyElementKeys = 0;
 };
 
 /* Rebuilds a rig's graph out of the RigVM its graph was compiled into.
@@ -74,15 +86,52 @@ private:
 		FString Name;
 		TSharedPtr<FJsonValue> Value;
 
+		/* The struct or enum the register holds, as the memory's own schema names it */
+		FString TypeObjectPath;
+
 		/* The node and pin the register is named after, once an instruction has claimed it */
 		int32 Owner = INDEX_NONE;
 		FString OwnerPin;
+	};
+
+	/* A graph the VM was compiled out of: the rig's own, which is always the first, and one per
+	 * function the bytecode kept a callable for.
+	 *
+	 * A function is compiled once however many times it is called, so its instructions sit in a
+	 * range of their own and every call to it is a single instruction naming that range. Reading
+	 * those ranges back into graphs is what keeps a call a call rather than the body it runs. */
+	struct FScope {
+		int32 First = INDEX_NONE;
+		int32 Last = INDEX_NONE;
+
+		FString Name;
+
+		TArray<FString> ArgumentNames;
+		TArray<int32> ArgumentDirections;
+		TArray<FString> ArgumentTypes;
+
+		/* What the argument is declared as, and the register the body actually reads it through */
+		TArray<int32> ArgumentRegisters;
+		TArray<int32> ArgumentForwarded;
+
+		/* A function handing nothing back only exists for what it does to the hierarchy, which is
+		 * what a mutable one is. One with an output is read for that output. */
+		bool bMutable = true;
+
+		URigVMLibraryNode* Library = nullptr;
+		URigVMGraph* Graph = nullptr;
+		URigVMController* Controller = nullptr;
 	};
 
 	struct FNode {
 		int32 Instruction = INDEX_NONE;
 
 		const FRigVMFunction* Function = nullptr;
+
+		/* The graph the instruction was compiled from, and the function it calls when it is a call
+		 * rather than a unit */
+		int32 Scope = 0;
+		int32 Callable = INDEX_NONE;
 
 		/* The name the graph took, and the one the registers call it by. They differ when two
 		 * graphs compiled into the same VM each held a node of the same name. */
@@ -113,6 +162,25 @@ private:
 	};
 
 	void ReadMemory(const FUObjectJsonValueExport& VirtualMachine);
+
+	/* Reads the bytecode's callables into scopes, and gives each one a function graph to be built
+	 * into. The pins come later: their types are read off the nodes inside the body. */
+	void ReadCallables(const FUObjectJsonValueExport& ByteCode);
+	void CreateFunctions(const TArray<FUObjectJsonValueExport>& Instructions, const TArray<FString>& FunctionNames);
+
+	/* Gives each function the pins its arguments stand for, typed by the pin inside the body that
+	 * reads or writes the same register */
+	void ExposeFunctionArguments();
+
+	/* The call nodes themselves, once the functions they name have their pins */
+	void CreateInvokeNodes();
+
+	/* The scope an instruction was compiled in, innermost first */
+	int32 FindScope(int32 Instruction) const;
+
+	URigVMController* ControllerForScope(int32 ScopeIndex) const;
+	URigVMController* ControllerForPin(const URigVMPin* Pin) const;
+
 	void CollectNodes(const TArray<FUObjectJsonValueExport>& Instructions, const TArray<FString>& FunctionNames);
 
 	/* Gives every register to the pin it is named after, written pins first */
@@ -126,8 +194,8 @@ private:
 	/* Folds leaf defaults back into the pin that owns them, which is where saving reads from */
 	void ConsolidateDefaults();
 
-	/* Lays the graph out left to right: each node one column right of everything feeding it */
-	void UpdateLayout();
+	/* Lays a graph out left to right: each node one column right of everything feeding it */
+	void UpdateLayout(URigVMGraph* InGraph, URigVMController* InController);
 
 	/* Turns collapsed graphs' local variables into rig variables so their first writer has a
 	 * source. Runs last: making a variable compiles the blueprint, which may collect garbage. */
@@ -176,6 +244,8 @@ private:
 	 * one field of a struct rather than the whole of it */
 	TArray<FString> WorkPropertyPaths;
 	TArray<FString> LiteralPropertyPaths;
+
+	TArray<FScope> Scopes;
 
 	TArray<FNode> Nodes;
 	TMap<int32, int32> InstructionToNode;

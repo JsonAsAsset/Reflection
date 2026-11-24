@@ -9,8 +9,12 @@
 #include "Engine/ControlRigCompatibility.h"
 #include "Rigs/RigHierarchyController.h"
 
+#include "Animation/Skeleton.h"
 #include "Engine/SkeletalMesh.h"
+#include "Kismet2/BlueprintEditorUtils.h"
 #include "Kismet2/KismetEditorUtilities.h"
+#include "RigVMCore/RigVMExternalVariable.h"
+#include "RigVMDeveloperTypeUtils.h"
 
 #include "Importers/Types/Blueprint/BlueprintUtilities.h"
 #include "Importers/Types/Blueprint/BlueprintVariables.h"
@@ -132,6 +136,104 @@ namespace {
 
 		FUObjectJsonValueExport Json;
 	};
+
+	/* A reference written as Class'RigElementKey' in /Script/ControlRig, spelled the way the
+	 * variable API takes a type: /Script/ControlRig.RigElementKey */
+	FString ReadTypeObjectPath(const FUObjectJsonValueExport& Reference) {
+		if (!Reference.JsonObject.IsValid() || !Reference.Has(TEXT("ObjectName")) || !Reference.Has(TEXT("ObjectPath"))) {
+			return FString();
+		}
+
+		FString ObjectName = Reference.GetString(TEXT("ObjectName"));
+		FString ObjectPath = Reference.GetString(TEXT("ObjectPath"));
+
+		/* Class'RigElementKey' -> RigElementKey */
+		int32 Quote = INDEX_NONE;
+
+		if (ObjectName.FindChar(TEXT('\''), Quote)) {
+			ObjectName = ObjectName.Mid(Quote + 1).LeftChop(1);
+		}
+
+		/* An asset's path ends in the index of the export it names, which isn't part of its name */
+		FString Package;
+		FString Index;
+
+		if (ObjectPath.Split(TEXT("."), &Package, &Index, ESearchCase::IgnoreCase, ESearchDir::FromEnd) && Index.IsNumeric()) {
+			ObjectPath = Package;
+		}
+
+		if (ObjectName.IsEmpty() || ObjectPath.IsEmpty()) {
+			return FString();
+		}
+
+		return ObjectPath + TEXT(".") + ObjectName;
+	}
+
+	/* The CPP type the variable API takes for one property out of a property bag, or an empty
+	 * string for a type a rig variable can't be */
+	FString ReadPropertyBagType(const FUObjectJsonValueExport& Description) {
+		FString ValueType = Description.GetString(TEXT("ValueType"));
+
+		if (ValueType.Contains(TEXT("::"))) {
+			ValueType.Split(TEXT("::"), nullptr, &ValueType);
+		}
+
+		/* Enums, structs and objects are named by the type they hold, which is the whole of what the
+		 * variable API needs to know about them */
+		FString Type = ReadTypeObjectPath(Description.GetObject(TEXT("ValueTypeObject")));
+
+		if (Type.IsEmpty()) {
+			if (ValueType == TEXT("Bool")) Type = TEXT("bool");
+			else if (ValueType == TEXT("Byte")) Type = TEXT("uint8");
+			else if (ValueType == TEXT("Int32")) Type = TEXT("int32");
+			else if (ValueType == TEXT("Int64")) Type = TEXT("int64");
+			else if (ValueType == TEXT("Float")) Type = TEXT("float");
+			else if (ValueType == TEXT("Double")) Type = TEXT("double");
+			else if (ValueType == TEXT("Name")) Type = TEXT("FName");
+			else if (ValueType == TEXT("String")) Type = TEXT("FString");
+			else if (ValueType == TEXT("Text")) Type = TEXT("FText");
+			else return FString();
+		}
+
+		/* Containers were one field and became a list of them, outermost first. A rig variable can
+		 * be an array and nothing else. */
+		TArray<FString> Containers;
+
+		const FUObjectJsonValueExport ContainerTypes = Description.GetObject(TEXT("ContainerTypes"));
+
+		if (ContainerTypes.JsonObject.IsValid()) {
+			const TArray<TSharedPtr<FJsonValue>>* Listed = nullptr;
+
+			if (ContainerTypes.JsonObject->TryGetArrayField(TEXT("Types"), Listed)) {
+				for (const TSharedPtr<FJsonValue>& Container : *Listed) {
+					if (Container.IsValid() && Container->Type == EJson::String) {
+						Containers.Add(Container->AsString());
+					}
+				}
+			}
+		}
+
+		if (Containers.Num() == 0 && Description.Has(TEXT("ContainerType"))) {
+			Containers.Add(Description.GetString(TEXT("ContainerType")));
+		}
+
+		int32 Arrays = 0;
+
+		for (FString Container : Containers) {
+			if (Container.Contains(TEXT("::"))) {
+				Container.Split(TEXT("::"), nullptr, &Container);
+			}
+
+			if (Container == TEXT("None")) continue;
+			if (Container != TEXT("Array")) return FString();
+
+			Arrays++;
+		}
+
+		if (Arrays > 1) return FString();
+
+		return Arrays == 1 ? FString::Printf(TEXT("TArray<%s>"), *Type) : Type;
+	}
 }
 
 UObject* IControlRigImporter::CreateAsset(UObject* CreatedAsset) {
@@ -141,7 +243,8 @@ UObject* IControlRigImporter::CreateAsset(UObject* CreatedAsset) {
 		return IImporter::CreateAsset(ExistingBlueprint);
 	}
 
-	UClass* ParentClass = GetAssetClass();
+	/* A runtime asset has no class, and every rig cooked to one runs as a plain ControlRig */
+	UClass* ParentClass = IsRuntimeAsset() ? UControlRig::StaticClass() : GetAssetClass();
 
 	/* A rig built on a class of the game's own is one this project doesn't have. The rest of the
 	 * asset has nothing to do with that class, so it is built on the one every rig derives from
@@ -204,12 +307,13 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 	if (Hierarchy == nullptr || Controller == nullptr) return 0;
 
 	/* The hierarchy is a subobject of the class default object rather than an export of its own,
-	 * so it is reached through what the default object points at */
-	FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+	 * so it is reached through what the default object points at. A runtime asset holds it
+	 * directly, under a name of its own. */
+	const FUObjectJsonValueExport RigProperties = GetRigProperties();
 	FUObjectExport* HierarchyExport = FUObjectExport::EmptyExport();
 
-	if (DefaultObjectExport->IsJsonValid() && DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
-		HierarchyExport = GetContainer()->GetExportByObjectPath(DefaultObjectExport->GetPropertiesAsValue().GetObject(TEXT("DynamicHierarchy")));
+	if (RigProperties.JsonObject.IsValid()) {
+		HierarchyExport = GetContainer()->GetExportByObjectPath(RigProperties.GetObject(IsRuntimeAsset() ? TEXT("Hierarchy") : TEXT("DynamicHierarchy")));
 	}
 
 	if (HierarchyExport->IsJsonInvalid()) {
@@ -217,6 +321,11 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 	}
 
 	const TArray<TSharedPtr<FJsonValue>>* Elements = nullptr;
+
+	/* A runtime asset whose construction event builds the hierarchy is cooked with an empty one */
+	if (IsRuntimeAsset() && (HierarchyExport->IsJsonInvalid() || !HierarchyExport->JsonObject->TryGetArrayField(TEXT("Elements"), Elements) || Elements->Num() == 0)) {
+		return ImportHierarchyFromSkeleton(Blueprint);
+	}
 
 	if (HierarchyExport->IsJsonInvalid() || !HierarchyExport->JsonObject->TryGetArrayField(TEXT("Elements"), Elements)) {
 		FImportIssues::Report(
@@ -258,15 +367,29 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 		Description.Parent = ReadElementKey(Json.GetObject(TEXT("ParentKey")));
 
 		if (!Description.Parent.IsValid()) {
-			const TArray<FUObjectJsonValueExport> Constraints = Json.Has(TEXT("ParentConstraints"))
-				? Json.GetArray(TEXT("ParentConstraints"))
-				: TArray<FUObjectJsonValueExport>();
+			/* The constraints sit in a struct of their own, which holds the list beside the count
+			 * and the weights. Older exports wrote the list itself under the same name, and named
+			 * the parent by the element rather than by its key. */
+			const FUObjectJsonValueExport Constraints = Json.GetObject(TEXT("ParentConstraints"));
 
-			if (Constraints.Num() > 0) {
-				Description.Parent = ReadElementKey(Constraints[0].GetObject(TEXT("ParentElement")).GetObject(TEXT("Key")));
+			TArray<FUObjectJsonValueExport> Listed;
+
+			if (Constraints.JsonObject.IsValid() && Constraints.Has(TEXT("ParentConstraints"))) {
+				Listed = Constraints.GetArray(TEXT("ParentConstraints"));
+			} else if (!Constraints.JsonObject.IsValid() && Json.Has(TEXT("ParentConstraints"))) {
+				Listed = Json.GetArray(TEXT("ParentConstraints"));
+			}
+
+			/* The first is the one the element hangs off; the rest are weights the graph drives */
+			if (Listed.Num() > 0) {
+				Description.Parent = ReadElementKey(Listed[0].GetObject(TEXT("ParentKey")));
 
 				if (!Description.Parent.IsValid()) {
-					Description.Parent = ReadElementKey(Constraints[0].GetObject(TEXT("ParentElement")));
+					Description.Parent = ReadElementKey(Listed[0].GetObject(TEXT("ParentElement")).GetObject(TEXT("Key")));
+				}
+
+				if (!Description.Parent.IsValid()) {
+					Description.Parent = ReadElementKey(Listed[0].GetObject(TEXT("ParentElement")));
 				}
 			}
 		}
@@ -302,13 +425,28 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 			case ERigElementType::Control: {
 				FRigControlSettings Settings;
 
-				const FUObjectJsonValueExport SettingsJson = Description.Json.GetObject(TEXT("Settings"));
+				/* A control's settings were split in two: what the hierarchy is shaped by, and
+				 * what the control is drawn with. An export keeping both under one name still
+				 * reads, since the fields are the same either way. */
+				FUObjectJsonValueExport SettingsJson = Description.Json.GetObject(TEXT("Settings"));
+
+				if (!SettingsJson.JsonObject.IsValid()) {
+					SettingsJson = Description.Json.GetObject(TEXT("TopologyControlSettings"));
+				}
 
 				if (SettingsJson.JsonObject.IsValid()) {
 					GetPropertySerializer()->DeserializeStruct(FRigControlSettings::StaticStruct(), SettingsJson.JsonObject.ToSharedRef(), &Settings);
 
 					ReadControlValue(GetPropertySerializer(), SettingsJson.GetObject(TEXT("MinimumValue")), Settings.MinimumValue);
 					ReadControlValue(GetPropertySerializer(), SettingsJson.GetObject(TEXT("MaximumValue")), Settings.MaximumValue);
+				}
+
+				const FUObjectJsonValueExport ShapeJson = Description.Json
+					.GetObject(TEXT("ControlSettingsShapeData"))
+					.GetObject(TEXT("ShapeSettings"));
+
+				if (ShapeJson.JsonObject.IsValid()) {
+					GetPropertySerializer()->DeserializeStruct(FRigControlSettings::StaticStruct(), ShapeJson.JsonObject.ToSharedRef(), &Settings);
 				}
 
 				FTransform Offset = FTransform::Identity;
@@ -427,17 +565,22 @@ int32 IControlRigImporter::ConstructHierarchy(UControlRigBlueprint* Blueprint) c
 }
 
 int32 IControlRigImporter::ConstructVariables(UControlRigBlueprint* Blueprint) {
+	if (IsRuntimeAsset()) {
+		return ConstructRuntimeVariables(Blueprint);
+	}
+
 	/* A rig that declared nothing of its own declares nothing here either */
 	return FBlueprintVariables::Construct(Blueprint, FBlueprintVariables::GetDeclared(GetAssetExport(), GetContainer()));
 }
 
 void IControlRigImporter::ConstructGraph(UControlRigBlueprint* Blueprint) const {
-	/* The VM is a subobject of the class default object, the same way the hierarchy is */
-	FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+	/* The VM is a subobject of the class default object, the same way the hierarchy is, and a
+	 * runtime asset holds it under the same name */
+	const FUObjectJsonValueExport RigProperties = GetRigProperties();
 	FUObjectExport* VirtualMachineExport = FUObjectExport::EmptyExport();
 
-	if (DefaultObjectExport->IsJsonValid() && DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
-		VirtualMachineExport = GetContainer()->GetExportByObjectPath(DefaultObjectExport->GetPropertiesAsValue().GetObject(TEXT("VM")));
+	if (RigProperties.JsonObject.IsValid()) {
+		VirtualMachineExport = GetContainer()->GetExportByObjectPath(RigProperties.GetObject(TEXT("VM")));
 	}
 
 	if (VirtualMachineExport->IsJsonInvalid()) {
@@ -468,8 +611,8 @@ void IControlRigImporter::ConstructGraph(UControlRigBlueprint* Blueprint) const 
 
 	const FRigVMGraphStats& Stats = Reconstruction.GetStats();
 
-	UE_LOG(LogReflection, Log, TEXT("\"%s\" rebuilt %d nodes, %d links and %d pin defaults from %d instructions"),
-		*GetAssetName(), Stats.Nodes, Stats.Links, Stats.Defaults, Stats.Instructions);
+	UE_LOG(LogReflection, Log, TEXT("\"%s\" rebuilt %d nodes, %d links and %d pin defaults from %d instructions, across %d function(s) called %d time(s)"),
+		*GetAssetName(), Stats.Nodes, Stats.Links, Stats.Defaults, Stats.Instructions, Stats.Functions, Stats.FunctionCalls);
 
 	/* Collapsed nodes and function references are compiled away long before the VM exists, so what
 	 * comes back is the graph the VM runs rather than the one that was drawn */
@@ -477,11 +620,13 @@ void IControlRigImporter::ConstructGraph(UControlRigBlueprint* Blueprint) const 
 		EImportIssue::Data,
 		TEXT("The rig's graph was rebuilt from its bytecode"),
 		FString::Printf(
-			TEXT("%d nodes, %d links and %d pin defaults, out of %d instructions. A cook keeps only the compiled VM, so collapsed nodes and function references come back as the nodes they were compiled into, and comments and node positions are gone."),
+			TEXT("%d nodes, %d links and %d pin defaults, out of %d instructions, with %d function(s) called %d time(s). A cook keeps only the compiled VM, so collapsed nodes come back as the nodes they were compiled into, and comments and node positions are gone."),
 			Stats.Nodes,
 			Stats.Links,
 			Stats.Defaults,
-			Stats.Instructions
+			Stats.Instructions,
+			Stats.Functions,
+			Stats.FunctionCalls
 		)
 	);
 
@@ -546,11 +691,9 @@ void IControlRigImporter::ConstructSettings(UControlRigBlueprint* Blueprint) con
 #if WITH_EDITORONLY_DATA
 	/* The libraries the shape names on the rig's controls are looked up in. A rig created from
 	 * scratch starts with the engine's own, which is what most rigs are still on. */
-	FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+	const FUObjectJsonValueExport Properties = GetRigProperties();
 
-	if (DefaultObjectExport->IsJsonValid() && DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
-		const FUObjectJsonValueExport Properties = DefaultObjectExport->GetPropertiesAsValue();
-
+	if (Properties.JsonObject.IsValid()) {
 		if (Properties.Has(TEXT("ShapeLibraries"))) {
 			TArray<TSoftObjectPtr<UControlRigShapeLibrary>> ShapeLibraries;
 
@@ -575,13 +718,20 @@ void IControlRigImporter::ApplyVariableDefaults(const UControlRigBlueprint* Blue
 	UClass* GeneratedClass = Blueprint->GeneratedClass;
 	if (GeneratedClass == nullptr) return;
 
-	FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+	TSharedPtr<FJsonObject> Properties;
 
-	if (DefaultObjectExport->IsJsonInvalid() || !DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
-		return;
+	/* A runtime asset keeps its defaults as the value of its property bag, by variable name */
+	if (IsRuntimeAsset()) {
+		Properties = GetAssetDataAsValue().GetObject(TEXT("Variables")).GetObject(TEXT("Value")).JsonObject;
+	} else {
+		FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+
+		if (DefaultObjectExport->IsJsonValid() && DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
+			Properties = DefaultObjectExport->GetProperties();
+		}
 	}
 
-	const TSharedPtr<FJsonObject>& Properties = DefaultObjectExport->GetProperties();
+	if (!Properties.IsValid()) return;
 
 	/* Only the variables this import added. The rest of what a rig's default object carries is the
 	 * rig itself, its hierarchy and its VM, which are built rather than deserialized: writing the
@@ -599,6 +749,132 @@ void IControlRigImporter::ApplyVariableDefaults(const UControlRigBlueprint* Blue
 	if (Defaults->Values.Num() == 0) return;
 
 	GetObjectSerializer()->DeserializeObjectProperties(Defaults, GeneratedClass->GetDefaultObject());
+}
+
+bool IControlRigImporter::IsRuntimeAsset() const {
+	return GetAssetType() == TEXT("ControlRigRuntimeAsset");
+}
+
+FUObjectJsonValueExport IControlRigImporter::GetRigProperties() const {
+	if (IsRuntimeAsset()) {
+		return GetAssetDataAsValue();
+	}
+
+	FUObjectExport* DefaultObjectExport = GetClassDefaultObject(GetContainer(), GetAssetDataAsValue());
+
+	if (DefaultObjectExport->IsJsonInvalid() || !DefaultObjectExport->JsonObject->HasField(TEXT("Properties"))) {
+		return FUObjectJsonValueExport();
+	}
+
+	return DefaultObjectExport->GetPropertiesAsValue();
+}
+
+int32 IControlRigImporter::ConstructRuntimeVariables(UControlRigBlueprint* Blueprint) {
+	const FUObjectJsonValueExport Bag = GetAssetDataAsValue().GetObject(TEXT("Variables"));
+
+	if (!Bag.JsonObject.IsValid() || !Bag.Has(TEXT("PropertyDescs"))) {
+		return 0;
+	}
+
+	int32 Added = 0;
+	TArray<FString> Refused;
+
+	/* The graph reads a variable by its index into this list, so they go in the order the bag
+	 * declares them, and one that can't go in is reported rather than skipped over quietly */
+	for (const FUObjectJsonValueExport& Description : Bag.GetArray(TEXT("PropertyDescs"))) {
+		const FString Name = Description.GetString(TEXT("Name"));
+		if (Name.IsEmpty()) continue;
+
+		const FString Type = ReadPropertyBagType(Description);
+
+		/* The rig's own AddMemberVariable compiles the blueprint after every variable, with garbage
+		 * collection on, and that frees the serializers the rest of this import reads through. The
+		 * pin type it would have built is built here instead, and the one compile the caller does
+		 * once they are all in stands for the lot. */
+		const FRigVMExternalVariable Variable = Type.IsEmpty()
+			? FRigVMExternalVariable()
+			: RigVMTypeUtils::ExternalVariableFromCPPTypePath(FName(*Name), Type, false, false);
+
+		const FEdGraphPinType PinType = Variable.IsValid(true) ? RigVMTypeUtils::PinTypeFromExternalVariable(Variable) : FEdGraphPinType();
+
+		if (!PinType.PinCategory.IsValid() || PinType.PinCategory.IsNone() || !FBlueprintEditorUtils::AddMemberVariable(Blueprint, FName(*Name), PinType)) {
+			Refused.Add(Name);
+
+			continue;
+		}
+
+		Added++;
+	}
+
+	if (Refused.Num() > 0) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("Some of the rig's variables couldn't be declared"),
+			FString::Printf(
+				TEXT("%d of them, starting with \"%s\". Their type is one a rig variable can't hold or one this project doesn't have, and the graph's reads of every variable after them may land on the wrong one."),
+				Refused.Num(),
+				*Refused[0]
+			)
+		);
+	}
+
+	return Added;
+}
+
+int32 IControlRigImporter::ImportHierarchyFromSkeleton(UControlRigBlueprint* Blueprint) const {
+	URigHierarchyController* Controller = Blueprint->GetHierarchyController();
+	if (Controller == nullptr) return 0;
+
+	auto LoadSkeleton = [](const FUObjectJsonValueExport& Reference) -> USkeleton* {
+		if (!Reference.JsonObject.IsValid() || !Reference.Has(TEXT("AssetPathName"))) return nullptr;
+
+		FString PackagePath;
+		FString AssetName;
+
+		if (!Reference.GetString(TEXT("AssetPathName")).Split(TEXT("."), &PackagePath, &AssetName)) return nullptr;
+
+		TObjectPtr<UObject> Skeleton = LoadObjectByPath<UObject>(ToEditorPackagePath(PackagePath) + TEXT(".") + AssetName);
+
+		if (Skeleton == nullptr) {
+			Skeleton = DownloadWrapper(Skeleton, TEXT("Skeleton"), AssetName, PackagePath);
+		}
+
+		return Cast<USkeleton>(Skeleton);
+	};
+
+	const FUObjectJsonValueExport Properties = GetAssetDataAsValue();
+
+	USkeleton* HierarchySkeleton = LoadSkeleton(Properties.GetObject(TEXT("SourceHierarchyImport")));
+	USkeleton* CurveSkeleton = LoadSkeleton(Properties.GetObject(TEXT("SourceCurveImport")));
+
+	if (HierarchySkeleton == nullptr) {
+		FImportIssues::Report(
+			EImportIssue::Data,
+			TEXT("The rig has no hierarchy to rebuild"),
+			TEXT("The runtime asset was cooked with an empty hierarchy, and the skeleton it was authored against couldn't be loaded to import one from. The rig's construction event still builds its own elements when it runs.")
+		);
+
+		return 0;
+	}
+
+	/* Replacing and removing rather than adding to what is there, which over an earlier run is
+	 * that run's import */
+	int32 Imported = Controller->ImportBones(HierarchySkeleton, NAME_None, true, true, false, false, false).Num();
+
+	if (CurveSkeleton != nullptr) {
+		Imported += Controller->ImportCurves(CurveSkeleton, NAME_None, false, false, false).Num();
+	}
+
+	FImportIssues::Report(
+		EImportIssue::Data,
+		TEXT("The rig's hierarchy was imported from its skeleton"),
+		FString::Printf(
+			TEXT("A runtime asset is cooked with the hierarchy its construction event builds left empty, so the %d bones and curves of the skeleton it was authored against stand in for it. Anything the construction event adds on top of those is added again each time the rig runs."),
+			Imported
+		)
+	);
+
+	return Imported;
 }
 
 #endif

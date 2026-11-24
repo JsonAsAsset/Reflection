@@ -36,12 +36,29 @@ private:
 
 	/* Fills in the class default object's value for each variable that was added */
 	void ApplyVariableDefaults(const UControlRigBlueprint* Blueprint) const;
+
+	/* A runtime asset is a rig cooked without a class of its own: the asset itself holds what the
+	 * class default object would, and its variables are a property bag rather than properties */
+	bool IsRuntimeAsset() const;
+
+	/* Where the rig's hierarchy, VM and shape libraries are named: the class default object's
+	 * properties for a generated class, the asset's own for a runtime asset */
+	FUObjectJsonValueExport GetRigProperties() const;
+
+	/* The variables a runtime asset's property bag declares, which have no class to live on */
+	int32 ConstructRuntimeVariables(UControlRigBlueprint* Blueprint);
+
+	/* A runtime asset whose hierarchy is built by its construction event is cooked with none, so
+	 * the bones and curves come from the skeleton the rig was authored against */
+	int32 ImportHierarchyFromSkeleton(UControlRigBlueprint* Blueprint) const;
 };
 
-/* Later cooks keep a rig's class as the RigVM one it derives from; the class it generates still derives from ControlRig. */
+/* Later cooks keep a rig's class as the RigVM one it derives from; the class it generates still
+ * derives from ControlRig. Later still, a rig cooks to a runtime asset with no class at all. */
 REGISTER_IMPORTER(IControlRigImporter, (TArray<FString>{
 	TEXT("ControlRigBlueprintGeneratedClass"),
-	TEXT("RigVMBlueprintGeneratedClass")
+	TEXT("RigVMBlueprintGeneratedClass"),
+	TEXT("ControlRigRuntimeAsset")
 }), "Animation Assets");
 
 #endif
