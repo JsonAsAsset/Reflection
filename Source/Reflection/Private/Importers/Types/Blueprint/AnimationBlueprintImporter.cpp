@@ -334,6 +334,7 @@ bool IAnimationBlueprintImporter::Import() {
 	 * from the run before is one the editor has already cleared away */
 	AnimNodeContainers.Empty();
 	Borrowed.Empty();
+	Driven.Empty();
 
 	ReadFolded(RootAnimNodeProperties, NodesKeys);
 	ReadFolded(RootAnimNodeProperties, NodesKeys);
@@ -949,7 +950,16 @@ void IAnimationBlueprintImporter::Unfold(const TSharedPtr<FJsonObject>& Nodes, c
 
 			if (Entry == MAX_uint32) continue;
 
-			const TArray<TSharedPtr<FJsonValue>>& From = (Entry & 0x80000000u) != 0 ? Mutables : Constants;
+			const bool bChanges = (Entry & 0x80000000u) != 0;
+
+			/* A value the class keeps among the ones that change is one somebody wrote each frame,
+			 * so the member is an input the node was fed rather than a setting it was given. What
+			 * it was stored holding is its default, and the pin is said so it reads as fed. */
+			if (bChanges) {
+				Driven.FindOrAdd(Keys[Which]).AddUnique(FName(*One.Key));
+			}
+
+			const TArray<TSharedPtr<FJsonValue>>& From = bChanges ? Mutables : Constants;
 
 			const int32 At = static_cast<int32>(Entry & 0x7FFFFFFFu);
 
@@ -1789,6 +1799,46 @@ void IAnimationBlueprintImporter::DrawBindings(FUObjectExportContainer* Containe
 	}
 }
 
+/* A member the cook kept among the values that change was fed by something, and what fed it is not
+ * in the package: the copy lived on a handler the class carries no property for, so it is written out
+ * nowhere. The pin is said anyway rather than left as the constant the node was stored with, so what
+ * has to be fed shows on the node instead of reading as a setting somebody chose. */
+void IAnimationBlueprintImporter::ShowDrivenPins(FUObjectExportContainer* Container) const {
+	if (Container == nullptr || Driven.Num() == 0) return;
+
+	int32 Said = 0;
+
+	for (const FUObjectExport* NodeExport : Container->Exports) {
+		UAnimGraphNode_Base* Node = Cast<UAnimGraphNode_Base>(NodeExport->Object);
+
+		if (Node == nullptr) continue;
+
+		const FString Named = NodeExport->GetName().ToString();
+
+		for (const FName& Member : Driven.FindRef(Named)) {
+			/* The copies say what feeds most of them, and a pin named there is fed rather than left
+			 * holding a value, so it is nothing to say anything about */
+			if (Bindings.FindRef(Named).ContainsByPredicate([&Member](const FHandedOver& One) { return One.Member == Member; })) {
+				continue;
+			}
+
+			/* Said whether or not the pin had to be drawn, since one already drawn is still a pin
+			 * with nothing on it and the node reads as though the value were chosen */
+			if (Expose(Node, Member)) {
+				Node->ReconstructNode();
+			}
+
+			UE_LOG(LogReflection, Display, TEXT("%s.%s is fed each frame and nothing says by what"), *Named, *Member.ToString());
+
+			Said++;
+		}
+	}
+
+	if (Said > 0) {
+		UE_LOG(LogReflection, Display, TEXT("%d pin(s) fed each frame with nothing saying by what"), Said);
+	}
+}
+
 void IAnimationBlueprintImporter::ShowBoundPins(const TSharedPtr<FJsonObject>& AnimNodeProperties, FUObjectExportContainer* Container) const {
 	if (Container == nullptr) return;
 
@@ -1875,6 +1925,7 @@ void IAnimationBlueprintImporter::CreateGraph(const TSharedPtr<FJsonObject>& Ani
 
 	HandleNodeDeserialization(Container);
 	ShowBoundPins(AnimNodeProperties, Container);
+	ShowDrivenPins(Container);
 	ConnectAnimGraphNodes(Container, AnimGraph);
 	AutoLayoutAnimGraphNodes(Container->Exports);
 	DrawBindings(Container);
@@ -2648,6 +2699,7 @@ void IAnimationBlueprintImporter::ConnectAnimGraphNodes(FUObjectExportContainer*
                             }
                             
                             const FString IndexedPinName = FString::Printf(TEXT("%s_%d"), *Pair.Key, Index);
+
                             LinkPoseInputPin(IndexedPinName, Node, TargetNode, AnimGraph);
                         }
                     }

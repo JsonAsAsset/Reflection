@@ -59,6 +59,8 @@ private:
 	/* Puts back the values the class folded out of its nodes and kept once for all of them */
 	void Unfold(const TSharedPtr<FJsonObject>& Nodes, const TArray<FString>& Keys) const;
 
+	void ShowDrivenPins(FUObjectExportContainer* Container) const;
+
 	/* Which of a node's properties reads a given slot, said by the node rather than by the slot */
 	FName MemberAt(const FString& Key, int32 Which, uint32 Entry) const;
 
@@ -113,6 +115,10 @@ protected:
 	TSharedPtr<FJsonObject> AnimMutables;
 	TMap<FString, TMap<FString, int32>> Slots;
 	TMap<int32, TArray<uint32>> Folded;
+
+	/* Per node, the members the class keeps as values that change rather than values it holds.
+	 * Filled while the nodes are read, which is done as a read of them. */
+	mutable TMap<FString, TArray<FName>> Driven;
 	TMap<FString, FString> Kinds;
 
 	/* Points each borrowed cached pose at the node that saved it, once every graph has been made */

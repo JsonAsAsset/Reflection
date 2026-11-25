@@ -66,6 +66,10 @@ void USerializerContainer::DeserializeExports(UObject* Parent, const bool Create
 	ApplyModifications();
 }
 
+void USerializerContainer::AddReferencedObjects(FReferenceCollector& Collector) {
+	Collector.AddReferencedObject(ObjectSerializer);
+}
+
 void USerializerContainer::CreateSerializer() {
 	ObjectSerializer = NewObject<UObjectSerializer>();
 	GetObjectSerializer()->SetPropertySerializer(NewObject<UPropertySerializer>());

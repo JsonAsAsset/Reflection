@@ -67,6 +67,31 @@ namespace {
 		return Built;
 	}
 
+	/* Whether a dispatch is a step in the solve rather than a value read on the way past.
+	 *
+	 * Its execute pins are not among the arguments it lists them with: they are asked for on their
+	 * own, and only an array or a print declares any. 5.5 renamed the call and 5.7 made it take
+	 * the registry handle the caller is reading under. */
+	bool FactoryRunsExecution(const FRigVMDispatchFactory* Factory) {
+		if (Factory == nullptr) {
+			return false;
+		}
+
+		const FRigVMDispatchContext Context;
+
+#if UE5_7_BEYOND
+		FRigVMRegistryReadLock ReadLock(FRigVMRegistry::Get());
+
+		return Factory->GetExecuteArguments_NoLock(Context, ReadLock).Num() > 0;
+#elif UE5_5_BEYOND
+		return Factory->GetExecuteArguments_NoLock(Context).Num() > 0;
+#elif UE5_2_BEYOND
+		return Factory->GetExecuteArguments(Context).Num() > 0;
+#else
+		return false;
+#endif
+	}
+
 	/* 5.4 grew a say over whether a pin linked to this one takes the value too */
 	bool RigSetPinDefault(URigVMController* Controller, const FString& PinPath, const FString& Value) {
 		if (Controller == nullptr) {
@@ -529,6 +554,8 @@ void FRigVMGraphReconstruction::CreateFunctions(const TArray<FUObjectJsonValueEx
 					return true;
 				}
 			}
+
+			return FactoryRunsExecution(Function->Factory);
 		}
 
 		return false;
@@ -2008,6 +2035,30 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 		return false;
 	}
 
+	/* Two wildcards is the one question the graph answers by reading a template without looking.
+	 *
+	 * Asked whether a link is allowed it compares the two types, and where both ends are still
+	 * wildcards it works out what they have in common by reading each node's template and looking
+	 * the pin up on it. Neither template is checked for being there, and a node whose notation
+	 * nothing in this build registers has none, so the asking is what brings the editor down
+	 * rather than anything about the link. */
+	const auto Answerable = [](const URigVMPin* From, const URigVMPin* To) {
+		if (!From->IsWildCard() || !To->IsWildCard()) return true;
+
+		const URigVMTemplateNode* Source = Cast<URigVMTemplateNode>(From->GetNode());
+		const URigVMTemplateNode* Target = Cast<URigVMTemplateNode>(To->GetNode());
+
+		return Source != nullptr && Target != nullptr
+			&& Source->GetTemplate() != nullptr && Target->GetTemplate() != nullptr;
+	};
+
+	if (!Answerable(OutputPin, InputPin)) {
+		UE_LOG(LogReflection, Verbose, TEXT("\"%s\" to \"%s\" is a link this build cannot be asked about"),
+			*OutputPin->GetPinPath(), *InputPin->GetPinPath());
+
+		return false;
+	}
+
 	/* A register shared across a function boundary names a pin in each of the two graphs, and a
 	 * link only exists inside one of them. The entry and return nodes are what carries the value
 	 * across, and they are linked from inside the function like anything else. */
@@ -2043,13 +2094,33 @@ bool FRigVMGraphReconstruction::Link(const int32 SourceNode, const FString& Sour
 	 * not always the truth: an export can carry one entry for every instantiation of the dispatch,
 	 * bool arrays standing in for transform ones. The registers know better, so a template whose
 	 * types refuse the link goes back to wildcards and takes its types from the link instead. */
-	auto RetryUnresolved = [this, LinkController, OutputPin, InputPin](URigVMNode* TemplateNode, const URigVMPin* TemplatePin, const URigVMPin* OtherPin) -> bool {
+	auto RetryUnresolved = [this, LinkController, OutputPin, InputPin, &Answerable](URigVMNode* TemplateNode, const URigVMPin* TemplatePin, const URigVMPin* OtherPin) -> bool {
 		if (Cast<URigVMTemplateNode>(TemplateNode) == nullptr) return false;
 		if (TemplatePin->GetCPPType() == OtherPin->GetCPPType()) return false;
 
+		/* Taken as paths before anything is undone.
+		 *
+		 * Putting a node back to wildcards builds its pins again, and the ones in hand belong to
+		 * the node as it was. Read afterwards they are memory nobody owns, which answers whatever
+		 * it happens to hold: the link is allowed by a pin that is not there and the graph is asked
+		 * about a template that went with it. */
+		const FString From = OutputPin->GetPinPath();
+		const FString To = InputPin->GetPinPath();
+
 		if (!LinkController->UnresolveTemplateNodes(TArray<URigVMNode*>{ TemplateNode }, false)) return false;
 
-		if (LinkController->AddLink(OutputPin->GetPinPath(), InputPin->GetPinPath(), false, false)) {
+		URigVMGraph* On = LinkController->GetGraph();
+
+		const URigVMPin* Source = On != nullptr ? On->FindPin(From) : nullptr;
+		const URigVMPin* Target = On != nullptr ? On->FindPin(To) : nullptr;
+
+		if (Source == nullptr || Target == nullptr) return false;
+
+		/* Asked again of the pins the node has now, since going back to wildcards is what makes
+		 * both ends ones */
+		if (!Answerable(Source, Target)) return false;
+
+		if (LinkController->AddLink(From, To, false, false)) {
 			Stats.Links++;
 
 			return true;

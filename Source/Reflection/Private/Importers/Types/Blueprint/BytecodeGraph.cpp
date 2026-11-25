@@ -7,6 +7,7 @@
 #include "Engine/Compatibility.h"
 #include "Policies/CondensedJsonPrintPolicy.h"
 #include "Serialization/JsonWriter.h"
+#include "UObject/CoreRedirects.h"
 #include "K2Node_AddComponent.h"
 #include "Importers/Types/Blueprint/GraphTidy.h"
 #include "Importers/Types/Blueprint/MacroPattern.h"
@@ -909,6 +910,18 @@ bool FBytecodeGraph::SpellMath(const FUObjectJsonValueExport& Expression, FStrin
 	return false;
 }
 
+static bool WhereItWent(const FString& Owner, const FString& Member, FString& OutOwner, FString& OutMember) {
+	const FCoreRedirectObjectName Named(*Member, *Owner, NAME_None);
+
+	const FCoreRedirectObjectName Went = FCoreRedirects::GetRedirectedName(
+		ECoreRedirectFlags::Type_Function, Named, ECoreRedirectMatchFlags::AllowPartialMatch);
+
+	OutOwner = Went.OuterName.IsNone() ? Owner : Went.OuterName.ToString();
+	OutMember = Went.ObjectName.IsNone() ? Member : Went.ObjectName.ToString();
+
+	return OutOwner != Owner || OutMember != Member;
+}
+
 UFunction* FBytecodeGraph::ResolveFunction(const FUObjectJsonValueExport& Reference) {
 	FString Owner, Member;
 	SplitReference(Reference, Owner, Member);
@@ -916,11 +929,25 @@ UFunction* FBytecodeGraph::ResolveFunction(const FUObjectJsonValueExport& Refere
 	if (Owner.IsEmpty() || Member.IsEmpty()) return nullptr;
 
 	/* The class the function is on, wherever it happens to live */
-	const UClass* Class = FindClassByType(Owner);
+	if (const UClass* Class = FindClassByType(Owner)) {
+		if (UFunction* Found = FindFunctionOn(Class, Member)) return Found;
+	}
 
-	if (Class == nullptr) return nullptr;
+	FString ToClass, ToMember;
 
-	return FindFunctionOn(Class, Member);
+	if (!WhereItWent(Owner, Member, ToClass, ToMember)) return nullptr;
+
+	const UClass* Moved = FindClassByType(ToClass);
+	UFunction* Function = Moved != nullptr ? FindFunctionOn(Moved, ToMember) : nullptr;
+
+	if (Function == nullptr) return nullptr;
+
+	/* Said rather than done quietly, since the two take what they are given in a different order
+	 * where they take the same things, and a call read back against the wrong order looks right */
+	UE_LOG(LogReflectionBytecode, Display, TEXT("%s::%s was read back as %s::%s, which is where this build keeps it"),
+		*Owner, *Member, *ToClass, *ToMember);
+
+	return Function;
 }
 
 UK2Node* FBytecodeGraph::FormatText(const FUObjectJsonValueExport& Expression) {

@@ -3,11 +3,12 @@
 #pragma once
 
 #include "CoreMinimal.h"
+#include "UObject/GCObject.h"
 
 #include "Serializers/PropertySerializer.h"
 #include "Serializers/ObjectSerializer.h"
 
-class REFLECTION_API USerializerContainer {
+class REFLECTION_API USerializerContainer : public FGCObject {
 public:
     /* Virtual Constructor */
     USerializerContainer();
@@ -15,6 +16,10 @@ public:
     virtual ~USerializerContainer() {}
     
     virtual void Initialize(FUObjectExport* Export, FUObjectExportContainer* Container);
+
+    /* FGCObject ~~~~~~~~~~~~~~~> */
+    virtual void AddReferencedObjects(FReferenceCollector& Collector) override;
+    virtual FString GetReferencerName() const override { return TEXT("USerializerContainer"); }
     
     /* AssetExport ~~~~~~~~~~~~~~~> */
 public:
@@ -74,5 +79,5 @@ protected:
     void CreateSerializer();
     
 private:
-    UObjectSerializer* ObjectSerializer;
+    UObjectSerializer* ObjectSerializer = nullptr;
 };
