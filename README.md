@@ -1,5 +1,5 @@
 <br/>
-<div align="center">
+<div>
   <!--
   Also popularly known as "JAA", standing for Json As Asset.
   Now known as Reflection, can be used in a way like "Reflect that asset!"
@@ -12,7 +12,7 @@
   </a>
 </div>
 
-<div align="center">
+<div>
 
 Reflection takes assets from [FModel](https://github.com/4sval/FModel), and puts them straight in your project: materials, data tables, physics assets, and more.
 
